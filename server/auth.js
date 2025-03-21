@@ -114,11 +114,9 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     new JwtStrategy(jwtOptions, async (jwt_payload, done) => {
       // User anhand der ID aus dem Token holen
       let user = await sql.auth_getUser(jwt_payload.id);
-
       if (user) {
         return done(null, user);
       }
-
       return done(null, false);
     })
   );
@@ -195,23 +193,18 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
 
   const createUser = async (req, res) => {
     try {
-      const row = await sql.auth_createUser(req.body.username);
-      if (row) {
-        req.flash("errorMessage", "Es existiert bereits ein Benutzer mit diesem Namen!");
+      const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
+      const result = await sql.auth_create_new_user(req.body.username, hash, req.body.permissions, req.body.ip);
+      if (result) {
+        req.flash("successMessage", "Neuer Benutzer wurde angelegt.");
         res.redirect("/adm_edit_users");
       } else {
-        const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
-        const result = await sql.auth_create_new_user(req.body.username, hash, req.body.permissions, req.body.ip);
-        if (result) {
-          req.flash("successMessage", "Neuer Benutzer wurde angelegt.");
-          res.redirect("/adm_edit_users");
-        } else {
-          req.flash("errorMessage", "Da ist etwas schief gegangen...");
-          res.redirect("/adm_edit_users");
-        }
+        throw new Error("Fehler beim Erstellen eines neuen Benutzers. " + req.body.username);
       }
     } catch (error) {
       logger.log("error", "Fehler beim Erstellen eines neuen Benutzers: " + error);
+      req.flash("errorMessage", "Fehler beim Erstellen eines neuen Benutzers. Bitte Log-Datei prüfen.");
+      res.redirect("/adm_edit_users");
     }
   };
 
@@ -226,12 +219,13 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
           req.flash("successMessage", "Benutzer '" + req.body.username + "' wurde gelöscht!");
           res.redirect("/adm_edit_users");
         } else {
-          req.flash("errorMessage", "Da ist etwas schief gegangen...");
-          res.redirect("/adm_edit_users");
+          throw new Error("Fehler beim Löschen eines Benutzers. " + req.body.username);
         }
       }
     } catch (error) {
       logger.log("error", "Fehler beim Löschen eines Benutzers: " + error);
+      req.flash("errorMessage", "Fehler beim Löschen eines Benutzers. Bitte Log-Datei prüfen.");
+      res.redirect("/adm_edit_users");
     }
   };
 
@@ -264,16 +258,15 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
           req.flash("successMessage", "Benutzer aktualisiert.");
           res.redirect("/adm_edit_users");
         } else {
-          req.flash("errorMessage", "Da ist etwas schief gegangen...");
-          res.redirect("/adm_edit_users");
           throw new Error("Fehler beim Ändern eines Benutzers.");
         }
       } else {
-        req.flash("errorMessage", "Da ist etwas schief gegangen...");
-        res.redirect("/adm_edit_users");
+        throw new Error("Fehler beim Ändern eines Benutzers.");
       }
     } catch (error) {
       logger.log("error", "Fehler beim Ändern eines Benutzers: " + error);
+      req.flash("errorMessage", "Fehler beim Ändern eines Benutzers. Bitte Log-Datei prüfen.");
+      res.redirect("/adm_edit_users");
     }
   };
 

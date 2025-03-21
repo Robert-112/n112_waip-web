@@ -5,17 +5,12 @@ const fs = require("fs");
 const express = require("express");
 const app = express();
 const http = require("http");
-const https = require("https");
-const webserver = https.createServer(
-  {
-    key: fs.readFileSync("./misc/server.key", "utf8"),
-    cert: fs.readFileSync("./misc/server.cert", "utf8"),
-  },
+const webserver = http.createServer(
   app
 );
 const io = require("socket.io")(webserver, {
   cors: {
-    origin: "*",
+    origin: app_cfg.public.url,
     methods: ["GET", "POST"]
   },
 });
@@ -35,7 +30,7 @@ app_cfg.public.version = require("./package.json").version;
 app.set("views", path.join(__dirname, "views"));
 app.locals.basedir = app.get("views");
 app.set("view engine", "pug");
-if (!app_cfg.global.development) {
+if (!app_cfg.development.dev_log) {
   app.set("view cache", true);
 }
 app.use(favicon(path.join(__dirname, "public", "favicon.ico")));
@@ -58,29 +53,6 @@ let auth = require("./server/auth.js")(app, app_cfg, sql, bcrypt, passport, io, 
 let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, saver, logger);
 
 // Server starten
-webserver.listen(app_cfg.global.https_port, () => {
-  sql.db_log("Anwendung", "Wachalarm-IP-Webserver auf Port " + app_cfg.global.https_port + " gestartet");
+webserver.listen(app_cfg.global.http_port, () => {
+  sql.db_log("Anwendung", "Wachalarm-IP-Webserver auf Port " + app_cfg.global.http_port + " gestartet");
 });
-
-// Redirect all HTTP traffic to HTTPS
-http
-  .createServer((req, res) => {
-    let host = req.headers.host;
-    // prüfen ob host gesetzt, sonst 404
-    if (typeof host !== "undefined" && host) {
-      // Anfrage auf https umleiten
-      host = host.replace(/:\d+$/, ":" + app_cfg.global.https_port);
-      res.writeHead(301, {
-        Location: "https://" + host + req.url,
-      });
-      res.end();
-    } else {
-      // HTTP status 404: NotFound
-      res.writeHead(404, {
-        "Content-Type": "text/plain",
-      });
-      res.write("404 Not Found - use https instead!\n");
-      res.end();
-    }
-  })
-  .listen(app_cfg.global.http_port);

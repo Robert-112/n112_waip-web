@@ -1,6 +1,4 @@
 module.exports = (app_cfg, sql, waip, logger) => {
-  // Module laden
-  const turf = require("@turf/turf");
 
   // Speichern eines neuen Einsatzes
   const save_einsatz = (waip_data, remote_addr) => {
@@ -8,25 +6,7 @@ module.exports = (app_cfg, sql, waip, logger) => {
       try {
         let waip_json = await validate_einsatz(waip_data);
         if (waip_json) {
-          // Polygon erzeugen und zuweisen falls nicht vorhanden
-          if (!waip_json.ortsdaten.wgs84_area) {
-            let wgs_x = parseFloat(waip_json.ortsdaten.wgs84_x);
-            let wgs_y = parseFloat(waip_json.ortsdaten.wgs84_y);
-            let point = turf.point([wgs_y, wgs_x]);
-            let buffered = turf.buffer(point, 1, {
-              steps: app_cfg.global.circumcircle,
-              units: "kilometers",
-            });
-            let bbox = turf.bbox(buffered);
-            let new_point = turf.randomPoint(1, {
-              bbox: bbox,
-            });
-            let new_buffer = turf.buffer(new_point, 1, {
-              steps: app_cfg.global.circumcircle,
-              units: "kilometers",
-            });
-            waip_json.ortsdaten.wgs84_area = new_buffer;
-          }
+
           // pruefen, ob vielleicht schon ein Einsatz mit einer UUID gespeichert ist
           let waip_uuid = await sql.db_einsatz_get_uuid_by_enr(waip_json.einsatzdaten.einsatznummer);
           if (waip_uuid) {
@@ -45,7 +25,10 @@ module.exports = (app_cfg, sql, waip, logger) => {
           resolve(true);
 
           // Einsatz an Socket-IO-Räume verteilen
-          waip.waip_verteilen_for_rooms(waip_id);
+          waip.einsatz_verteilen_rooms(waip_id);
+
+          // Einsatzmittel an Socket-IO-Räume verteilen
+          //TODO waip.einsatzmittel_verteilen_rooms(waip_id);
         } else {
           // Error-Meldung erstellen
           throw new Error("Fehler beim validieren eines Einsatzes. " + waip_data);
@@ -62,8 +45,9 @@ module.exports = (app_cfg, sql, waip, logger) => {
         logger.log("log", `${rmld_data.length} Rückmeldung(en) von ${remote_addr} erhalten.`);
         logger.log("debug", `Rückmeldung(en) von ${remote_addr} werden jetzt verarbeitet: ${JSON.stringify(rmld_data)}`);
 
-        // Variablen vorbereiten
-        let arr_uuid_rueckmeldungen = [];
+        // Variable vorbereiten, in der die Einsatznummern inkl. der zugeöhrigen Rückmeldungen gespeichert werden
+        let obj_waip_uuid_mit_rmld_uuid = {};
+        let arr_rmld_anzahl = 0;
 
         let valid = await validate_rmld(rmld_data);
         if (valid) {
@@ -72,14 +56,23 @@ module.exports = (app_cfg, sql, waip, logger) => {
             rmld_data.map(async (item) => {
               try {
                 // prüfen ob es zur Rückmeldung auch einen Einsatz gibt
-                const rmld_waip = await sql.db_rmld_check_einsatz(item);
+                const waip_uuid = await sql.db_rmld_check_einsatz(item);
 
-                if (rmld_waip) {
-                  // einzelne Rückmeldung speichern
+                if (waip_uuid) {
+                  // jetzt einzelne Rückmeldung speichern
                   const response_uuid = await sql.db_rmld_single_save(item);
 
-                  // Rückmeldung in Array speichern
-                  arr_uuid_rueckmeldungen.push(response_uuid);
+                  // response_uuid in einem Array speichern, welches waip_uuid als Key hat
+                  if (!obj_waip_uuid_mit_rmld_uuid[waip_uuid]) {
+                    obj_waip_uuid_mit_rmld_uuid[waip_uuid] = [];
+                  }
+
+                  // Rückmeldung in Array speichern, falls noch nicht vorhanden
+                  if (!obj_waip_uuid_mit_rmld_uuid[waip_uuid].includes(response_uuid)) obj_waip_uuid_mit_rmld_uuid[waip_uuid].push(response_uuid);
+
+                  // Anzahl erhöhen
+                  arr_rmld_anzahl++;
+
                   logger.log("log", `Neue Rückmeldung von ${remote_addr} wurde mit der ID ${response_uuid} gespeichert.`);
                 } else {
                   logger.log("warn", `Kein Einsatz für die Rückmeldung ${item.response_uuid} gefunden, wird nicht gespeichert!`);
@@ -90,15 +83,20 @@ module.exports = (app_cfg, sql, waip, logger) => {
             })
           );
 
-          // true zurückgeben
-          resolve(`Von ${rmld_data.lenght} Rückmeldungen wurden ${arr_uuid_rueckmeldungen.length} gespeichert.`);
+          // prüfen ob Einsatz-UUIDs mit Rückmeldungs-UUIDs gespeichert wurden
+          if (Object.keys(obj_waip_uuid_mit_rmld_uuid).length > 0) {
+            // true zurückgeben
+            resolve(`Von ${rmld_data.lenght} Rückmeldungen wurden ${arr_rmld_anzahl} gespeichert.`);
 
-          // Rückmeldung verteilen
-          waip.rmld_verteilen_by_uuid(arr_uuid_rueckmeldungen);
-
+            // Rückmeldung verteilen
+            waip.rmld_verteilen_rooms(obj_waip_uuid_mit_rmld_uuid);
+          } else {
+            // false zurückgeben
+            resolve(`Von ${rmld_data.lenght} Rückmeldungen wurde keine gespeichert!`);
+          }
         }
       } catch (error) {
-        reject(new Error("Fehler beim speichern von neuen Rückmeldung(en). " + remote_addr + error));
+        reject(new Error("Allgemeiner Fehler beim speichern von neuen Rückmeldung(en). " + remote_addr + error));
       }
     });
   };
@@ -106,7 +104,9 @@ module.exports = (app_cfg, sql, waip, logger) => {
   const save_einsatzstatus = (einsatzstatus_data, remote_addr) => {
     return new Promise(async (resolve, reject) => {
       try {
-        logger.log("log", `Meldung zu einem Einsatzstatus von ${remote_addr} erhalten, wird jetzt verarbeitet: ${JSON.stringify(rmld_data)}`);
+        logger.log("log", `${rmld_data.length} Meldung(en) zu Einsatzstatus von ${remote_addr} erhalten.`);
+        logger.log("debug", `Eisnatzstatus von ${remote_addr} werden jetzt verarbeitet: ${JSON.stringify(einsatzstatus_data)}`);
+
         let valid = await validate_einsatzstatus(einsatzstatus_data);
         if (valid) {
           // Status eines Einsatzes aktualisieren

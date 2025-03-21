@@ -22,12 +22,15 @@ block content
                 th ID
                 th Verbunden seit
                 th Socket-ID
-                th Client-IP
-                th aufgerufener Wachalarm
-                th Client-Status (Einsazt-ID)
+                th Client-IPs
+                th Namespace
+                th Raum 
+                th Client-Status (Einsatz-ID)
+                th Reset-Zeitstempel
 
   script.
     let datasets = !{JSON.stringify(dataSet).replace(/<\//g, '<\\/')}
+    console.log(datasets)
     $(document).ready(function() {
       $('#table_active_user').DataTable( {
         "data": datasets,
@@ -37,9 +40,11 @@ block content
           { "data": "id" },
           { "data": "connect_time" },
           { "data": "socket_id" },
-          { "data": "client_ip" },
-          { "data": "room_name" },
-          { "data": "client_status" }
+          { "data": "client_ips" },
+          { "data": "client_nsp" },
+          { "data": "client_room" },
+          { "data": "client_status" },
+          { "data": "reset_timestamp" }
         ]
       });
     });

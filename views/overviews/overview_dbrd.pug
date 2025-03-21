@@ -47,6 +47,7 @@ block content
 
   script(src='/js/leaflet.js')
   script.  
+  
     let data = !{JSON.stringify(dataSet).replace(/<\//g, '<\\/')}
     for (let i in data) {
       // Karte definieren
@@ -61,10 +62,8 @@ block content
         }).addTo(map);
       // Karte setzen
       
-      /* TODO später reaprieren
-      let geojson = L.geoJSON(JSON.parse(data[i].wgs84_area)).addTo(map);
+      let geojson = L.geoJSON(JSON.parse(data[i].geometry)).addTo(map);
       map.fitBounds(geojson.getBounds());
       map.setZoom(13);
-      */
     };    
  

@@ -1,7 +1,7 @@
 module.exports = (bcrypt, app_cfg) => {
   // Datenbank einrichten
   const Database = require("better-sqlite3");
-  const db = new Database(app_cfg.global.database, app_cfg.global.development ? { verbose: console.log } : {});
+  const db = new Database(app_cfg.global.database, app_cfg.development.dev_sqlite ? { verbose: console.log } : {});
   db.pragma("foreign_keys");
   db.pragma("journal_mode = WAL");
 
@@ -25,28 +25,28 @@ module.exports = (bcrypt, app_cfg) => {
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         uuid TEXT,
         zeitstempel DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
-        ablaufzeit DATETIME,         -- neu  
-        els_einsatznummer TEXT,      -- vorher: einsatznummer TEXT,
-        alarmzeit DATETIME,          -- vorher: alarmzeit TEXT,
+        ablaufzeit DATETIME,            -- neu  
+        els_einsatznummer TEXT,         -- vorher: einsatznummer TEXT,
+        alarmzeit DATETIME,             -- vorher: alarmzeit TEXT,
         einsatzart TEXT,
         stichwort TEXT,
         sondersignal INTEGER,
         besonderheiten TEXT,
-        einsatzdetails TEXT,         -- neu
+        einsatzdetails TEXT,            -- neu
         ort TEXT,
         ortsteil TEXT,
-        ortslage TEXT,               -- neu
+        ortslage TEXT,                  -- neu
         strasse TEXT,
-        hausnummer TEXT,             -- neu
-        ort_sonstiges TEXT,          -- voher: sonstiger_ort TEXT,
+        hausnummer TEXT,                -- neu
+        ort_sonstiges TEXT,             -- voher: sonstiger_ort TEXT,
         objekt TEXT,
-        objektteil TEXT,             -- neu
-        objektnummer INTEGER,        -- vorher: objektnr TEXT,
+        objektteil TEXT,                -- neu
+        objektnummer INTEGER,           -- vorher: objektnr TEXT,
         objektart TEXT,
         wachenfolge INTEGER,
-        wgs84_x REAL,                -- vorher: TEXT
-        wgs84_y REAL,                -- vorher: TEXT
-        geometry TEXT,               -- vorher: wgs84_area TEXT,     
+        wgs84_x REAL,                   -- vorher: TEXT
+        wgs84_y REAL,                   -- vorher: TEXT
+        geometry TEXT,                  -- vorher: wgs84_area TEXT,     
         UNIQUE (id, uuid)
       );
       
@@ -63,6 +63,7 @@ module.exports = (bcrypt, app_cfg) => {
         em_fmsstatus TEXT,                           -- vorher: status TEXT,
         em_wgs84_x REAL,                             -- vorher: wgs84_x TEXT,
         em_wgs84_y REAL,                             -- vorher: wgs84_y TEXT,
+        em_wgs84_route TEXT,                         -- neu (Darstellung Einsatzroute)
         em_issi TEXT,                                -- neu
         em_opta TEXT,                                -- neu
         em_radiochannel TEXT,                        -- neu
@@ -72,26 +73,26 @@ module.exports = (bcrypt, app_cfg) => {
         em_zeitstempel_alarmierung DATETIME,         -- vorher: zeitstempel TEXT,
         em_zeitstempel_ausgerueckt DATETIME,         -- neu
         em_zeitstempel_fms DATETIME,                 -- neu
-        em_staerke_els TEXT                         -- vorher: staerke TEXT
+        em_staerke_els TEXT                          -- vorher: staerke TEXT
       );
 
       -- Tabelle für Wachen
       CREATE TABLE IF NOT EXISTS waip_wachen (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
-        nr_kreis TEXT,              -- vorher: INTEGER
+        nr_kreis TEXT,                  -- vorher: INTEGER
         nr_traeger TEXT,
-        nr_standort TEXT,           -- neu
-        nr_abteilung TEXT,          -- neu
+        nr_standort TEXT,               -- neu
+        nr_abteilung TEXT,              -- neu
         nr_wache INTEGER,
-        kfz_leitstelle TEXT,        -- neu
-        kfz_kreis TEXT,             -- neu
-        name_leitstelle TEXT,       -- neu
+        kfz_leitstelle TEXT,            -- neu
+        kfz_kreis TEXT,                 -- neu
+        name_leitstelle TEXT,           -- neu
         name_kreis TEXT,
         name_traeger TEXT,
         name_wache TEXT,
-        name_beschreibung TEXT,     -- neu
-        wgs84_x REAL,               -- vorher: wgs84_x TEXT,
-        wgs84_y REAL                -- vorher: wgs84_y TEXT
+        name_beschreibung TEXT,         -- neu
+        wgs84_x REAL,                   -- vorher: wgs84_x TEXT,
+        wgs84_y REAL                    -- vorher: wgs84_y TEXT
       );
       
       -- Tabelle für Historie
@@ -109,13 +110,14 @@ module.exports = (bcrypt, app_cfg) => {
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
         connect_time DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
         socket_id TEXT,
-        client_ip TEXT,
-        room_name TEXT,
+        client_ips TEXT,
+        client_nsp TEXT,
+        client_room TEXT,
         client_status TEXT,
+        reset_timestamp DATETIME,
         user_name TEXT,
         user_permissions TEXT,
-        user_agent TEXT,
-        reset_timestamp DATETIME
+        user_agent TEXT
       );
 
       -- Tabelle für einzelne Rückmeldungen
@@ -124,18 +126,18 @@ module.exports = (bcrypt, app_cfg) => {
         zeitstempel DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')), --neu
         waip_uuid TEXT,
         rmld_uuid TEXT,
-        rmld_alias TEXT,               -- vorher: alias
+        rmld_alias TEXT,                -- vorher: alias
         rmld_address TEXT,              -- neu   
-        -- geloescht: INTEGER einsatzkraft, maschinist, fuehrungskraft
-        rmld_role TEXT,                -- neu
-        rmld_capability_agt INTEGER,   -- vorher: agt
-        rmld_capability_ma INTEGER,    -- neu
-        rmld_capability_fzf INTEGER,   -- neu
-        rmld_capability_med INTEGER,   -- neu
-        time_receive DATETIME,         -- neu
-        type_decision TEXT,            -- neu
-        time_decision DATETIME,        -- vorher: set_time
-        time_arrival DATETIME,         -- vorher: arrival_time
+                                        -- geloescht: INTEGER einsatzkraft, maschinist, fuehrungskraft
+        rmld_role TEXT,                 -- neu
+        rmld_capability_agt INTEGER,    -- vorher: agt
+        rmld_capability_ma INTEGER,     -- neu
+        rmld_capability_fzf INTEGER,    -- neu
+        rmld_capability_med INTEGER,    -- neu
+        time_receive DATETIME,          -- neu
+        type_decision TEXT,             -- neu
+        time_decision DATETIME,         -- vorher: set_time
+        time_arrival DATETIME,          -- vorher: arrival_time
         wache_id INTEGER,
         wache_nr INTEGER,
         wache_name TEXT
@@ -146,10 +148,10 @@ module.exports = (bcrypt, app_cfg) => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user TEXT,
         password TEXT,
-        description TEXT,              -- neu
+        description TEXT,               -- neu
         permissions TEXT,
         ip_address TEXT,
-        reference TEXT                 -- neu
+        reference TEXT                  -- neu
       );
 
       -- Tabelle für Benutzer-Anmeldeinformationen
@@ -157,7 +159,7 @@ module.exports = (bcrypt, app_cfg) => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,                -- neu
         external_id TEXT,               -- neu
-        public_key TEXT,              -- neu
+        public_key TEXT,                -- neu
         FOREIGN KEY(user_id) REFERENCES waip_user(id)
       );
 

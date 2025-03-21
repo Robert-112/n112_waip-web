@@ -9,6 +9,18 @@ block content
     // - prüfen ob es sinnvoll ist, bereits eingeloggte User nicht mehr zulassen (Session prüfen)
     // - bei fehlendem Login zur Login-Seite weiterleiten und nach dem Login die zuvor besuchte Seite anzeigen
     .container
+      #info.row
+        .col-md-3
+        .col-md-6.col-xs-12
+          if error
+            .card.text-white.bg-danger.mb-3
+              .card-body
+                .row
+                  .col-9
+                    h5.card-title.ion-md-close-circle-outline  Fehler
+                    p.card-text=error
+                  .col-3.text-right
+                    button#close_info.btn.btn-info.ion-md-close
       .row
         .col-sm-9.col-md-7.col-lg-5.mx-auto
           .card.my-5

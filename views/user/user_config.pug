@@ -3,6 +3,27 @@ extends ../layout
 block content
   main(role='main')
     .container
+      #info.row
+        .col-md-3
+        .col-md-6.col-xs-12
+          if error
+            .card.text-white.bg-danger.mb-3
+              .card-body
+                .row
+                  .col-9
+                    h5.card-title.ion-md-close-circle-outline  Fehler
+                    p.card-text=error
+                  .col-3.text-right
+                    button#close_info.btn.btn-info.ion-md-close
+          if success
+            .card.text-white.bg-success.mb-3
+              .card-body
+                .row
+                  .col-9
+                    h5.card-title.ion-md-checkmark-circle-outline  Erfolg
+                    p.card-text=success
+                  .col-3.text-right
+                    button#close_info.btn.btn-info.ion-md-close
       .row
         .col-12.d-flex.align-self-stretch
           .card.border-dark.mb-3.w-100
@@ -10,7 +31,7 @@ block content
             .card-body.text-dark
               .row
                 .col-8
-                  p Anzeigezeit für Wachalarme
+                  p persönliche Anzeigezeit für Wachalarme
                   p.text-muted (Wachalarme werden nach Ablauf der hier gesetzten Zeit automatisch ausgeblendet)
                 .col-4
                   form(action="/einstellungen", method="POST")

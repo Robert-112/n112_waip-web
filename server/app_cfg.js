@@ -1,60 +1,78 @@
-let app_cfg = {};
+const app_cfg = {};
 
-// Server-Einstellungen
+// Allgemeine Server-Einstellungen
 app_cfg.global = {
-  development: true,
+  // Port der Webanwendung
   http_port: 3001,
-  https_port: 3002,
-  udpport: 60233,
+  // Datenbankname
   database: "./database.sqlite3",
-  db_limit: 500, // Limit für Tabellen Einsätze & Einsatzmittel in der Datenbank
-  db_limit_log: 100000, // Limit für Log-Tabelle in der Datenbank
+  // Limit für Tabellen Einsaetze Einsatzmittel, Rueckmeldungen
+  db_limit: 500,
+  // Limit für Log-Tabelle
+  db_limit_log: 100000, 
+  // Pfad zur Sound-Datei
   soundpath: "/public/media/",
+  // Pfad zu Medien-Dateien
   mediapath: "/media/",
-  custom_namespace: "59cc72ec-4ff5-499d-81e2-ec49c1d01252",
+  // Namespace zur Erzeugung von UUIDs für Texte
+  uuidNamespace: "59cc72ec-4ff5-499d-81e2-ec49c1d01252",
+  // Zeit in Minuten nach der Einsaetze automatisch geloescht werden
   time_to_delete_waip: 30,
-  default_time_for_standby: 20,
-  system_cleanup_time: 10000, // Millisekunden nach denen zyklisch aufgeräumt wird
-  circumcircle: 5,
+  // Zeit in Minuten nach der standardmäßig Standby im Alarmmonitor aktiviert wird
+  default_time_for_standby: 10,
+  // Millisekunden nach denen zyklisch aufgeräumt wird
+  system_cleanup_time: 10000, 
+  // Standard-Admin-Nutzer (für ersten Start)
   defaultuser: "me",
+  // Standard-Admin-Kennwort (für ersten Start)
   defaultpass: "123",
+  // Standard-API-Nutzer (für ersten Start)
   defaultapiuser: "apiuser",
+  // Standard-API-Kennwort (für ersten Start)
   defaultapipass: "apiuser123",
+  // Standard-I-P für den Standard-Admin (für ersten Start)
   defaultuserip: "127.0.0.1",
+  // IP-Bereiche für deine Authentifzierung per IP erlaubt wird
   ip_auth_range: ["::ffff:172.16.5.0/24", "::ffff:192.168.2.0/24"],
+  // Verschlüsselung Nutzerpasswort
   saltRounds: 10,
+  // Session-Secret
   sessionsecret: "0987654321abcdef#xyz",
+  // JWT-Secret
   jwtsecret: "1234567890abcdef#xyz",
+};
+
+// Einstellungen für die Entwicklung
+app_cfg.development = {
+  // Erweiterte Anzeige von Log-Eintraegen
+  dev_log: true,
+  // Erweiterte Anzeige von SQL-Abfragen im Log
+  dev_sqlite: true,
 };
 
 // Einstellungen zur Erscheinung der Seite
 app_cfg.public = {
-  url: "https://waip-dev.mooo.com",
+  // URL für Routen und Websocket
+  url: "https://fb-am7.kms2.de",
+  // Name der Anwendung (in der Navigation)
   app_name: "Wachalarm IP-Web",
+  // Firmenname (in der Fusszeile)
   company: "Netzwerk 112",
+  // Base-URL für Kartendaten
   map_tile: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  // Links innerhalb der Karte
   map_attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  // soll auf ein externes Impressum verwiesen werden
   ext_imprint: false,
+  // Link zum externen Impressum
   url_imprint: "https://www.nix.nix/impressium",
+  // Link zur externen Datenschutzerklärung
   ext_privacy: false,
+  // Link zur externen Datenschutzerklärung
   url_privacy: "https://www.nix.nix/datenschutz",
 };
 
-// Einstellungen fuer Backups von Rueckmeldungen
-app_cfg.rmld = {
-  backup_to_file: true,
-  backup_path: "/misc/bkp/",
-  backup_to_mail: false,
-  mailserver_host: "smtp.xxx.xxx",
-  mailserver_port: 587,
-  secure_mail: false,
-  unauthorized_mail: false,
-  mail_user: "testuser",
-  mail_pass: "testuserpass", //'testpass',
-  mail_from: "xyz@xxx.xxx", //'keineantwort@wachalarm.info.tm'
-};
-
-// Standardwerte für die Datenbank
+// Standardwerte die beim ersten Start in die Datenbank geladen werden
 app_cfg.sqlite = {
   startup: `
     INSERT INTO waip_wachen (nr_kreis, nr_traeger, nr_standort, nr_abteilung, nr_wache, kfz_leitstelle, kfz_kreis, name_leitstelle, name_kreis, name_traeger, name_wache, name_beschreibung, wgs84_x, wgs84_y) 

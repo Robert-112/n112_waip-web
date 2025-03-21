@@ -32,7 +32,7 @@ module.exports = (sql, app_cfg) => {
         sql.db_log(type, message);
         break;
       case "debug":
-        if (app_cfg.global.development) {
+        if (app_cfg.development.dev_log) {
           console.debug(message);
         }
         break;

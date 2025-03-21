@@ -1,7 +1,6 @@
 module.exports = (db, app_cfg) => {
   // Module laden
   const { v5: uuidv5 } = require("uuid");
-  const custom_namespace = app_cfg.global.custom_namespace;
 
   // Hilfsfunktion um Datum&Zeit (29.12.23&20:06) in SQLite-Zeit umzuwandeln
   const Datetime_to_SQLiteDate = (s) => {
@@ -161,8 +160,8 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // letzten vorhanden Einsatz zu einer Wache abfragen
-  const db_einsatz_ermitteln = (wachen_nr) => {
+  // letzten vorhanden Einsatz zu einer Wache für einen Client/User abfragen
+  const db_einsatz_for_client_ermitteln = (socket, wachen_nr) => {
     return new Promise((resolve, reject) => {
       try {
         // wenn Wachen-ID 0 ist, dann % für SQL-Abfrage setzen
@@ -170,24 +169,54 @@ module.exports = (db, app_cfg) => {
           wachen_nr = "%";
         }
 
-        // Einsätze für die gewählte Wachen-ID abfragen und zudem die Ablaufzeit beachten
-        const stmt = db.prepare(`
-          SELECT em_waip_einsaetze_id FROM
-          (
-            SELECT em.em_waip_einsaetze_id FROM waip_einsatzmittel em
-            LEFT JOIN waip_wachen wa ON wa.id = em.em_station_id
-            LEFT JOIN waip_einsaetze we ON we.id = em.em_waip_einsaetze_id
-            WHERE wa.nr_wache LIKE ? || '%'
-            GROUP BY em.em_waip_einsaetze_id
-            ORDER BY em.em_waip_einsaetze_id DESC
-          )
+        // neuesten Einsatz für die gewählte Wachen-ID abfragen 
+        const stmt1 = db.prepare(`
+          SELECT 
+          em.em_waip_einsaetze_id AS waip_id
+          FROM waip_einsatzmittel em
+          WHERE 
+          (SELECT wa.nr_wache FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ? || '%'
+          ORDER BY (SELECT zeitstempel FROM waip_einsaetze WHERE id = em.em_waip_einsaetze_id) DESC LIMIT 1
         `);
-        const row = stmt.get(wachen_nr.toString());
+        const row1 = stmt1.get(wachen_nr.toString());
 
-        if (row === undefined) {
+        if (row1 === undefined) {
           resolve(null);
         } else {
-          resolve(row.em_waip_einsaetze_id);
+        
+          // User-ID ermitteln
+          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+
+          // Reset-Counter des Users ermitteln
+          const stmt2 = db.prepare(`
+            SELECT config_value FROM waip_user_config
+            WHERE user_id = ? AND config_type = 'resetcounter';
+          `);
+          const row2 = stmt2.get(user_id);
+
+          // Standard-Reset-Zeit aus app_cfg als Fallback
+          reset_timestamp = app_cfg.global.default_time_for_standby;
+          
+          // Wenn ein benutzerdefinierter Reset-Counter vorhanden ist, diesen verwenden
+          if (row2 !== undefined && row2.config_value) {
+            reset_timestamp = row2.config_value;
+          }
+
+          // prüfen ob der Zeitstempel des Einsatzes + Reset-Counter nicht über der aktuellen Uhrzeit liegt
+          const stmt3 = db.prepare(`
+            SELECT we.id, DATETIME(we.zeitstempel, ? || ' minutes') reset_time
+            FROM waip_einsaetze we
+            WHERE we.id = ? 
+            AND DATETIME(we.zeitstempel, ? || ' minutes') > DATETIME('now', 'localtime');
+          `);
+          const row3 = stmt3.get(reset_timestamp, row1.waip_id, reset_timestamp);
+          
+          if (row3 === undefined) {
+            resolve(null);
+          } else {
+            resolve(row3);
+          }
+
         }
       } catch (error) {
         reject(new Error("Fehler beim Abfragen der Einsätze für Wachen-ID " + wachen_nr + "). " + error));
@@ -218,20 +247,26 @@ module.exports = (db, app_cfg) => {
   const db_einsatz_check_history = (einsatzdaten, socket) => {
     return new Promise((resolve, reject) => {
       try {
-        // neues Objekt mit Einsatzdaten erstellen
-        const missiondata = Object.assign({}, einsatzdaten);
+
+        const uuidNamespace = app_cfg.global.uuidNamespace;
+
+        // Nur die relevanten Felder für den Vergleich behalten
+        const relevantFields = {
+          id: einsatzdaten.id,
+          einsatzart: einsatzdaten.einsatzart,
+          stichwort: einsatzdaten.stichwort,
+          sondersignal: einsatzdaten.sondersignal,
+          objekt: einsatzdaten.objekt,
+          ort: einsatzdaten.ort,
+          ortsteil: einsatzdaten.ortsteil,
+          strasse: einsatzdaten.strasse,
+          besonderheiten: einsatzdaten.besonderheiten,
+        };
 
         // Einsatzdaten in kurze UUID-Strings umwandeln, diese UUIDs werden dann verglichen
-        let uuid_em_alarmiert = uuidv5(JSON.stringify(missiondata.em_alarmiert), custom_namespace);
-        delete missiondata.em_alarmiert;
-        let uuid_em_weitere = uuidv5(JSON.stringify(missiondata.em_weitere), custom_namespace);
-        delete missiondata.em_weitere;
-        delete missiondata.zeitstempel;
-        delete missiondata.ablaufzeit;
-        delete missiondata.wgs84_x;
-        delete missiondata.wgs84_y;
-        delete missiondata.wgs84_area;
-        let uuid_einsatzdaten = uuidv5(JSON.stringify(missiondata), custom_namespace);
+        let uuid_einsatzdaten = uuidv5(JSON.stringify(relevantFields), uuidNamespace);
+        let uuid_em_alarmiert = uuidv5(JSON.stringify(einsatzdaten.em_alarmiert || []), uuidNamespace);
+        let uuid_em_weitere = uuidv5(JSON.stringify(einsatzdaten.em_weitere || []), uuidNamespace);
 
         // Abfrage ob zu Socket und Waip-ID bereits History-Daten hinterlegt sind
         const stmt = db.prepare(`
@@ -241,7 +276,7 @@ module.exports = (db, app_cfg) => {
           ) AND socket_id LIKE ? ;
         `);
 
-        const row = stmt.get(missiondata.id, socket.id);
+        const row = stmt.get(einsatzdaten.id, socket.id);
 
         // neu speichern oder aktualisieren
         if (row === undefined) {
@@ -255,36 +290,32 @@ module.exports = (db, app_cfg) => {
             );  
           `);
 
-          stmt.run(missiondata.id, socket.id, uuid_einsatzdaten, uuid_em_alarmiert, uuid_em_weitere);
+          stmt.run(einsatzdaten.id, socket.id, uuid_einsatzdaten, uuid_em_alarmiert, uuid_em_weitere);
 
           // Check-History = false
           resolve(false);
         } else {
           // wenn History-Daten hinterlegt sind, dann prüfen ob sich etwas verändert hat
-          let changed;
-          if (uuid_einsatzdaten !== row.uuid_einsatz_grunddaten || uuid_em_alarmiert !== row.uuid_em_alarmiert) {
-            // Grunddaten oder alarmierte Einsatzmittel haben sich verändert, somit History veraltet und neue Alarmierung notwendig
-            changed = false;
-          } else {
-            // relevante Daten haben sich nicht geändert
-            changed = true;
+          const isDoppelalarm = uuid_einsatzdaten === row.uuid_einsatz_grunddaten &&
+            uuid_em_alarmiert === row.uuid_em_alarmiert;
+
+          // Nur aktualisieren wenn sich etwas geändert hat
+          if (!isDoppelalarm) {
+            const stmt = db.prepare(`
+              UPDATE waip_history SET 
+                uuid_einsatz_grunddaten = ?,
+                uuid_em_alarmiert = ?,
+                uuid_em_weitere = ?
+              WHERE 
+                waip_uuid LIKE (
+                  SELECT uuid FROM waip_einsaetze WHERE id = ?
+                ) AND 
+                socket_id LIKE ? ;
+            `);
+            stmt.run(uuid_einsatzdaten, uuid_em_alarmiert, uuid_em_weitere, einsatzdaten.id, socket.id);
           }
 
-          // History mit aktuellen Daten aktualisieren
-          const stmt = db.prepare(`
-            UPDATE waip_history SET 
-              uuid_einsatz_grunddaten = ?,
-              uuid_em_alarmiert = ?,
-              uuid_em_weitere = ?
-            WHERE 
-              waip_uuid LIKE (
-                SELECT uuid FROM waip_einsaetze WHERE id = ?
-              ) AND 
-              socket_id LIKE ? ;
-          `);
-          stmt.run(uuid_einsatzdaten, uuid_em_alarmiert, uuid_em_weitere, missiondata.id, socket.id);
-
-          resolve(changed);
+          resolve(isDoppelalarm);
         }
       } catch (error) {
         reject(new Error("Fehler beim Prüfen der Einsatz-Historie. " + error));
@@ -300,19 +331,20 @@ module.exports = (db, app_cfg) => {
         if (isNaN(waip_id) || isNaN(wachen_nr)) {
           throw `WAIP-ID ${waip_id} oder Wachennummer ${wachen_nr} sind keine validen Zahlen!`;
         } else {
-          let len = wachen_nr.toString().length;
-          // TODO hier auch andere Wachennummern berücksichtigen (z.B. 521201b)
+          // TODO hier auch andere Wachennummern berücksichtigen (z.B. 521201b), siehe auch Rückmeldungen
           // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
+          let len = wachen_nr.toString().length;
           if (parseInt(wachen_nr) != 0 && len != 2 && len != 4 && len != 6 && len == null) {
             throw `Wachennummer ${wachen_nr} hat keine valide Länge (0, 2, 4 oder 6)!`;
-          } else {
-            // wenn wachen_nr 0, dann % fuer Abfrage festlegen
-            if (parseInt(wachen_nr) == 0) {
-              wachen_nr = "%";
-            }
+          }
 
-            // FIXME: zentrale Abfrage zur Ausgabe der Alarmdaten wurde erneuert, asynchrone Rückgabe, Verweise und Verwendung prüfen!
-            const stmt = db.prepare(`
+          // wenn wachen_nr 0, dann % fuer Abfrage festlegen
+          if (parseInt(wachen_nr) == 0) {
+            wachen_nr = "%";
+          }
+
+          // FIXME: zentrale Abfrage zur Ausgabe der Alarmdaten wurde erneuert, asynchrone Rückgabe, Verweise und Verwendung prüfen!
+          const stmt = db.prepare(`
               SELECT
                 e.id,
                 e.uuid,
@@ -327,19 +359,20 @@ module.exports = (db, app_cfg) => {
                 e.hausnummer,
                 e.besonderheiten, 
                 e.wgs84_x, 
-                e.wgs84_y
+                e.wgs84_y,
+                e.geometry
               FROM waip_einsaetze e
               WHERE e.id LIKE ?
               ORDER BY e.id DESC LIMIT 1;
             `);
 
-            const einsatzdaten = stmt.get(waip_id.toString());
+          const einsatzdaten = stmt.get(waip_id.toString());
 
-            if (einsatzdaten === undefined) {
-              resolve(null);
-            } else {
-              // Abfrage der alarmierten Einsatzmittel der Wache
-              const stmt1 = db.prepare(`
+          if (einsatzdaten === undefined) {
+            resolve(null);
+          } else {
+            // Abfrage der alarmierten Einsatzmittel der Wache
+            const stmt1 = db.prepare(`
                 SELECT 
                   em_funkrufname AS 'name',
                   em_zeitstempel_alarmierung AS 'zeit'
@@ -348,11 +381,11 @@ module.exports = (db, app_cfg) => {
                   em_waip_einsaetze_id = ? 
                   AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%');
               `);
-              // alarmierte Einsatzmittel den Einsatzdaten zuordnen
-              einsatzdaten.em_alarmiert = stmt1.all(waip_id.toString(), wachen_nr.toString());
+            // alarmierte Einsatzmittel den Einsatzdaten zuordnen
+            einsatzdaten.em_alarmiert = stmt1.all(waip_id.toString(), wachen_nr.toString());
 
-              // Abfrage der weiteren Einsatzmittel zum Einsatz
-              const stmt2 = db.prepare(`
+            // Abfrage der weiteren Einsatzmittel zum Einsatz
+            const stmt2 = db.prepare(`
                 SELECT 
                   em_funkrufname AS 'name',
                   em_zeitstempel_alarmierung AS 'zeit'
@@ -361,12 +394,11 @@ module.exports = (db, app_cfg) => {
                   em_waip_einsaetze_id = ? 
                   AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%') OR em_station_id IS NULL);
               `);
-              // weitere Einsatzmittel den Einsatzdaten zuordnen
-              einsatzdaten.em_weitere = stmt2.all(waip_id.toString(), wachen_nr.toString());
+            // weitere Einsatzmittel den Einsatzdaten zuordnen
+            einsatzdaten.em_weitere = stmt2.all(waip_id.toString(), wachen_nr.toString());
 
-              // Einsatzdaten zurückgeben
-              resolve(einsatzdaten);
-            }
+            // Einsatzdaten zurückgeben
+            resolve(einsatzdaten);
           }
         }
       } catch (error) {
@@ -467,7 +499,7 @@ module.exports = (db, app_cfg) => {
       try {
         const stmt = db.prepare(`
           SELECT 
-            we.uuid, we.einsatzart, we.stichwort, we.ort, we.ortsteil,
+            we.uuid, we.einsatzart, we.stichwort, we.ort, we.ortsteil, we.geometry,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 3 )) a,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 5 )) b,
             GROUP_CONCAT(DISTINCT wa.nr_wache) c
@@ -490,7 +522,7 @@ module.exports = (db, app_cfg) => {
   };
 
   // alle potenziellen Socket-Rooms für einen Einsatz finden
-  const db_einsatz_get_rooms = (waip_id) => {
+  const db_einsatz_get_waip_rooms = (waip_id) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
@@ -564,7 +596,7 @@ module.exports = (db, app_cfg) => {
       try {
         const stmt = db.prepare(`
           UPDATE waip_einsaetze SET 
-            ablaufzeit = DATETIME('now', 'localtime', +10 minutes)
+            ablaufzeit = DATETIME('now', 'localtime', '+${app_cfg.global.time_to_delete_waip} minutes')
           WHERE 
             waip_uuid LIKE ${uuid_query};
         `);
@@ -577,19 +609,34 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Einsatzdaten löschen
+  // Einsatzdaten vollständig löschen
   const db_einsatz_loeschen = (einsatz_id) => {
     return new Promise((resolve, reject) => {
       try {
+        // History löschen
         const stmt1 = db.prepare(`
           DELETE FROM waip_history 
           WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE id = ?);
         `);
         stmt1.run(einsatz_id);
+        // Rückmeldungen löschen
         const stmt2 = db.prepare(`
-          DELETE FROM waip_einsaetze WHERE id = ?;
+          DELETE FROM waip_rueckmeldungen 
+          WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE id = ?);
         `);
-        const info = stmt2.run(einsatz_id);
+        stmt2.run(einsatz_id);
+        // Einsatzmittel löschen
+        const stmt3 = db.prepare(`
+          DELETE FROM waip_einsatzmittel 
+          WHERE em_waip_einsaetze_id = ?;
+        `);
+        stmt3.run(einsatz_id);
+        // Einsatz löschen
+        const stmt4 = db.prepare(`
+          DELETE FROM waip_einsaetze 
+          WHERE id = ?;
+        `);
+        const info = stmt4.run(einsatz_id);
         // Anzahl der gelöschten Einsätze zurückgeben
         resolve(info.changes);
       } catch (error) {
@@ -763,7 +810,6 @@ module.exports = (db, app_cfg) => {
               ?,
               ?,
               ?,
-              ?,
               (SELECT id FROM waip_wachen WHERE name_wache LIKE ?),
               (SELECT nr_wache FROM waip_wachen WHERE name_wache LIKE ?),
               ?,
@@ -856,8 +902,52 @@ module.exports = (db, app_cfg) => {
 
   // Client-Status aktualisieren / speichern
   const db_client_update_status = (socket, client_status) => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
+        // Socket ID
+        let socket_id = socket.id;
+
+        // Client-IP-Adressen aus Socket ermitteln und als Array speichern
+        let client_ips = [];
+
+        // IP-Adresse aus verschiedenen Headern ermitteln
+        if (socket.handshake.headers["x-forwarded-for"]) {
+          // X-Forwarded-For Header enthält die ursprüngliche Client-IP
+          client_ips.push(socket.handshake.headers["x-forwarded-for"].split(",")[0].trim());
+        }
+
+        if (socket.handshake.headers["forwarded"]) {
+          // Forwarded Header nach RFC 7239
+          const forwarded = socket.handshake.headers["forwarded"];
+          const forMatch = forwarded.match(/for=([^;]+)/);
+          if (forMatch) {
+            client_ips.push(forMatch[1].trim());
+          }
+        }
+
+        // Direkte Socket-Verbindung als Fallback
+        if (socket.handshake.address) {
+          client_ips.push(socket.handshake.address);
+        }
+
+        // Duplikate entfernen und als String zusammenführen
+        client_ips = [...new Set(client_ips)].join(", ");
+
+        // Namespace ermitteln, im dem sich der Socket aktuelle befindet
+        let client_nsp = socket.nsp.name;
+
+        // Raum ermitteln, in dem sich der Socket aktuell befindet
+        let client_room = null;
+        let roomKeys = Array.from(socket.rooms);
+        if (roomKeys.length > 1) {
+          client_room = roomKeys[1];
+        }
+
+        // Standby wenn Client-Status keine Nummer oder Null
+        if (isNaN(client_status) || client_status == null) {
+          client_status = "Standby";
+        }
+
         // Nutzername, falls bekannt
         let user_name = socket.request.user.user;
         if (user_name === undefined) {
@@ -867,49 +957,64 @@ module.exports = (db, app_cfg) => {
         // Berechtigungen, falls bekannt
         let user_permissions = socket.request.user.permissions;
         if (user_permissions === undefined) {
-          user_permissions = "beschraenkt";
+          user_permissions = "keine";
         }
 
         // User-Agent
         let user_agent = socket.request.headers["user-agent"];
 
-        // Client-IP-Adresse
-        let client_ip =
-          socket.handshake.headers["x-real-ip"] || socket.handshake.headers["x-forwarded-for"] || socket.request.connection.remoteAddress;
+        // Reset-Zeitstempel in Abhängigkeit der Einstellungen ermitteln
+        let reset_timestamp = null;
+      
+        if (client_status !== "Standby") {
+          // User-ID ermitteln
+          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
 
-        // Default-Reset-Zeit setzen
-        let reset_timestamp = socket.request.user.reset_counter;
-        if (reset_timestamp === undefined) {
-          reset_timestamp = app_cfg.global.default_time_for_standby;
-        }
-        if (reset_timestamp === null) {
-          reset_timestamp = app_cfg.global.default_time_for_standby;
+          // Reset-Counter des Users ermitteln
+          const stmt1 = db.prepare(`
+            SELECT config_value FROM waip_user_config
+            WHERE user_id = ? AND config_type = 'resetcounter';
+          `);
+          const row1 = stmt1.get(user_id);
+
+          // Standard-Reset-Zeit aus app_cfg als Fallback
+          let time_for_standby = app_cfg.global.default_time_for_standby;
+          
+          // Wenn ein benutzerdefinierter Reset-Counter vorhanden ist, diesen verwenden
+          if (row1 !== undefined && row1.config_value) {
+            time_for_standby = row1.config_value;
+          }
+
+          // prüfen ob der Zeitstempel des Einsatzes + Reset-Counter nicht über der aktuellen Uhrzeit liegt
+          const stmt2 = db.prepare(`
+            SELECT we.id, DATETIME(we.zeitstempel, ? || ' minutes') reset_time
+            FROM waip_einsaetze we
+            WHERE we.id = ? 
+            AND DATETIME(we.zeitstempel, ? || ' minutes') > DATETIME('now', 'localtime');
+          `);
+          const row2 = stmt2.get(time_for_standby, client_status, time_for_standby);
+
+          if (row2 === undefined) {
+            reset_timestamp = null;
+          } else {
+            reset_timestamp = row2.reset_time;
+          }
+
         }
 
-        // Standby wenn Client-Status keine Nummer oder Null
-        if (isNaN(client_status) || client_status == null) {
-          client_status = "Standby";
-        }
-
-        // Raum ermitteln, in dem sich der Socket aktuell befindet
-        let socket_raum = null;
-        let roomKeys = Array.from(socket.rooms);
-        if (roomKeys.length > 1) {
-          socket_raum = roomKeys[1];
-        }
-
-        console.warn("socket_raum-socket_raum: ", socket_raum);
-        const stmt = db.prepare(`
+        // Client-Status in DB speichern
+        const stmt2 = db.prepare(`
           INSERT OR REPLACE INTO waip_clients (
             id, 
             socket_id, 
-            client_ip, 
-            room_name, 
-            client_status, 
+            client_ips,
+            client_nsp, 
+            client_room,
+            client_status,
             user_name, 
             user_permissions, 
-            user_agent, 
-            reset_timestamp 
+            user_agent,
+            reset_timestamp
           ) VALUES (
             (SELECT id FROM waip_clients WHERE socket_id = ?),
             ?,
@@ -919,10 +1024,11 @@ module.exports = (db, app_cfg) => {
             ?,
             ?,
             ?,
-            (SELECT DATETIME(zeitstempel, '+${reset_timestamp} minutes') FROM waip_einsaetze WHERE id = ?)
+            ?,
+            ?
           );        
         `);
-        const info = stmt.run(socket.id, socket.id, client_ip, socket_raum, client_status, user_name, user_permissions, user_agent, client_status);
+        const info = stmt2.run(socket_id, socket_id, client_ips, client_nsp, client_room, client_status, user_name, user_permissions, user_agent, reset_timestamp);
         resolve(info.changes);
       } catch (error) {
         reject(new Error("Fehler bei Aktualisierung des Clientstatus. Status:" + client_status + error));
@@ -930,7 +1036,7 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Verbunden Clients ermitteln
+  // Verbundene Clients ermitteln
   const db_client_get_connected = () => {
     return new Promise((resolve, reject) => {
       try {
@@ -995,7 +1101,7 @@ module.exports = (db, app_cfg) => {
         // Debug Eintraege nur bei Development speichern
         let debug_regex = new RegExp("debug", "gi");
         if (typ.match(debug_regex)) {
-          do_log = app_cfg.global.development;
+          do_log = app_cfg.development.dev_log;
         }
         if (do_log) {
           // Log-Eintrag schreiben
@@ -1065,26 +1171,6 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Socket-ID für ein Dashboard per Waip-Id finden
-  const db_socket_get_dbrd = (waip_id) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const stmt = db.prepare(`
-          SELECT socket_id FROM waip_clients 
-          WHERE client_status = ? AND socket_id LIKE '/dbrd#%';
-        `);
-        const rows = stmt.all(waip_id);
-        if (rows.length === 0) {
-          resolve();
-        } else {
-          resolve(rows);
-        }
-      } catch (error) {
-        reject(new Error("Fehler beim Abfragen der Socket-IDs (Dashboard). " + waip_id + error));
-      }
-    });
-  };
-
   // Sockets (Clients) finden, die in den Standby gehen sollen
   const db_socket_get_all_to_standby = () => {
     return new Promise((resolve, reject) => {
@@ -1118,7 +1204,7 @@ module.exports = (db, app_cfg) => {
           INSERT OR REPLACE INTO waip_user_config
           (id, user_id, config_type, config_value)
           VALUES (
-            (select ID from waip_user_config where user_id like ? ),
+            (select ID from waip_user_config where user_id = ? ),
             ?,
             ?,
             ?
@@ -1138,11 +1224,12 @@ module.exports = (db, app_cfg) => {
       try {
         const stmt = db.prepare(`
           SELECT config_value FROM waip_user_config
-          WHERE id_user = ? AND config_type = 'resetcounter';
+          WHERE user_id = ? AND config_type = 'resetcounter';
         `);
         const row = stmt.get(user_id);
         if (row === undefined) {
-          throw "Keine Benutzer-Einstellungen für " + user_id + " gefunden!";
+          //throw "Keine Benutzer-Einstellungen für " + user_id + " gefunden!";
+          resolve(app_cfg.global.default_time_for_standby);
         } else {
           resolve(row);
         }
@@ -1152,50 +1239,51 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Standby-Anzeige für einen Benutzer prüfen
-  const db_user_get_time_left = (socket, waip_id) => {
+  // Prüfen ob die Anzeigezeit für einen Benutzer abgelaufen ist
+  const db_client_get_alarm_anzeigbar = (socket, waip_id) => {
     return new Promise((resolve, reject) => {
       try {
-        // User-ID aus Socket ermitteln
-        const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+        // Namespace ermitteln, im dem sich der Socket aktuelle befindet
+        const client_nsp = socket.nsp.name;
 
-        // Hilfsvariablen definieren
-        let dts = app_cfg.global.default_time_for_standby;
-        let select_reset_counter;
+        // Anzeigezeit für einen Alarmmonitor ermitteln
+        if (client_nsp === "/waip") {
+          // User-ID aus Socket ermitteln
+          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
 
-        // wenn kein User ermittelt, dann Default-Anzeige-Zeit setzen, sonst SQL-Abfrage vorbereiten
-        if (!user_id) {
-          select_reset_counter = dts;
-        } else {
-          select_reset_counter = `
-            (
-              SELECT COALESCE(MAX(config_value), ${dts}) config_value FROM waip_user_config 
-              WHERE user_id = ${user_id} AND config_type = 'resetcounter'
-            )
-          `;
+          // Reset-Counter des Users ermitteln
+          const stmt1 = db.prepare(`
+            SELECT config_value FROM waip_user_config
+            WHERE user_id = ? AND config_type = 'resetcounter';
+          `);
+          const row1 = stmt1.get(user_id);
+
+          // sollte kein Reset-Counter vorhanden sein, dann die Standard-Reset-Zeit aus app_cfg verwenden
+          if (row1 === undefined) {
+            row1.config_value = app_cfg.global.default_time_for_standby;
+          }
+
+          // prüfen ob der Zeitstempel des Einsatzes + Reset-Counter nicht über der aktuellen Uhrzeit liegt
+          const stmt2 = db.prepare(`
+            SELECT DATETIME(we.zeitstempel, ? || ' minutes') reset_time
+            FROM waip_einsaetze we
+            WHERE we.id = ? 
+            AND DATETIME(we.zeitstempel, ? || ' minutes') > DATETIME('now', 'localtime');
+          `);
+          const row2 = stmt2.get(row1.config_value, waip_id, row1.config_value);
+
+          // null zurückgeben, wenn der Einsatz nicht mehr angezeigt werden kann, ansonsten die Uhrzeit der Reset-Time
+          if (row2 === undefined) {
+            resolve(null);
+          } else {
+            resolve(row2.reset_time);
+          }
         }
 
-        console.warn("select_reset_counter: " + select_reset_counter);
-
-        // Abfrage zum prüfen, ob die Zeit zur Anzeige des Alarms bereits abgelaufen ist.
-        const stmt = db.prepare(`
-            SELECT
-              DATETIME(e.zeitstempel, '+' || ${select_reset_counter} || ' minutes') ablaufzeit
-              FROM waip_einsaetze e
-            WHERE
-              DATETIME(e.zeitstempel, '+' || ${select_reset_counter} || ' minutes') > DATETIME('now')
-              AND id = ?;
-            `);
-        const row = stmt.get(waip_id);
-
-        // Null oder Ablaufzeit zurückgeben
-        if (row === undefined) {
-          resolve(null);
-        } else {
-          resolve(row.ablaufzeit);
-        }
+        // null zurückgeben, wenn kein Namespace ermittelt werden konnte
+        resolve(null);
       } catch (error) {
-        reject(new Error("Fehler beim ermitteln der restlichen Anzeigezeit für einen Nutzer. " + waip_id + error));
+        reject(new Error("Fehler beim Prüfen ob der Alarm für einen Nutzer angezeigt werden kann. " + waip_id + error));
       }
     });
   };
@@ -1205,7 +1293,7 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT id, user, permissions, ip_address FROM waip_users;
+          SELECT id, user, permissions, ip_address FROM waip_user;
         `);
         const rows = stmt.all();
         if (rows.length === 0) {
@@ -1219,49 +1307,11 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Benutzer-Berechtigung für einen Einsatz überpruefen
-  const db_user_check_permission_by_waip_id = (user_obj, waip_id) => {
+  // Berechtigung eines Nutzers für einen Einsatz überpruefen
+  const db_user_check_permission_for_waip = (socket, waip_id) => {
     return new Promise((resolve, reject) => {
       try {
-        // wenn user_obj und permissions nicht übergeben wurden, dann false
-        if (!user_obj && !user_obj.permissions) {
-          resolve(false);
-        }
-        // wenn admin, dann true
-        if (user_obj.permissions == "admin") {
-          resolve(true);
-        } else {
-          // Berechtigungen aus DB abfragen -> 52,62,6690,....
-          const stmt = db.prepare(`
-            SELECT GROUP_CONCAT(DISTINCT wa.nr_wache) wache FROM waip_einsatzmittel em
-            LEFT JOIN waip_wachen wa ON wa.id = em.waip_wachen_ID
-            WHERE waip_einsaetze_ID = ?;
-          `);
-          const row = stmt.get(waip_id);
-          // keine Wache für Benutzer hinterlegt, dann false
-          if (row === undefined) {
-            resolve(false);
-          } else {
-            // Berechtigungen mit Wache vergleichen, wenn gefunden, dann true, sonst false
-            let permission_arr = user_obj.permissions.split(",");
-            const found = permission_arr.some((r) => row.wache.search(RegExp("," + r + "|\\b" + r)) >= 0);
-            if (found) {
-              resolve(true);
-            } else {
-              resolve(false);
-            }
-          }
-        }
-      } catch (error) {
-        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + user_obj + waip_id + error));
-      }
-    });
-  };
 
-  // Benutzer-Berechtigung für eine Wache überpruefen
-  const db_user_check_permission_by_wachen_nr = (socket, wachen_id) => {
-    return new Promise((resolve, reject) => {
-      try {
         // User-ID und Berechtigung aus Socket ermitteln
         const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
         const permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
@@ -1277,17 +1327,18 @@ module.exports = (db, app_cfg) => {
         } else {
           // Berechtigungen aus DB abfragen -> 52,62,6690,....
           const stmt = db.prepare(`
-            SELECT permissions FROM waip_users
-            WHERE id = ?;
+            SELECT GROUP_CONCAT(DISTINCT wa.nr_wache) wache FROM waip_einsatzmittel em
+            LEFT JOIN waip_wachen wa ON wa.id = em.waip_wachen_ID
+            WHERE waip_einsaetze_ID = ?;
           `);
-          const row = stmt.get(user_id);
-          // wenn keine Berechtigung hinterlegt, dann false
+          const row = stmt.get(waip_id);
+          // keine Wache für Benutzer hinterlegt, dann false
           if (row === undefined) {
             resolve(false);
           } else {
             // Berechtigungen mit Wache vergleichen, wenn gefunden, dann true, sonst false
-            let permission_arr = row.permissions.split(",");
-            const found = permission_arr.some((r) => wachen_id.search(RegExp("," + r + "|\\b" + r)) >= 0);
+            let permission_arr = permissions.split(",");
+            const found = permission_arr.some((r) => row.wache.search(RegExp("," + r + "|\\b" + r)) >= 0);
             if (found) {
               resolve(true);
             } else {
@@ -1296,7 +1347,41 @@ module.exports = (db, app_cfg) => {
           }
         }
       } catch (error) {
-        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Wache. " + user_obj + waip_id + error));
+        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + socket.request.user + waip_id + error));
+      }
+    });
+  };
+
+  // Berechtigung eines Nutzer für eine Rückmeldung überpruefen
+  const db_user_check_permission_for_rmld = (socket, wache_nr) => {
+    return new Promise((resolve, reject) => {
+      try {
+
+        // User-ID und Berechtigung aus Socket ermitteln
+        const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+        const permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
+
+        // wenn keine user_id oder permissions übergeben wurden, dann false
+        if (!user_id || !permissions) {
+          resolve(false);
+        }
+
+        // wenn admin, dann true, ansonsten Berechtigung abfragen
+        if (permissions == "admin") {
+          resolve(true);
+        }
+
+        // Berechtigungen mit Wache vergleichen (52,62,6690,....), wenn gefunden, dann true, sonst false
+        let permission_arr = permissions.split(",");
+        const found = permission_arr.some((r) => wache_nr.search(RegExp("," + r + "|\\b" + r)) >= 0);
+        if (found) {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+
+      } catch (error) {
+        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.request.user + wache_nr + error));
       }
     });
   };
@@ -1316,7 +1401,7 @@ module.exports = (db, app_cfg) => {
         if (row === undefined) {
           resolve();
         } else {
-          resolve(row);
+          resolve(row.uuid);
         }
       } catch (error) {
         reject(new Error("Fehler beim Prüfen eines Einsatzes für eine Rückmeldung. " + rmld_obj + error));
@@ -1463,60 +1548,59 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // alle Rückmeldungen laden
-  const db_rmld_get_fuer_wache = (waip_einsaetze_id, wachen_nr) => {
+  // bestimmte Rückmeldungen zu einem Einsatz einer Wache laden
+  const db_rmlds_get_for_wache = (wachen_nr, waip_id, arr_rmld_uuid) => {
     return new Promise((resolve, reject) => {
       try {
-        const stmt = db.prepare(`
-          SELECT * 
-          FROM waip_rueckmeldungen 
-          WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE id = ?);
-        `);
-        const rows = stmt.all(waip_einsaetze_id);
-        if (rows.length === 0) {
-          resolve(null);
-        } else {
-          rows = rows.filter((row) => row.wache_nr === wachen_nr);
-          resolve(rows);
+        // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
+        let len = wachen_nr.toString().length;
+        if (parseInt(wachen_nr) != 0 && len != 2 && len != 4 && len != 6 && len == null) {
+          throw `Wachennummer ${wachen_nr} hat keine valide Länge (0, 2, 4 oder 6)!`;
         }
-      } catch (error) {
-        reject(new Error("Fehler beim laden von Rückmeldungen für eine Wache. " + waip_einsaetze_id + wachen_nr + error));
-      }
-    });
-  };
 
-  // eine Rückmeldung laden
-  const db_rmld_get_by_rmlduuid = (rmld_uuid) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const stmt = db.prepare(`
-          SELECT * 
-          FROM waip_rueckmeldungen 
-          WHERE rmld_uuid = ?;
-        `);
-        const row = stmt.get(rmld_uuid);
-        if (row === undefined) {
-          resolve(null);
-        } else {
-          resolve(row);
+        // wenn wachen_nr 0, dann % fuer Abfrage festlegen
+        if (parseInt(wachen_nr) == 0) {
+          wachen_nr = "%";
         }
-      } catch (error) {
-        reject(new Error("Fehler beim laden einer Rückmeldung über die Rückmelde-UUID. " + rmld_uuid + error));
-      }
-    });
-  };
 
-  // Rueckmeldungen löschen
-  const db_rmld_loeschen = (waip_uuid) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const stmt = db.prepare(`
-          DELETE FROM waip_rueckmeldungen WHERE waip_uuid = ?;
-        `);
-        const info = stmt.run(waip_uuid);
-        resolve(info.changes);
+        // Abfrage für Rückmeldungen arr_rmld_uuid, in abhängigkeit ob arr_rmld_uuid gesetzt
+        if (arr_rmld_uuid) {
+          const stmt = db.prepare(`
+            SELECT * 
+            FROM waip_rueckmeldungen 
+            WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE ID = ?)
+            AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%')
+            AND rmld_uuid IN (SELECT value FROM json_each(?));
+          `);
+
+          const rows = stmt.all(waip_id, wachen_nr.toString(), JSON.stringify(arr_rmld_uuid));
+
+          if (rows.length === 0) {
+            resolve(null);
+          } else {
+            resolve(rows);
+          }
+
+        } else {
+          const stmt = db.prepare(`
+            SELECT * 
+            FROM waip_rueckmeldungen 
+            WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE ID = ?)
+            AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%');
+          `);
+
+          const rows = stmt.all(waip_id, wachen_nr.toString());
+
+          if (rows.length === 0) {
+            resolve(null);
+          } else {
+            resolve(rows);
+          }
+        }
+
+
       } catch (error) {
-        reject(new Error("Fehler beim löschen von Rückmeldungen. " + waip_uuid + error));
+        reject(new Error("Fehler beim laden von Rückmeldungen. " + wachen_nr + waip_id + arr_rmld_uuid + error));
       }
     });
   };
@@ -1650,30 +1734,22 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Prüfen ob User bereits in Datenbank vorhanden
-  const auth_user_dobblecheck = (user) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const stmt = db.prepare(`
-          SELECT user FROM waip_user WHERE user = ?;
-        `);
-        const row = stmt.get(user);
-        if (row === undefined) {
-          resolve(null);
-        } else {
-          resolve(row);
-        }
-      } catch (error) {
-        reject(new Error("Fehler bei auth_user_dobblecheck. " + user + error));
-      }
-    });
-  };
-
   // Neuen User anlegen
   const auth_create_new_user = (user, password, permissions, ip_address) => {
     return new Promise((resolve, reject) => {
       try {
-        const stmt = db.prepare(`
+        // Prüfen ob User bereits in Datenbank vorhanden
+        const stmt1 = db.prepare(`
+          SELECT user FROM waip_user WHERE user = ?
+        `);
+        const row1 = stmt1.get(user);
+
+        // wenn User bereits vorhanden, dann Error ausgeben
+        if (row1 !== undefined) {
+          throw new Error("Es existiert bereits ein Benutzer mit diesem Namen! " + user);
+        }
+
+        const stmt2 = db.prepare(`
           INSERT INTO waip_user ( 
             user, 
             password, 
@@ -1686,10 +1762,10 @@ module.exports = (db, app_cfg) => {
             ? 
           );
         `);
-        const info = stmt.run(user, password, permissions, ip_address);
+        const info = stmt2.run(user, password, permissions, ip_address);
         resolve(info.changes);
       } catch (error) {
-        reject(new Error("Fehler bei auth_create_new_user. " + user + error));
+        reject(new Error("Fehler beim Anlegen eines neuen Users. " + user + error));
       }
     });
   };
@@ -1751,7 +1827,7 @@ module.exports = (db, app_cfg) => {
 
   return {
     db_einsatz_speichern: db_einsatz_speichern,
-    db_einsatz_ermitteln: db_einsatz_ermitteln,
+    db_einsatz_for_client_ermitteln: db_einsatz_for_client_ermitteln,
     db_einsatz_check_uuid: db_einsatz_check_uuid,
     db_einsatz_check_history: db_einsatz_check_history,
     db_einsatz_get_for_wache: db_einsatz_get_for_wache,
@@ -1759,7 +1835,7 @@ module.exports = (db, app_cfg) => {
     db_einsatz_get_uuid_by_enr: db_einsatz_get_uuid_by_enr,
     db_einsatz_get_waipid_by_uuid: db_einsatz_get_waipid_by_uuid,
     db_einsatz_get_active: db_einsatz_get_active,
-    db_einsatz_get_rooms: db_einsatz_get_rooms,
+    db_einsatz_get_waip_rooms: db_einsatz_get_waip_rooms,
     db_einsaetze_get_old: db_einsaetze_get_old,
     db_einsatz_statusupdate: db_einsatz_statusupdate,
     db_einsatz_loeschen: db_einsatz_loeschen,
@@ -1774,26 +1850,22 @@ module.exports = (db, app_cfg) => {
     db_log: db_log,
     db_log_get_10000: db_log_get_10000,
     db_socket_get_by_id: db_socket_get_by_id,
-    db_socket_get_dbrd: db_socket_get_dbrd,
     db_socket_get_all_to_standby: db_socket_get_all_to_standby,
     db_user_set_config: db_user_set_config,
     db_user_get_config: db_user_get_config,
     db_user_get_all: db_user_get_all,
-    db_user_get_time_left: db_user_get_time_left,
-    db_user_check_permission_by_waip_id: db_user_check_permission_by_waip_id,
-    db_user_check_permission_by_wachen_nr: db_user_check_permission_by_wachen_nr,
+    db_client_get_alarm_anzeigbar: db_client_get_alarm_anzeigbar,
+    db_user_check_permission_for_waip: db_user_check_permission_for_waip,
+    db_user_check_permission_for_rmld: db_user_check_permission_for_rmld,
     db_rmld_check_einsatz: db_rmld_check_einsatz,
     db_rmld_single_save: db_rmld_single_save,
-    db_rmld_get_fuer_wache: db_rmld_get_fuer_wache,
-    db_rmld_get_by_rmlduuid: db_rmld_get_by_rmlduuid,
-    db_rmld_loeschen: db_rmld_loeschen,
+    db_rmlds_get_for_wache: db_rmlds_get_for_wache,
     auth_deserializeUser: auth_deserializeUser,
     auth_ipstrategy: auth_ipstrategy,
     auth_localstrategy_cryptpassword: auth_localstrategy_cryptpassword,
     auth_localstrategy_userid: auth_localstrategy_userid,
     auth_ensureApi: auth_ensureApi,
     auth_ensureAdmin: auth_ensureAdmin,
-    auth_user_dobblecheck: auth_user_dobblecheck,
     auth_create_new_user: auth_create_new_user,
     auth_deleteUser: auth_deleteUser,
     auth_editUser: auth_editUser,

@@ -10,6 +10,31 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     }
   };
 
+  // Hilfsfunktion zum Ermitteln der Client-IP
+  const getRemoteIp = (req) => {
+    // Prüfe verschiedene Header in der Reihenfolge ihrer Zuverlässigkeit
+    const headers = [
+      req.headers["x-real-ip"],
+      req.headers["x-forwarded-for"],
+      req.socket.remoteAddress
+    ];
+
+    for (const header of headers) {
+      if (!header) continue;
+
+      // Bei x-forwarded-for nehmen wir die erste IP (Client-IP)
+      if (header === req.headers["x-forwarded-for"]) {
+        const ips = header.split(",").map(ip => ip.trim());
+        if (ips.length > 0) return ips[0];
+      } else {
+        return header;
+      }
+    }
+
+    // Fallback auf localhost wenn keine IP gefunden wurde
+    return "127.0.0.1";
+  };
+
   /* ########################### */
   /* ##### Statische Seiten #### */
   /* ########################### */
@@ -94,7 +119,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/api/einsatzdaten", passport.authenticate("jwt", { session: false }), checkContentType, async (req, res) => {
     try {
       // Client-IP ermitteln
-      const remote_ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+      const remote_ip = getRemoteIp(req);
       // Einsatz speichern
       await saver.save_einsatz(req.body, remote_ip);
       // Protokollieren
@@ -116,7 +141,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/api/einsatzstatus", passport.authenticate("jwt", { session: false }), checkContentType, async (req, res) => {
     try {
       // Client-IP ermitteln
-      const remote_ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+      const remote_ip = getRemoteIp(req);
       // Rückmeldungen speichern
       await saver.save_einsatzstatus(req.body, remote_ip);
       const msg = "Einsatzstatus erfolgreich aktualisiert (/api/einsatzstatus).";
@@ -137,7 +162,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/api/rueckmeldung", passport.authenticate("jwt", { session: false }), checkContentType, async (req, res) => {
     try {
       // Client-IP ermitteln
-      const remote_ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+      const remote_ip = getRemoteIp(req);
       // Rückmeldungen speichern
       await saver.save_rmld(req.body, remote_ip);
       const msg = "Rückmeldungen erfolgreich übermittelt und verarbeitet (/api/rueckmeldung).";
@@ -158,7 +183,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/api/einsatzmittel", passport.authenticate("jwt", { session: false }), checkContentType, async (req, res) => {
     try {
       // Client-IP ermitteln
-      const remote_ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+      const remote_ip = getRemoteIp(req);
       // Einsatzmittel speichern
       await saver.save_einsatzmittel(req.body, remote_ip);
       logger.log("log", "Einsatzmittel erfolgreich übermittelt und verarbeitet (/api/einsatzmittel).");
@@ -184,37 +209,59 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       public: app_cfg.public,
       title: "Login",
       user: req.user,
-      error: req.flash("error"),
+      error: req.flash("errorMessage")
     });
   });
 
   // Login-Formular verarbeiten
   app.post(
     "/login",
-    passport.authenticate("local", {
-      failureRedirect: "/login",
-      failureFlash: "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.",
-    }),
-    (req, res) => {
-      if (req.body.rememberme) {
-        // der Benutzer muss sich fuer 5 Jahre nicht anmelden
-        req.session.cookie.maxAge = 5 * 365 * 24 * 60 * 60 * 1000;
-      }
-      res.redirect("/");
+    (req, res, next) => {
+      passport.authenticate("local", (err, user, info) => {
+        if (err) {
+          return next(err);
+        }
+        if (!user) {
+          req.flash("errorMessage", "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.");
+          return res.redirect("/login");
+        }
+        req.logIn(user, (err) => {
+          if (err) {
+            return next(err);
+          }
+          if (req.body.rememberme) {
+            // der Benutzer muss sich fuer 5 Jahre nicht anmelden
+            req.session.cookie.maxAge = 5 * 365 * 24 * 60 * 60 * 1000;
+          }
+          return res.redirect("/");
+        });
+      })(req, res, next);
     }
   );
 
   // Login mit IP verarbeiten
   app.post(
     "/login_ip",
-    passport.authenticate("ip", {
-      failureRedirect: "/login",
-      failureFlash: "Login mittels IP-Adresse fehlgeschlagen!",
-    }),
-    (req, res) => {
-      // der Benutzer muss sich fuer 5 Jahre nicht anmelden
-      req.session.cookie.maxAge = 5 * 365 * 24 * 60 * 60 * 1000;
-      res.redirect("/");
+    (req, res, next) => {
+      passport.authenticate("ip", (err, user, info) => {
+        if (err) {
+          return next(err);
+        }
+        if (!user) {
+          req.flash("errorMessage", "Login mittels IP-Adresse fehlgeschlagen!");
+          return res.redirect("/login");
+        }
+        req.logIn(user, (err) => {
+          if (err) {
+            return next(err);
+          }
+          if (req.body.rememberme) {
+            // der Benutzer muss sich fuer 5 Jahre nicht anmelden
+            req.session.cookie.maxAge = 5 * 365 * 24 * 60 * 60 * 1000;
+          }
+          return res.redirect("/");
+        });
+      })(req, res, next);
     }
   );
 
@@ -237,7 +284,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Einstellungen",
         user: req.user,
-        reset_counter: data.opt_resetcounter,
+        reset_counter: data.config_value,
+        error: req.flash("errorMessage"),
+        success: req.flash("successMessage"),
       });
     } catch (error) {
       const err = new Error(`Fehler beim Laden der Seite /config. ` + error);
@@ -248,11 +297,15 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   });
 
   // Einstellungen speichern
-  app.post("/einstellungen", auth.ensureAuthenticated, (req, res) => {
-    // TODO -> gibt Info.changes zurück, nicht null
-    sql.db_user_set_config(req.user.id, req.body.set_reset_counter, function (data) {
-      res.redirect("/config");
-    });
+  app.post("/einstellungen", auth.ensureAuthenticated, async (req, res) => {
+    try {
+      await sql.db_user_set_config(req.user.id, req.body.set_reset_counter);
+      req.flash('successMessage', 'Einstellungen wurden erfolgreich gespeichert');
+      res.redirect("/einstellungen");
+    } catch (error) {
+      req.flash('errorMessage', 'Fehler beim Speichern der Einstellungen');
+      res.redirect("/einstellungen");
+    }
   });
 
   /* ##################### */
@@ -299,9 +352,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         next(err);
       }
     } catch (error) {
-      const err = new Error(`Fehler beim Laden der Seite /waip/<wachennummer>. ` + error);
+      const err = new Error(`Fehler beim Laden der Seite /waip/${req.params.wachen_id}. ` + error);
       logger.log("error", err);
       err.status = 500;
+      next(err);
     }
   });
 
@@ -497,7 +551,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.use((err, req, res, next) => {
     // set locals, only providing error in development
     res.locals.message = err.message;
-    res.locals.error = app_cfg.global.development ? err : {};
+    res.locals.error = app_cfg.development.dev_log ? err : {};
     // render the error page
     res.status(err.status || 500);
     res.render("page_error", {

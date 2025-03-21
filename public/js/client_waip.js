@@ -1,18 +1,17 @@
 // TODO: Remote-Reload per Socket
 // TODO: Modal bei Server-Verbindung, und Modal bei Reload
 
+
 $(document).ready(function () {
   set_clock();
+  updateWachennameAnimation();
+  startRandomPositioning();
 });
 
 $(window).on('resize', function () {
   resize_text();
-  // Position neu setzen
-  let newq = makeNewPosition();
-  $('.clock_y').css('top', newq[0]);
-  $('.clock_y').css('left', newq[1]);
-  // langsam verschieben
-  animateDiv();
+  updateWachennameAnimation();
+  updateRandomPosition();
 });
 
 /* ############################ */
@@ -78,7 +77,11 @@ $('#replay').on('click', function (event) {
 function resize_text() {
   // Uhr-Text nur Anpassen wenn sichtbar
   if ($('#waipclock').is(':visible')) {
-    textFit(document.getElementsByClassName('tf_clock'), {
+    textFit(document.getElementsByClassName('clock_frame'), {
+      minFontSize: 4,
+      maxFontSize: 500
+    });
+    textFit(document.getElementsByClassName('day_frame'), {
       minFontSize: 3,
       maxFontSize: 500
     });
@@ -86,13 +89,13 @@ function resize_text() {
   };
   // Tableau nur Anpassen wenn sichtbar
   if ($('#waiptableau').is(':visible')) {
-    textFit(document.getElementsByClassName('tf_singleline'), {
+    /*textFit(document.getElementsByClassName('tf_singleline'), {
       minFontSize: 1,
       maxFontSize: 500
-    });
-    textFit(document.getElementsByClassName('tf_multiline'), {
+    });*/
+    /*textFit(document.getElementsByClassName('tf_multiline'), {
       detectMultiLine: false
-    });
+    });*/
     // Karte neu setzen
     map.invalidateSize();
     $('body').css('background-color', '#222');
@@ -101,7 +104,7 @@ function resize_text() {
 
 // Text nach bestimmter Laenge, in Abhaengigkeit von Zeichen, umbrechen
 function break_text_15(text) {
-  let new_text;
+  var new_text;
   new_text = text.replace(/.{15}(\s+|\-+)+/g, '$&@')
   new_text = new_text.split(/@/);
   new_text = new_text.join('<br>');
@@ -110,7 +113,7 @@ function break_text_15(text) {
 };
 
 function break_text_35(text) {
-  let new_text;
+  var new_text;
   new_text = text.replace(/.{50}\S*\s+/g, '$&@').split(/\s+@/);
   new_text = new_text.join('<br>');
   //console.log(new_text);
@@ -314,8 +317,8 @@ socket.on('io.playtts', function (data) {
   // Audio-Blockade des Browsers erkennen
   let playPromise = document.querySelector('audio').play();
 
-  // In browsers that don’t yet support this functionality,
-  // playPromise won’t be defined.
+  // In browsers that don't yet support this functionality,
+  // playPromise won't be defined.
   if (playPromise !== undefined) {
     playPromise.then(function () {
       // Automatic playback started!
@@ -341,6 +344,7 @@ socket.on('io.playtts', function (data) {
 
 // Daten löschen, Uhr anzeigen
 socket.on('io.standby', function (data) {
+  console.log('Standby');
   // Einsatz-ID auf 0 setzen
   waip_id = null;
   // TODO: Wenn vorhanden, hier #hilfsfrist zurücksetzen
@@ -360,17 +364,12 @@ socket.on('io.standby', function (data) {
   // Tareset_responsebleau ausblenden
   $('#waiptableau').addClass('d-none');
   $('#waipclock').removeClass('d-none');
-  // Text anpassen
-  resize_text();
-  // Position neu setzen
-  setTimeout(function () {
-    // Position neu setzen
-    let newq = makeNewPosition();
-    $('.clock_y').css('top', newq[0]);
-    $('.clock_y').css('left', newq[1]);
-    // langsam verschieben
-    animateDiv();
-  }, 1000);
+  // 200ms warten
+  setTimeout(function() {
+    resize_text();
+    updateWachennameAnimation();
+    updateRandomPosition();
+  }, 200);
 });
 
 // Einsatzdaten laden, Wachalarm anzeigen
@@ -481,11 +480,12 @@ socket.on('io.new_waip', function (data) {
     }).addTo(map);
     map.setView(new L.LatLng(data.wgs84_x, data.wgs84_y), 15);
   } else {
-    //geojson = L.geoJSON(JSON.parse(data.wgs84_area));
-    //geojson.addTo(map);
-    //map.fitBounds(geojson.getBounds());
-    map.setZoom(13);
+    geojson = L.geoJSON(JSON.parse(data.geometry));
+    geojson.addTo(map);
+    map.fitBounds(geojson.getBounds());
+    map.setZoom(14);
   };
+
   // Ablaufzeit setzen
   start_counter(data.zeitstempel, data.ablaufzeit);
   // alte Rückmeldung entfernen
@@ -495,8 +495,8 @@ socket.on('io.new_waip', function (data) {
   // Uhr ausblenden
   $('#waipclock').addClass('d-none');
   $('#waiptableau').removeClass('d-none');
-  // Text anpassen
-  resize_text();
+  // Map neu zeichnen
+  map.invalidateSize();
 });
 
 socket.on('io.new_rmld', function (data) {
@@ -504,37 +504,45 @@ socket.on('io.new_rmld', function (data) {
   console.log('neue Rückmeldung:',data);
   // FIXME  Änderung des Funktions-Typ berücksichtigen
   // Neue Rueckmeldung hinterlegen
-  data.forEach(function (arrayItem) {
+  //data.forEach(function (arrayItem) {
     // HTML festlegen
     let item_type = '';
     // wenn Einsatzkraft dann:
-    if (arrayItem.einsatzkraft) {
+    if (data.rmld_role == 'team_member') {
       item_type = 'ek';
     };
     // wenn Maschinist dann:
-    if (arrayItem.maschinist) {
+    if (data.rmld_role == 'group_commander') {
       item_type = 'ma';
     };
+    // wenn Maschinist dann:
+    if (data.rmld_role == 'crew_leader') {
+      item_type = 'fk';
+    };
     // wenn Fuehrungskraft dann:
-    if (arrayItem.fuehrungskraft) {
+    if (data.rmld_role == 'division_chief') {
       item_type = 'fk';
     };
     // wenn AGT
-    let item_agt = arrayItem.agt;
+    let item_agt = data.rmld_capability_agt;
     // Variablen für Anzeige vorbereiten
-    let pg_waip_uuid = arrayItem.waip_uuid;
-    console.log(arrayItem.waip_uuid);
+    let pg_waip_uuid = data.waip_uuid;
+
+    let pg_rmld_uuid = data.rmld_uuid;
+    let pg_start = new Date(data.time_decision);
+    let pg_end = new Date(data.time_arrival);
+    console.log(data.waip_uuid);
     console.log(pg_waip_uuid);
-    let pg_rmld_uuid = arrayItem.rmld_uuid;
-    let pg_start = new Date(arrayItem.set_time);
-    let pg_end = new Date(arrayItem.arrival_time);
+    console.log(item_type);
+    console.log(item_agt);
+    console.log(pg_start)
+    console.log(pg_end);
     // Progressbar hinterlegen
     add_resp_progressbar(pg_waip_uuid, pg_rmld_uuid, item_type, item_agt, pg_start, pg_end);
     // Anzahl der Rückmeldung zählen
     recount_rmld(pg_waip_uuid);
-  });
-  // Text anpassen
-  resize_text();
+  //});
+
   // Bing abspielen
   let audio = document.getElementById('audio');
   audio.src = ('/media/bell_message.mp3');
@@ -749,55 +757,84 @@ function set_clock() {
     $('#time').html(element_time);
     // Datum (Text) anzeigen
     $('#day').html(element_day);
-    // Textgröße neu setzen
-    resize_text();
+    resize_text()
   };
 };
 
 // Uhrzeit jede Sekunden anpassen
 setInterval(set_clock, 1000);
 
-// Uhrzeit verschieben
-$(document).ready(function () {
-  setTimeout(function () {
-    // Position neu setzen
-    let newq = makeNewPosition();
-    $('.clock_y').css('top', newq[0]);
-    $('.clock_y').css('left', newq[1]);
-    // langsam verschieben
-    animateDiv();
-  }, 1000);
-});
+/* ############################ */
+/* ####### WACHENNAME ####### */
+/* ############################ */
 
-// neue Random-Position fuer Uhrzeit ermitteln
-function makeNewPosition() {
-  // Get viewport dimensions 
-  let h = $('.fullheight').height() - $('.clock_y').height();
-  let w = $('.fullheight').width() - $('.clock_y').width();
-  let nh = Math.floor(Math.random() * h);
-  let nw = Math.floor(Math.random() * w);
-  return [nh, nw];
-};
+function updateWachennameAnimation() {
+  const wachenname = document.getElementById('wachenname_footer');
+  if (!wachenname) return;
+  
+  // Animation stoppen
+  wachenname.style.animation = 'none';
+  wachenname.offsetHeight; // Trigger reflow
+  
+  // Neue Animation berechnen
+  const containerWidth = window.innerWidth;
+  const elementWidth = wachenname.offsetWidth;
+  const maxTranslate = containerWidth - elementWidth - 30;
+  
+  // Neue Keyframes erstellen
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes moveLeftRight {
+      0% { transform: translateX(0); }
+      50% { transform: translateX(${maxTranslate}px); }
+      100% { transform: translateX(0); }
+    }
+  `;
+  
+  // Alte Keyframes entfernen und neue hinzufügen
+  const oldStyle = document.getElementById('wachenname-animation');
+  if (oldStyle) oldStyle.remove();
+  style.id = 'wachenname-animation';
+  document.head.appendChild(style);
+  
+  // Animation neu starten
+  wachenname.style.animation = 'moveLeftRight 400s ease-in-out infinite';
+}
 
-// Verschieben animieren
-function animateDiv() {
-  let newq = makeNewPosition();
-  let oldq = $('.clock_y').offset();
-  let speed = calcSpeed([oldq.top, oldq.left], newq);
-  $('.clock_y').animate({
-    top: newq[0],
-    left: newq[1]
-  }, speed, function () {
-    animateDiv();
-  });
-};
+/* ############################ */
+/* ####### RANDOM POSITION ####### */
+/* ############################ */
 
-// Verschiebe-Geschwindigkeit berechnen
-function calcSpeed(prev, next) {
-  let x = Math.abs(prev[1] - next[1]);
-  let y = Math.abs(prev[0] - next[0]);
-  let greatest = x > y ? x : y;
-  let speedModifier = 0.001;
-  let speed = Math.ceil(greatest / speedModifier);
-  return speed;
-};
+let randomPositionInterval;
+
+function startRandomPositioning() {
+  // Initiale Position setzen
+  updateRandomPosition();
+  
+  // Alle 3 Minuten die Position aktualisieren
+  randomPositionInterval = setInterval(updateRandomPosition, 180000);
+}
+
+function updateRandomPosition() {
+  const screenSaver = document.getElementById('screen_saver');
+  const clockDay = document.getElementById('clock_day');
+  
+  if (!screenSaver || !clockDay) return;
+  
+  // Dimensionen des Containers und des Elements
+  const containerRect = screenSaver.getBoundingClientRect();
+  const elementRect = clockDay.getBoundingClientRect();
+  
+  // Maximale Positionen berechnen (unter Berücksichtigung der Elementgröße)
+  const maxX = containerRect.width - elementRect.width;
+  const maxY = containerRect.height - elementRect.height;
+  
+  // Zufällige Position berechnen
+  const randomX = Math.floor(Math.random() * maxX);
+  const randomY = Math.floor(Math.random() * maxY);
+  
+  // Position setzen
+  clockDay.style.position = 'absolute';
+  clockDay.style.left = `${randomX}px`;
+  clockDay.style.top = `${randomY}px`;
+}

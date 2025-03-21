@@ -1,10 +1,9 @@
 #waipclock.fullheight
-  .h-95
-    .h-75.w-75.clock_y
-      .h-100.clock_x
-        #time.h-70.d-flex.align-items-end.text-muted.font-weight-bold.tf_clock -Uhrzeit-
-        #day.h-30.d-flex.align-items-start.text-muted.tf_clock -Datum-
+  #screen_saver.h-95
+    #clock_day.h-60.w-50
+      #time.h-80.text-muted.font-weight-bold.d-flex.align-items-end.clock_frame -Uhrzeit-
+      #day.h-20.text-secondary.d-flex.align-items-start.day_frame -Datum-
   .h-5
-    .h-100.w-25.client_wache.text-center.text-secondary.tf_clock
-      #wachenname.h-100.ion-md-business=data_wache || ' -Wachenname-'
+    #wachenname_footer.text-secondary
+      .h4.ion-md-business= ' ' + (data_wache || ' -Wachenname-')
       
