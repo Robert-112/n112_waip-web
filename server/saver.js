@@ -1,9 +1,6 @@
-module.exports = (app_cfg, sql, waip, uuidv4, logger) => {
+module.exports = (app_cfg, sql, waip, logger) => {
   // Module laden
   const turf = require("@turf/turf");
-
-  // Variablen festlegen
-  let uuid_pattern = new RegExp("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", "i");
 
   // Speichern eines neuen Einsatzes
   const save_einsatz = (waip_data, remote_addr) => {
@@ -35,20 +32,13 @@ module.exports = (app_cfg, sql, waip, uuidv4, logger) => {
           if (waip_uuid) {
             // wenn ein Einsatz mit UUID schon vorhanden ist, dann diese setzten / ueberschreiben
             waip_json.einsatzdaten.uuid = waip_uuid;
-          } else {
-            // uuid erzeugen und zuweisen falls nicht bereits in JSON vorhanden, oder falls keine korrekte uuid
-            if (!waip_json.einsatzdaten.uuid || !uuid_pattern.test(waip_json.einsatzdaten.uuid)) {
-              waip_json.einsatzdaten.uuid = uuidv4();
-            }
           }
 
           // Einsatzdaten in Datenbank speichern und ID des Einsatzes zurückbekommen
           const waip_id = await sql.db_einsatz_speichern(waip_json);
           logger.log(
             "log",
-            `Neuer Einsatz von ${remote_addr} wurde mit der ID ${waip_id} gespeichert und wird jetzt weiter verarbeitet: ${JSON.stringify(
-              waip_json
-            )}`
+            `Neuer Einsatz von ${remote_addr} wurde mit der ID ${waip_id} gespeichert und wird jetzt weiter verarbeitet: ${JSON.stringify(waip_json)}`
           );
 
           // true zurückgeben
@@ -69,24 +59,46 @@ module.exports = (app_cfg, sql, waip, uuidv4, logger) => {
   const save_rmld = (rmld_data, remote_addr) => {
     return new Promise(async (resolve, reject) => {
       try {
-        logger.log("debug", `Rückmeldung von ${remote_addr} erhalten, wird jetzt verarbeitet: ${JSON.stringify(rmld_data)}`);
+        logger.log("log", `${rmld_data.length} Rückmeldung(en) von ${remote_addr} erhalten.`);
+        logger.log("debug", `Rückmeldung(en) von ${remote_addr} werden jetzt verarbeitet: ${JSON.stringify(rmld_data)}`);
+
+        // Variablen vorbereiten
+        let arr_uuid_rueckmeldungen = [];
+
         let valid = await validate_rmld(rmld_data);
         if (valid) {
-          // Rückmeldung speichern
-          const arr_uuid_rueckmeldungen = await sql.db_rmld_save(rmld_data);
-          logger.log("log", `${arr_uuid_rueckmeldungen.length} Rückmeldung(en) von ${remote_addr} erhalten.`);
+          // alle Rückmeldungen per Schliefe in DB in Tabelle waip_rueckmeldungen speichern
+          await Promise.all(
+            rmld_data.map(async (item) => {
+              try {
+                // prüfen ob es zur Rückmeldung auch einen Einsatz gibt
+                const rmld_waip = await sql.db_rmld_check_einsatz(item);
 
-          // Rückmeldung verteilen
-          //waip.rmld_verteilen_by_uuid(arr_uuid_rueckmeldungen);
+                if (rmld_waip) {
+                  // einzelne Rückmeldung speichern
+                  const response_uuid = await sql.db_rmld_single_save(item);
+
+                  // Rückmeldung in Array speichern
+                  arr_uuid_rueckmeldungen.push(response_uuid);
+                  logger.log("log", `Neue Rückmeldung von ${remote_addr} wurde mit der ID ${response_uuid} gespeichert.`);
+                } else {
+                  logger.log("warn", `Kein Einsatz für die Rückmeldung ${item.response_uuid} gefunden, wird nicht gespeichert!`);
+                }
+              } catch (error) {
+                logger.log("error", `Fehler beim speichern einer neuen Rückmeldung. ${error}`);
+              }
+            })
+          );
 
           // true zurückgeben
-          resolve(true);
-        } else {
-          // Error-Meldung erstellen
-          throw new Error("Fehler beim validieren einer Rückmeldung. " + rmld_data);
+          resolve(`Von ${rmld_data.lenght} Rückmeldungen wurden ${arr_uuid_rueckmeldungen.length} gespeichert.`);
+
+          // Rückmeldung verteilen
+          waip.rmld_verteilen_by_uuid(arr_uuid_rueckmeldungen);
+
         }
       } catch (error) {
-        reject(new Error("Fehler beim speichern einer neuen Rückmeldung (RMLD). " + remote_addr + error));
+        reject(new Error("Fehler beim speichern von neuen Rückmeldung(en). " + remote_addr + error));
       }
     });
   };

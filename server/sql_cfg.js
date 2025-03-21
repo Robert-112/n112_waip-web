@@ -1,7 +1,7 @@
 module.exports = (bcrypt, app_cfg) => {
   // Datenbank einrichten
   const Database = require("better-sqlite3");
-  const db = new Database(app_cfg.global.database);
+  const db = new Database(app_cfg.global.database, app_cfg.global.development ? { verbose: console.log } : {});
   db.pragma("foreign_keys");
   db.pragma("journal_mode = WAL");
 
@@ -16,7 +16,7 @@ module.exports = (bcrypt, app_cfg) => {
   const row = stmt.get();
 
   if (row === undefined) {
-    console.log("Datenbank scheint leer. Tabellen werden angelegt.");
+    console.log("START - Datenbank scheint leer. Tabellen werden angelegt.");
 
     let sqlInit = `
 
@@ -26,15 +26,13 @@ module.exports = (bcrypt, app_cfg) => {
         uuid TEXT,
         zeitstempel DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
         ablaufzeit DATETIME,         -- neu  
-        els_einsatz_id INTEGER,      -- neu
         els_einsatznummer TEXT,      -- vorher: einsatznummer TEXT,
-        alarmzeit TEXT,
+        alarmzeit DATETIME,          -- vorher: alarmzeit TEXT,
         einsatzart TEXT,
         stichwort TEXT,
         sondersignal INTEGER,
         besonderheiten TEXT,
         einsatzdetails TEXT,         -- neu
-        landkreis TEXT,              -- neu
         ort TEXT,
         ortsteil TEXT,
         ortslage TEXT,               -- neu
@@ -48,14 +46,14 @@ module.exports = (bcrypt, app_cfg) => {
         wachenfolge INTEGER,
         wgs84_x REAL,                -- vorher: TEXT
         wgs84_y REAL,                -- vorher: TEXT
-        geo_h3_index,                -- vorher: wgs84_area TEXT,
+        geometry TEXT,               -- vorher: wgs84_area TEXT,     
         UNIQUE (id, uuid)
       );
       
       -- Tabelle für Einsatzmittel
       CREATE TABLE IF NOT EXISTS waip_einsatzmittel (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
-        zeitstempel DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP)),
+        zeitstempel DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
         em_waip_einsaetze_id INTEGER NOT NULL,       -- vorher: waip_einsaetze_ID
         els_einsatznummer TEXT,                      -- neu
         em_funkrufname TEXT,                         -- vorher: einsatzmittel TEXT,
@@ -65,7 +63,6 @@ module.exports = (bcrypt, app_cfg) => {
         em_fmsstatus TEXT,                           -- vorher: status TEXT,
         em_wgs84_x REAL,                             -- vorher: wgs84_x TEXT,
         em_wgs84_y REAL,                             -- vorher: wgs84_y TEXT,
-        em_h3_index TEXT,                            -- neu
         em_issi TEXT,                                -- neu
         em_opta TEXT,                                -- neu
         em_radiochannel TEXT,                        -- neu
@@ -124,11 +121,11 @@ module.exports = (bcrypt, app_cfg) => {
       -- Tabelle für einzelne Rückmeldungen
       CREATE TABLE IF NOT EXISTS waip_rueckmeldungen (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
-        zeitstempel DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP)), --neu
+        zeitstempel DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')), --neu
         waip_uuid TEXT,
         rmld_uuid TEXT,
         rmld_alias TEXT,               -- vorher: alias
-        rmld_adress TEXT,              -- neu   
+        rmld_address TEXT,              -- neu   
         -- geloescht: INTEGER einsatzkraft, maschinist, fuehrungskraft
         rmld_role TEXT,                -- neu
         rmld_capability_agt INTEGER,   -- vorher: agt
@@ -141,8 +138,7 @@ module.exports = (bcrypt, app_cfg) => {
         time_arrival DATETIME,         -- vorher: arrival_time
         wache_id INTEGER,
         wache_nr INTEGER,
-        wache_name TEXT,
-        group_nr INTEGER               -- neu (Gruppe der Alarmierung)
+        wache_name TEXT
       );
 
       -- Tabelle für Benutzer
@@ -162,7 +158,7 @@ module.exports = (bcrypt, app_cfg) => {
         user_id INTEGER,                -- neu
         external_id TEXT,               -- neu
         public_key TEXT,              -- neu
-        FOREIGN KEY(user_id) REFERENCES waip_users(id)
+        FOREIGN KEY(user_id) REFERENCES waip_user(id)
       );
 
       -- Tabelle für Einstellungen der Benutzer
@@ -171,7 +167,7 @@ module.exports = (bcrypt, app_cfg) => {
         user_id INTEGER,
         config_type TEXT,               -- neu
         config_value TEXT,              -- neu
-        FOREIGN KEY(user_id) REFERENCES waip_users(id)
+        FOREIGN KEY(user_id) REFERENCES waip_user(id)
       );
       
       -- Tabelle für Übersetzungen erstellen
@@ -181,17 +177,7 @@ module.exports = (bcrypt, app_cfg) => {
         rp_input TEXT,                  -- vorher: einsatzmittel_typ TEXT,
         rp_output TEXT                  -- vorher: einsatzmittel_rufname TEXT
       );
-        
-      -- Tabelle für automatische Exports
-      CREATE TABLE IF NOT EXISTS waip_export (
-        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
-        export_typ TEXT,
-        export_name TEXT,
-        export_text TEXT,
-        export_filter TEXT,
-        export_recipient TEXT
-      );
-      
+          
       -- Tabelle zur Protokollierung (Log)
       CREATE TABLE IF NOT EXISTS waip_log (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
@@ -232,10 +218,10 @@ module.exports = (bcrypt, app_cfg) => {
     const stmt = db.prepare("DELETE FROM waip_clients");
     const info = stmt.run();
 
-    console.log("Datenbank existiert bereits, keine Erstellung notwendig. Temporäre Daten in Waip_clients wurden gelöscht:", info.changes);
+    console.log("START - Datenbank existiert bereits, keine Erstellung notwendig. Temporäre Daten in Waip_clients wurden gelöscht:", info.changes);
   }
 
-  console.log("Datenbank geöffnet.");
+  console.log("START - Datenbank geöffnet.");
 
   return db;
 };

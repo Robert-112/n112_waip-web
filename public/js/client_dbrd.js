@@ -208,31 +208,7 @@ function recount_rmld(p_uuid) {
   
   
 
-/* ########################### */
-/* ####### Timeline ######## */
-/* ########################### */
 
-    // DOM element where the Timeline will be attached
-    let container = document.getElementById('visualization');
-    let items = new vis.DataSet();
-    let groups = new vis.DataSet();
-
-    // Configuration for the Timeline
-    let customDate = new Date();
-    let alert_start = new Date(customDate.setMinutes(customDate.getMinutes() - 2));
-    let timeline_end = new Date(customDate.setMinutes(customDate.getMinutes() + 13));
-    let options = {
-      rollingMode: {
-        follow: true,
-        offset: 0.25
-      },
-      start: alert_start,
-      end: timeline_end
-    };
-
-    // Create a Timeline
-    let timeline = new vis.Timeline(container, items, options);
-    timeline.setGroups(groups);
  
 /* ########################### */
 /* ######## SOCKET.IO ######## */
@@ -431,9 +407,7 @@ socket.on('io.Einsatz', function (data) {
         status_div.className = 'p-2 badge badge-dark';
         break;
     }
-
-
-    
+  
     
     status_div.innerHTML = data.einsatzmittel[i].status;
 
@@ -456,10 +430,12 @@ socket.on('io.Einsatz', function (data) {
     }).addTo(map);
     map.setView(new L.LatLng(data.wgs84_x, data.wgs84_y), 15);
   } else {
+    /* TODO Geometry einbinden
     geojson = L.geoJSON(JSON.parse(data.wgs84_area));
     geojson.addTo(map);
     map.fitBounds(geojson.getBounds());
     map.setZoom(13);
+    */
   };
   // Marker in Timeline setzen
   let markerText = 'Alarmierung';
@@ -544,3 +520,29 @@ socket.on('io.new_rmld', function (data) {
     });
   };
 });
+
+/* ########################### */
+/* ####### Timeline ######## */
+/* ########################### */
+
+    // DOM element where the Timeline will be attached
+    let container = document.getElementById('visualization');
+    let items = new vis.DataSet();
+    let groups = new vis.DataSet();
+
+    // Configuration for the Timeline
+    let customDate = new Date();
+    let alert_start = new Date(customDate.setMinutes(customDate.getMinutes() - 2));
+    let timeline_end = new Date(customDate.setMinutes(customDate.getMinutes() + 13));
+    let options = {
+      rollingMode: {
+        follow: true,
+        offset: 0.25
+      },
+      start: alert_start,
+      end: timeline_end
+    };
+
+    // Create a Timeline
+    let timeline = new vis.Timeline(container, items, options);
+    timeline.setGroups(groups);

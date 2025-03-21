@@ -7,13 +7,13 @@ app_cfg.global = {
   https_port: 3002,
   udpport: 60233,
   database: "./database.sqlite3",
-  db_limit: 5, // Limit für Tabellen Einsätze & Einsatzmittel in der Datenbank
+  db_limit: 500, // Limit für Tabellen Einsätze & Einsatzmittel in der Datenbank
   db_limit_log: 100000, // Limit für Log-Tabelle in der Datenbank
   soundpath: "/public/media/",
   mediapath: "/media/",
   custom_namespace: "59cc72ec-4ff5-499d-81e2-ec49c1d01252",
-  time_to_delete_waip: 4,
-  default_time_for_standby: 30,
+  time_to_delete_waip: 30,
+  default_time_for_standby: 20,
   system_cleanup_time: 10000, // Millisekunden nach denen zyklisch aufgeräumt wird
   circumcircle: 5,
   defaultuser: "me",

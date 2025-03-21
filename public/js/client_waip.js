@@ -376,7 +376,7 @@ socket.on('io.standby', function (data) {
 // Einsatzdaten laden, Wachalarm anzeigen
 socket.on('io.new_waip', function (data) {
   // DEBUG
-  console.log(data);
+  console.log('Neuer Einsatz:', data);
   // Einsatz-ID speichern
   waip_id = data.id;
   // Alarmzeitsetzen:
@@ -501,7 +501,7 @@ socket.on('io.new_waip', function (data) {
 
 socket.on('io.new_rmld', function (data) {
   // DEBUG
-  console.log(data);
+  console.log('neue Rückmeldung:',data);
   // FIXME  Änderung des Funktions-Typ berücksichtigen
   // Neue Rueckmeldung hinterlegen
   data.forEach(function (arrayItem) {

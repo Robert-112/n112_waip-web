@@ -33,7 +33,7 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
 
         // Raum der Wache beitreten
         socket.join(wachen_nr);
-        logger.db_log("WAIP", `Alarmmonitor Nr. ${wachen_nr} wurde von ${client_ip} (${socket.id}) aufgerufen.`);
+        logger.log("waip", `Alarmmonitor Nr. ${wachen_nr} wurde von ${client_ip} (${socket.id}) aufgerufen.`);
 
         // anzuzeigenden Einsatz abfragen
         const waip_id = await sql.db_einsatz_ermitteln(wachen_nr);
@@ -97,7 +97,7 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         } else {
           // Dashboard/Einsatz scheint vorhanden/plausibel, Socket-Room beitreten
           socket.join(dbrd_uuid.uuid);
-          logger.db_log("DBRD", `Dashboard mit der UUID ${uuid} wurde von ${client_ip} (${socket.id}) aufgerufen.`);
+          logger.log("dbrd", `Dashboard mit der UUID ${uuid} wurde von ${client_ip} (${socket.id}) aufgerufen.`);
 
           // Einsatz an Dashboard senden
           waip.dbrd_verteilen(dbrd_uuid.uuid, socket);

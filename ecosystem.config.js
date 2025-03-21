@@ -7,6 +7,6 @@ module.exports = {
     combine_logs: true,
     watch: true,
     ignore_watch: ["database.*","sessions*","node_modules","public","\\.git"],
-    log_file: "/home/supervisor/development/log/waip.log"
+    log_file: "~/log/waip_v2.log"
   }]
 }
