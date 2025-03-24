@@ -24,7 +24,7 @@ body {
 }
 
 .fullheight {
-  height: calc(100vh - 60px - 5rem - 2rem);
+  height: calc(100vh - 60px - 7rem);
 }
 
 /*** Anpassungen an Bootstrap ******************/
@@ -39,6 +39,10 @@ audio {
 
 .h-10 {
   height: 10% !important;
+}
+
+.h-12-5 {
+  height: 12.5% !important;
 }
 
 .h-15 {
@@ -85,6 +89,10 @@ audio {
   height: 80% !important;
 }
 
+.h-87-5 {
+  height: 87.5% !important;
+} 
+
 .h-90 {
   height: 90% !important;
 }
@@ -103,6 +111,10 @@ audio {
 @media screen and (orientation:portrait) {
   .pt-3_pt {
     padding-top: 1rem !important;
+  }
+
+  .w-100_pt {
+    width: 100% !important;
   }
 }
 
@@ -164,6 +176,14 @@ audio {
   .h-100_ls {
     height: 100% !important;
   }
+
+  .w-40_ls {
+    width: 40% !important;
+  }
+
+  .w-60_ls {
+    width: 60% !important;
+  }
 }
 
 /*** Animation für den Wachennamen ***/
@@ -178,10 +198,6 @@ audio {
   font-size: 1.6vw;
 }
 
-#headline {
-  height: 2rem;
-}
-
 #screen_saver {
   position: relative;
   width: 100%;
@@ -192,4 +208,20 @@ audio {
 #clock_day {
   transition: all 0.5s ease-in-out;
   z-index: 1;
+}
+
+#em_weitere {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  text-align: center;
+}
+
+#besonderheiten {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  padding-left: 1rem;
+  padding-bottom: 0.5rem;
 }

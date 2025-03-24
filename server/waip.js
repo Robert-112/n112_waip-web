@@ -131,7 +131,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           // Einsatz-ID mittels Einsatz-UUID ermitteln
           const waip_id = await sql.db_einsatz_get_waipid_by_uuid(waip_uuid);
           
-
           // anhand der waip_id die beteiligten Wachennummern / Socket-Räume in '/waip' zum Einsatz ermitteln
           const waip_rooms = await sql.db_einsatz_get_waip_rooms(waip_id);
 
@@ -214,36 +213,17 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   const dbrd_verteilen_socket = (dbrd_uuid, socket) => {
     return new Promise(async (resolve, reject) => {
       try {
-
-        
-        if (dbrd_sockets) {
-          // Rueckmeldung auslesen
-          const rmld_obj = await sql.db_rmld_get_by_rmlduuid(rmld_uuid);
-          if (rmld_obj) {
-            // Rückmeldung an Dashboards senden
-            dbrd_sockets.forEach(function (row) {
-              let socket = io.of("/dbrd").connected[row.socket_id];
-              socket.emit("io.new_rmld", rmld_obj);
-              const logMessage1 = `Rückmeldung ${rmld_uuid} für den Einsatz mit der ID ${waip_id} an Dashboard ${waip_uuid} gesendet.`;
-              logger.log("log", logMessage1);
-              const logMessage2 = `Rückmeldung JSON: ${JSON.stringify(rmld_obj)}`;
-              logger.log("debug", logMessage2);
-            });
-          }
-        }
-
-
         // Einsatzdaten laden
         const einsatzdaten = await sql.db_einsatz_get_by_uuid(dbrd_uuid);
         if (!einsatzdaten) {
           // Standby senden wenn Einsatz nicht vorhanden
           // BUG hier kein standby senden, sondern nicht vorhanden
-          socket.emit("io.standby", null);
-          const logMessage = `Der angefragte Einsatz ${dbrd_uuid} ist nicht - oder nicht mehr - vorhanden!, Standby an Dashboard-Socket ${socket.id} gesendet.`;
+          socket.emit("io.deleted", null);
+          const logMessage = `Der angefragte Einsatz ${dbrd_uuid} ist nicht - oder nicht mehr - vorhanden!, Dashboard-Socket ${socket.id} wurde getrennt.`;
           logger.log("log", logMessage);
           sql.db_client_update_status(socket, null);
         } else {
-          const valid = await sql.db_user_check_permission_for_waip(socket.request.user, einsatzdaten.id);
+          const valid = await sql.db_user_check_permission_for_waip(socket, einsatzdaten.id);
           // Daten entfernen wenn kann authentifizierter Nutzer
           if (!valid) {
             delete einsatzdaten.objekt;
@@ -412,26 +392,27 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   // Funktion die alle xxx Sekunden ausgeführt wird
   const system_cleanup = async () => {
     // alte Einsätze aus der Datenbank laden
-    const old_waips = await sql.db_einsaetze_get_old();
+    const alte_einsaetze = await sql.db_einsaetze_get_old();
 
     // wenn alte Einsäzte vorhanden sind, dann aufräumen
-    //console.warn("old_waips", old_waips);
-    if (old_waips) {
-      old_waips.forEach(async (waip) => {
+    if (alte_einsaetze) {
+      alte_einsaetze.forEach(async (waip) => {
+        
         // Aufräumen der alten Einsätze
         logger.log("log", `Einsatz mit der ID ${waip.id} ist veraltet. Datenbank wird aufgeräumt.`);
 
-        // Alarmmonitore auf Standby setzen
-        const rooms = await sql.db_einsatz_get_waip_rooms(waip.id);
-        console.warn("rooms", rooms);
-        if (rooms) {
-          rooms.forEach(async (room) => {
-            // für jede Wache (room.room) die verbundenen Sockets(Clients) ermitteln und Standby senden
-            //console.warn("room", room);
-            const room_sockets = await io.of("/waip").in(room.room.toString()).fetchSockets();
-            //console.warn("room_sockets", room_sockets);
+        // Alarmmonitore ermitteln an die ein Standby gesendet werden muss
+        const rooms_to_standby = await sql.db_einsatz_get_waip_rooms(waip.id);
+        
+        // Standby an die ermittelten Alarmmonitore senden
+        if (rooms_to_standby) {
+          rooms_to_standby.forEach(async (room_to_standby) => {
+
+            // für jede Wache (room_to_standby.room) die verbundenen Sockets(Clients) ermitteln und Standby senden
+            const room_sockets = await io.of("/waip").in(room_to_standby.room.toString()).fetchSockets();
+            
             // TODO hier wäre es besser, das standby an den Raum zu senden, nicht an jeden Socket
-            // Funktionsname:     standby_verteilen_rooms
+
             for (const socket of room_sockets) {
               // Standby senden
               const same_id = await sql.db_client_check_waip_id(socket.id, waip.id);
@@ -442,8 +423,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
                   sql.db_client_update_status(socket, null);
                 }
             }
-
-            
           });
         }
 
@@ -473,44 +452,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       });
     }
 
-    // alte Einsätze aus der Datenbank löschen
-    sql.db_einsaetze_get_old((old_waips) => {
-      // FIXME war zuvor eine Schleife die zurückgeliefert wurde!!!!
-      // wurde in Version 2 geändert in ein Object, welches jetzt hier in einer Schleife abzuarbeiten ist
-
-      // nach alten Einsaetzen suchen und diese ggf. loeschen
-      if (old_waips) {
-        // iterate trough old_waips with for each
-        old_waips.forEach((waip) => {
-          // Einsatz mit der ID "waip.id" ist veraltet und kann gelöscht werden
-          // Dashboards trennen, deren Einsatz geloescht wurde
-          // beteiligte Wachen zum Einsatz ermitteln
-        });
-      }
-    });
-
-    // loeschen alter Sounddaten nach alter (15min) und socket-id (nicht mehr verbunden)
-    fs.readdirSync(process.cwd() + app_cfg.global.soundpath).forEach(async (file) => {
-      // nur die mp3s von alten clients loeschen
-      if (file.substring(0, 4) != "bell" && file.substring(file.length - 3) == "mp3" && file.substring(file.length - 8) != "_tmp.mp3") {
-        // Socket-ID aus Datei-Namen extrahieren
-        socket_name = file.substring(0, file.length - 4);
-        // Socket-ID anpassen, damit die SQL-Abfrage ein Ergebnis liefert
-        // TODO: löschen?: socket_name = socket_name.replace("waip", "/waip#");
-        const socketid = await sql.db_socket_get_by_id(socket_name);
-        if (!socketid) {
-          try {
-            // Datei loeschen
-            fs.unlinkSync(process.cwd() + app_cfg.global.soundpath + file);
-            logger.log("log", `Veraltete Sound-Datei ${file} wurde gelöscht.`);
-          } catch (error) {
-            logger.log("error", `Fehler beim löschen der Sound-Datei ${file} , Fehlermeldung: ${error}`);
-          }
-        }
-      }
-    });
-
-    // alle User-Einstellungen prüfen und ggf. Standby senden
+    // alle User-Einstellungen prüfen und ggf. Standby senden, z.B. wenn Reset_Timestamp erreicht ist
     const socket_ids = await sql.db_socket_get_all_to_standby();
     if (socket_ids) {
       for (const row of socket_ids) {
@@ -524,6 +466,28 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
         }
       }
     }
+
+    // loeschen alter Sounddaten nach alter (15min) und Socket-ID (nicht mehr verbunden)
+    fs.readdirSync(process.cwd() + app_cfg.global.soundpath).forEach(async (file) => {
+      // nur die mp3s von alten Clients loeschen, die nicht mehr verbunden sind
+      if (file.substring(0, 4) != "bell" && file.substring(file.length - 3) == "mp3" && file.substring(file.length - 8) != "_tmp.mp3") {
+        
+        // Socket-ID aus Datei-Namen extrahieren
+        socket_name = file.substring(0, file.length - 4);
+
+        // Socket-ID anpassen, damit die SQL-Abfrage ein Ergebnis liefert
+        const socketid = await sql.db_socket_get_by_id(socket_name);
+        if (!socketid) {
+          try {
+            // Datei loeschen
+            fs.unlinkSync(process.cwd() + app_cfg.global.soundpath + file);
+            logger.log("log", `Veraltete Sound-Datei ${file} wurde gelöscht.`);
+          } catch (error) {
+            logger.log("error", `Fehler beim löschen der Sound-Datei ${file} , Fehlermeldung: ${error}`);
+          }
+        }
+      }
+    });
   };
 
   // System alle xxx Sekunden aufräumen

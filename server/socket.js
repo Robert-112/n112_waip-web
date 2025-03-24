@@ -103,16 +103,25 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
     socket.on("dbrd", async (uuid) => {
       try {
         // prüfen ob Dashboard/Einsatz vorhanden
-        const dbrd_uuid = await sql.db_einsatz_check_uuid(uuid);
-        if (!dbrd_uuid) {
+        const dbrd = await sql.db_einsatz_check_uuid(uuid);
+        if (!dbrd) {
           throw `Das Dashboards mit der UUID ${uuid} ist nicht mehr vorhanden (Anfrage lieferte kein Ergebnis)!`;
         } else {
           // Dashboard/Einsatz scheint vorhanden/plausibel, Socket-Room beitreten
-          socket.join(dbrd_uuid.uuid);
+          socket.join(dbrd.uuid);
           logger.log("dbrd", `Dashboard mit der UUID ${uuid} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);
 
           // Einsatz an Dashboard senden
-          waip.dbrd_verteilen_socket(dbrd_uuid.uuid, socket);
+          waip.dbrd_verteilen_socket(dbrd.uuid, socket);
+
+          // alle vorhanden Rückmeldungen zum Dashboard aus Datenbank laden
+          const rmld_waip_arr = await sql.db_rmlds_get_for_wache(0, dbrd.id, null);
+
+          // vorhandene Rückmeldungen an Alarmmonitor senden
+          if (rmld_waip_arr){ 
+            waip.rmld_arr_verteilen_socket(rmld_waip_arr, socket);
+          }
+
         }
       } catch (error) {
         const logMessage = `Fehler beim Aufruf des Dashboards mit der UUID ${uuid} von ${remote_ip} (${socket.id})! ${error}`;

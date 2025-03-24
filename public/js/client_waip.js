@@ -89,13 +89,13 @@ function resize_text() {
   };
   // Tableau nur Anpassen wenn sichtbar
   if ($('#waiptableau').is(':visible')) {
-    /*textFit(document.getElementsByClassName('tf_singleline'), {
+    textFit(document.getElementsByClassName('tf_singleline'), {
       minFontSize: 1,
       maxFontSize: 500
-    });*/
-    /*textFit(document.getElementsByClassName('tf_multiline'), {
+    });
+    textFit(document.getElementsByClassName('tf_multiline'), {
       detectMultiLine: false
-    });*/
+    });
     // Karte neu setzen
     map.invalidateSize();
     $('body').css('background-color', '#222');
@@ -154,7 +154,7 @@ function do_on_Inactive() {
   $('.navbar').fadeOut('slow');
   $('.footer').fadeOut('slow');
   $('.fullheight').css({
-    height: 'calc(100vh - 4rem)',
+    height: 'calc(100vh - 2rem)',
     cursor: 'none'
   });
   $('body').css({
@@ -172,7 +172,7 @@ function do_on_Active() {
   $('.footer').fadeIn('slow');
   $('body').css({
     marginBottom: '60px',
-    paddingTop: '5rem',
+    paddingTop: '4rem',
     paddingBottom: '0'
   });
   $('.fullheight').css({

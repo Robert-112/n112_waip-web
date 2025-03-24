@@ -229,7 +229,7 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT uuid FROM waip_einsaetze WHERE uuid LIKE ? ;
+          SELECT id, uuid FROM waip_einsaetze WHERE uuid LIKE ? ;
         `);
         const row = stmt.get(uuid);
         if (row === undefined) {
@@ -414,7 +414,7 @@ module.exports = (db, app_cfg) => {
         const stmt = db.prepare(`
           SELECT e.id, e.uuid, e.zeitstempel, e.einsatzart, e.stichwort, e.sondersignal, e.objekt, 
             e.ort, e.ortsteil, e.strasse, e.hausnummer, e.besonderheiten,
-            e.wgs84_x, e.wgs84_y 
+            e.wgs84_x, e.wgs84_y, e.geometry
           FROM waip_einsaetze e 
           WHERE e.uuid LIKE ?;
         `);
