@@ -24,6 +24,8 @@ module.exports = (app_cfg, sql, waip, logger) => {
           // true zurückgeben
           resolve(true);
 
+          // TODO: an dieser Stelle für die Einsatzmittel die koordinaten der Heimatwachen ermitteln und für diese eine Anfrage beim Routing-Server machen
+
           // Einsatz an Socket-IO-Räume verteilen
           waip.einsatz_verteilen_rooms(waip_id);
 

@@ -76,34 +76,42 @@ function reset_rmld(p_uuid) {
       $(this).remove();
     };
   });
-  $('#pg-ma').children().each(function (i) {
+  $('#pg-gf').children().each(function (i) {
     if (!$(this).hasClass(bar_uuid)) {
       $(this).remove();
     };
   });
-  $('#pg-fk').children().each(function (i) {
+  $('#pg-zf').children().each(function (i) {
+    if (!$(this).hasClass(bar_uuid)) {
+      $(this).remove();
+    };
+  });
+  $('#pg-vf').children().each(function (i) {
     if (!$(this).hasClass(bar_uuid)) {
       $(this).remove();
     };
   });
 };
 
-function add_resp_progressbar(p_uuid, p_id, p_type, p_agt, p_start, p_end) {
+function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_ma, p_med, p_start, p_end) {
   // Hintergrund der Progressbar festlegen
   var bar_background = '';
   var bar_border = '';
-  if (p_agt) {
+  if (p_agt == 1) {
     bar_border = 'border border-warning';
   };
   switch (p_type) {
     case 'ek':
       bar_background = 'bg-success';
       break;
-    case 'ma':
+    case 'gf':
       bar_background = 'bg-info';
       break;
-    case 'fk':
+    case 'zf':
       bar_background = 'bg-light';
+      break;
+    case 'vf':
+      bar_background = 'bg-danger';
       break;
     default:
       bar_background = '';
@@ -113,9 +121,30 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_agt, p_start, p_end) {
   // pruefen ob div mit id 'pg-'+p_id schon vorhanden ist
   var pgbar = document.getElementById('pg-' + p_id);
   if (!pgbar) {
-    $('#pg-' + p_type).append('<div class="progress mt-1 position-relative ' + bar_border + ' ' + bar_uuid + '" id="pg-' + p_id + '" style="height: 15px; font-size: 14px;"></div>');
-    $('#pg-' + p_id).append('<div id="pg-bar-' + p_id + '" class="progress-bar progress-bar-striped ' + bar_background + '" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>');
-    $('#pg-bar-' + p_id).append('<small id="pg-text-' + p_id + '" class="justify-content-center d-flex position-absolute w-100"></small>');
+    // col-4 hinzufügen mit id
+    $('#pg-container').append('<div class="col-xl-4 col-6 pg-' + p_type+ '" id="pg-' + p_id + '"></div>');
+    // Progressbar hinzufügen mit id
+    $('#pg-' + p_id).append('<div class="progress mt-1 position-relative ' + bar_border + ' ' + bar_uuid + '" id="pg-' + p_type + '-' + p_id + '" style="height: 15px; font-size: 14px;"></div>');
+    // wenn p_agt > 0 ist, dann als Klasse p_agt hinterlegen
+    if (p_agt > 0) {
+      $('#pg-' + p_id).addClass('p_agt');
+    };
+    // wenn p_fzf > 0 ist, dann als Klasse p_fzf hinterlegen
+    if (p_fzf > 0) {  
+      $('#pg-' + p_id).addClass('p_fzf');
+    };
+    // wenn p_ma > 0 ist, dann als Klasse p_ma hinterlegen
+    if (p_ma > 0) {
+      $('#pg-' + p_id).addClass('p_ma');
+    };
+    // wenn p_med > 0 ist, dann als Klasse p_med hinterlegen
+    if (p_med > 0) {
+      $('#pg-' + p_id).addClass('p_med');
+    };
+    //$('#pg-' + p_type + '-' + p_id ).append('<div id="pg-bar-' + p_id + '" class="progress-bar progress-bar-striped ' + bar_background + '" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>');
+    //$('#pg-bar-' + p_id).append('<small id="pg-text-' + p_id + '" class="w-100"></small>');
+    $('#pg-' + p_type + '-' + p_id ).append('<div id="pg-bar-' + p_id + '" class="progress-bar progress-bar-striped ' + bar_background + '" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>');
+    $('#pg-' + p_type + '-' + p_id ).append('<div id="pg-text-' + p_id + '" class="justify-content-center align-items-center d-flex position-absolute h-100 w-100"></div>');
   } else {
     // TODO PG-Bar ändern falls neue/angepasste Rückmeldung
   };
@@ -123,11 +152,11 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_agt, p_start, p_end) {
   clearInterval(counter_rmld[p_id]);
   counter_rmld[p_id] = 0;
   counter_rmld[p_id] = setInterval(function () {
-    do_rmld_bar(p_id, p_start, p_end);
+    do_rmld_bar(p_id, p_start, p_end, p_content, p_agt, p_fzf, p_ma, p_med);
   }, 1000);
 };
 
-function do_rmld_bar(p_id, start, end) {
+function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
   //console.log(p_id);
   today = new Date();
   // restliche Zeit ermitteln
@@ -140,66 +169,102 @@ function do_rmld_bar(p_id, start, end) {
   if (secondsDifference <= 9) {
     secondsDifference = '0' + secondsDifference;
   };
-  var minutes = minutesDifference + ':' + secondsDifference;
+
+  if (content) {
+    var pg_text_done = ' ' + content;
+    var pg_text_time = minutesDifference + ':' + secondsDifference + ' - ' + content;
+  } else {
+    var pg_text_done = '';
+    var pg_text_time = minutesDifference + ':' + secondsDifference;
+  };
+  if (agt > 0) {
+    pg_text_done += ' AGT';
+  };
+  if (fzf > 0) {
+    pg_text_done += ' FZF';
+  };
+  if (ma > 0) {
+    pg_text_done += ' MA';
+  };
+  if (med > 0) {
+    pg_text_done += ' MED';
+  };
+
   // Progressbar anpassen
   if (current_progress >= 100) {
     $('#pg-bar-' + p_id)
       .css('width', '100%')
       .attr('aria-valuenow', 100)
+    $('#pg-text-' + p_id).text(pg_text_done)
       .addClass('ion-md-checkmark-circle');
-    $('#pg-text-' + p_id).text('');
     // FIXME Counter_Id not defined
     clearInterval(counter_ID[p_id]);
   } else {
     $('#pg-bar-' + p_id)
       .css('width', current_progress + '%')
       .attr('aria-valuenow', current_progress);
-    $('#pg-text-' + p_id).text(minutes);
+    $('#pg-text-' + p_id).text(pg_text_time);
   };
 };
 
 function recount_rmld(p_uuid) {
-  var bar_uuid = 'bar-' + p_uuid;
-  var agt_count = 0;
+  let bar_uuid = 'bar-' + p_uuid;
   // Zähler auf 0 Setzen
   $('#ek-counter').text(0);
-  $('#ma-counter').text(0);
-  $('#fk-counter').text(0);
+  $('#gf-counter').text(0);
+  $('#zf-counter').text(0);
+  $('#vf-counter').text(0);
   $('#agt-counter').text(0);
-  // EK zählen
-  $('#pg-ek').children().each(function (i) {
-    if ($(this).hasClass(bar_uuid)) {
-      var tmp_count = parseInt($('#ek-counter').text());
+  $('#ma-counter').text(0);
+  $('#fzf-counter').text(0);
+  $('#med-counter').text(0);
+
+  $('#gs-counter').text($('.pg-').length + $('.pg-ek').length + $('.pg-gf').length + $('.pg-zf').length + $('.pg-vf').length);
+
+  $('#ek-counter').text($('.pg-ek').length);
+  $('#gf-counter').text($('.pg-gf').length);
+  $('#zf-counter').text($('.pg-zf').length);
+  $('#vf-counter').text($('.pg-vf').length);
+
+  /*$('.pg-ek').children().each(function (i) {
+    if ($(this).hasClass(progress-bar)) {
+      const tmp_count = parseInt($('#ek-counter').text());
       $('#ek-counter').text(tmp_count + 1);
-      if ($(this).hasClass('border-warning')) {
-        agt_count++;
-      };
     };
-  });
-  // MA zählen
-  $('#pg-ma').children().each(function (i) {
+  });  
+  // GF zählen
+  $('#pg-gf').children().each(function (i) {
     if ($(this).hasClass(bar_uuid)) {
-      var tmp_count = parseInt($('#ma-counter').text());
-      $('#ma-counter').text(tmp_count + 1);
-      if ($(this).hasClass('border-warning')) {
-        agt_count++;
-      };
+      const tmp_count = parseInt($('#gf-counter').text());
+      $('#gf-counter').text(tmp_count + 1);
     };
   });
-  // FK zählen
-  $('#pg-fk').children().each(function (i) {
+  // ZF zählen
+  $('#pg-zf').children().each(function (i) {
     if ($(this).hasClass(bar_uuid)) {
-      var tmp_count = parseInt($('#fk-counter').text());
-      $('#fk-counter').text(tmp_count + 1);
-      if ($(this).hasClass('border-warning')) {
-        agt_count++;
-      };
+      const tmp_count = parseInt($('#zf-counter').text());
+      $('#zf-counter').text(tmp_count + 1);
     };
   });
-  // AGT setzen
-  $('#agt-counter').text(agt_count);
+  // VF zählen
+  $('#pg-vf').children().each(function (i) {
+    if ($(this).hasClass(bar_uuid)) {
+      const tmp_count = parseInt($('#vf-counter').text());
+      $('#vf-counter').text(tmp_count + 1);
+    };
+  });*/
+  // zähle all Elemente mit der class p_agt und dem wert 1
+  console.log($('.p_agt').length);
+
+  $('#agt-counter').text($('.p_agt').length);
+  $('#ma-counter').text($('.p_ma').length);
+  $('#fzf-counter').text($('.p_fzf').length);
+  $('#med-counter').text($('.p_med').length);
+  
+
+
   // Rückmeldecontainer anzeigen/ausblenden
-  if ($('#ek-counter').text() == '0' && $('#ma-counter').text() == '0' && $('#fk-counter').text() == '0' && $('#agt-counter').text() == '0') {
+  if ($('#ek-counter').text() == '0 EK' && $('#gf-counter').text() == '0 GF' && $('#zf-counter').text() == '0 ZF' && $('#vf-counter').text() == '0 VF') {
     $('#rmld_container').addClass('d-none');
   } else {
     $('#rmld_container').removeClass('d-none');
@@ -219,13 +284,15 @@ function recount_rmld(p_uuid) {
 
     // Configuration for the Timeline
     var customDate = new Date();
-    var alert_start = new Date(customDate.setMinutes(customDate.getMinutes() - 2));
-    var timeline_end = new Date(customDate.setMinutes(customDate.getMinutes() + 13));
+    var alert_start = new Date(customDate.setMinutes(customDate.getMinutes() - 3));
+    var timeline_end = new Date(customDate.setMinutes(customDate.getMinutes() + 15));
     var options = {
       rollingMode: {
         follow: true,
         offset: 0.25
       },
+      type: 'point',
+      locale: 'de',
       start: alert_start,
       end: timeline_end
     };
@@ -233,13 +300,22 @@ function recount_rmld(p_uuid) {
     // Create a Timeline
     var timeline = new vis.Timeline(container, items, options);
     timeline.setGroups(groups);
+
+    // Button für Timeline-Ansicht auf alle Einträge
+    document.getElementById('fit_timeline').onclick = function() {
+      timeline.toggleRollingMode();
+      timeline.setWindow(timeline.getItemRange().min, timeline.getItemRange().max, {animation: false});
+      timeline.fit();
+    };
  
 /* ########################### */
 /* ######## SOCKET.IO ######## */
 /* ########################### */
 
 // Websocket
-var socket = io('/dbrd');
+var socket = io('/dbrd', {
+  withCredentials: true
+});
 
 // Wachen-ID bei Connect an Server senden
 socket.on('connect', function () {
@@ -249,8 +325,8 @@ socket.on('connect', function () {
 });
 
 socket.on('connect_error', function (err) {
-  $('#waipModalTitle').html('FEHLER');
-  $('#waipModalBody').html('Verbindung zum Server getrennt!');
+  $('#waipModalTitle').text('FEHLER');
+  $('#waipModalBody').tex('Verbindung zum Server getrennt!');
   $('#waipModal').modal('show');
 });
 
@@ -264,7 +340,7 @@ socket.on('io.version', function (server_id) {
       $('#waipModal').modal('show');
       setTimeout(function () {
         location.reload();
-      }, 10000);
+      }, Math.floor(Math.random() * (15000 - 1000 + 1)) + 1000);
     }, 1000);
   };
 });
@@ -401,7 +477,7 @@ socket.on('io.Einsatz', function (data) {
     
     //Flex-Element fuer Einsatzmittel erzeugen
     var flex_div_em = document.createElement('div');
-    flex_div_em.className = 'flex-fill rounded bg-secondary p-2 m-1';
+    flex_div_em.className = 'flex-fill rounded bg-secondary text-nowrap p-2 m-1';
 
     //Justify-Rahmen feuer Einsatzmittel erzeugen
     var justify_div = document.createElement('div');
@@ -432,9 +508,6 @@ socket.on('io.Einsatz', function (data) {
         break;
     }
 
-
-    
-    
     status_div.innerHTML = data.einsatzmittel[i].em_fmsstatus;
 
     //Erzeugte Div zusammensetzen
@@ -463,75 +536,106 @@ socket.on('io.Einsatz', function (data) {
   };
   // Marker in Timeline setzen
   var markerText = 'Alarmierung';
-  var alarm_zeit = 'alarm_zeit';
-    
-    
+  var alarm_zeit = 'alarm_zeit';  
     timeline.addCustomTime(
       data.zeitstempel,
       alarm_zeit
     );
     timeline.customTimes[timeline.customTimes.length - 1].hammer.off("panstart panmove panend");
     timeline.setCustomTimeMarker(markerText, alarm_zeit, false);
-    
 
   // TODO Ablaufzeit setzen
 });
 
 socket.on('io.new_rmld', function (data) {
   // DEBUG
-  console.log(data);
+  console.log('neue Rückmeldung:',data);
   // FIXME  Änderung des Funktions-Typ berücksichtigen
   // Neue Rueckmeldung hinterlegen
-  data.forEach(function (arrayItem) {
+
     // HTML festlegen
     var item_type = '';
     var item_content = '';
     var item_classname = '';
     // wenn Einsatzkraft dann:
-    if (arrayItem.einsatzkraft) {
-      item_content = 'Einsatzkraft';
+    if (data.rmld_role == 'team_member') {
+      // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Einsatzkraft'
+      if (data.rmld_alias) {
+        item_content = data.rmld_alias;
+      } else {
+        item_content = 'Einsatzkraft';
+      };
       item_classname = 'ek';
       item_type = 'ek';
     };
     // wenn Maschinist dann:
-    if (arrayItem.maschinist) {
-      item_content = 'Maschinist';
-      item_classname = 'ma';
-      item_type = 'ma';
+    if (data.rmld_role == 'crew_leader') {
+      // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Gruppenführer'
+      if (data.rmld_alias) {
+        item_content = data.rmld_alias;
+      } else {
+        item_content = 'Gruppenführer';
+      };
+      item_classname = 'gf';
+      item_type = 'gf';
     };
-    // wenn Fuehrungskraft dann:
-    if (arrayItem.fuehrungskraft) {
-      item_content = 'Führungskraft';
-      item_classname = 'fk'
-      item_type = 'fk';
+    // wenn Maschinist dann:
+    if (data.rmld_role == 'division_chief') {
+      // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Zugführer'
+      if (data.rmld_alias) {
+        item_content = data.rmld_alias;
+      } else {
+        item_content = 'Zugführer';
+      };
+      item_classname = 'zf';
+      item_type = 'zf';
+    };    
+    // wenn Maschinist dann:
+    if (data.rmld_role == 'group_commander') {
+      // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Verbandsführer'
+      if (data.rmld_alias) {
+        item_content = data.rmld_alias;
+      } else {
+        item_content = 'Verbandsführer';
+      };
+      item_classname = 'vf';
+      item_type = 'vf';
     };
-    // wenn AGT
-    var item_agt = arrayItem.agt;
-    if (arrayItem.agt){
-      item_content = item_content + (' (AGT)');
-      item_classname = item_classname + ('-agt');
+
+    if (data.rmld_capability_agt > 0) {
+      item_content += ' AGT';
     };
+    if (data.rmld_capability_fzf > 0) {
+      item_content += ' FZF';
+    };
+    if (data.rmld_capability_ma > 0) {
+      item_content += ' MA';
+    };
+    if (data.rmld_capability_med > 0) {
+      item_content += ' MED';
+    };
+
     // Variablen für Anzeige vorbereiten
-    var pg_waip_uuid = arrayItem.waip_uuid;
-    var pg_rmld_uuid = arrayItem.rmld_uuid;
-    var pg_start = new Date(arrayItem.set_time);
-    var pg_end = new Date(arrayItem.arrival_time);
+    var pg_waip_uuid = data.waip_uuid;
+    var pg_rmld_uuid = data.rmld_uuid;
+    var pg_start = new Date(data.time_decision);
+    var pg_end = new Date(data.time_arrival);
     var timeline_item = {
-      id: arrayItem.rmld_uuid,
-      group: arrayItem.wache_id,
+      id: data.rmld_uuid,
+      group: data.wache_id,
       className: item_classname,
-      start: new Date(arrayItem.set_time),
-      end: new Date(arrayItem.arrival_time),
+      start: new Date(data.time_decision),
+      /*end: new Date(data.time_arrival),*/
       content: item_content
     };
     // Progressbar hinterlegen
-    add_resp_progressbar(pg_waip_uuid, pg_rmld_uuid, item_type, item_agt, pg_start, pg_end);
+    add_resp_progressbar(data.waip_uuid, data.rmld_uuid, item_type, data.rmld_alias, data.rmld_capability_agt, data.rmld_capability_fzf, data.rmld_capability_ma, data.rmld_capability_med, pg_start, pg_end);
     // in Timeline hinterlegen
     items.update(timeline_item);
-    groups.update({ id: arrayItem.wache_id, content: arrayItem.wache_name });
+    groups.update({ id: data.wache_id, content: data.wache_name });
     // Anzahl der Rückmeldung zählen
     recount_rmld(pg_waip_uuid);
-  });
+
   var audio = document.getElementById('audio');
   audio.src = ('/media/bell_message.mp3');
   // Audio-Blockade des Browsers erkennen

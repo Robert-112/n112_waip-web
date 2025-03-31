@@ -28,6 +28,9 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           resolve(false);
         } else {
 
+          // Einsatz-ID dem Socket zuweisen, fuer spaetere Abgleiche
+          socket.data.waip_id = einsatzdaten.id; 
+
           // Einsatzdaten an Client senden
           socket.emit("io.new_waip", einsatzdaten);
           logger.log("waip", `Einsatz ${einsatzdaten.id} für Wache ${wachen_nr} an ${socket.id} gesendet.`);
@@ -107,6 +110,10 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   const standby_verteilen_socket = (socket) => {
     return new Promise(async (resolve, reject) => {
       try {
+
+        // die Einsatz-ID aus dem Websocket entfernen
+        socket.data.waip_id = null;
+
         // Standby senden
         socket.emit("io.standby", null);
 
@@ -121,9 +128,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   const rmld_verteilen_rooms = (obj_waip_uuid_with_rmld_uuid) => {
     return new Promise(async (resolve, reject) => {
       try {
-        // alle waip-uuids durchgehen und jeweils die Rückmeldungsdaten anhand der einzelnen UUIDs im Array ermitteln und senden
-        const util = require('util')
-        
+        // alle waip-uuids durchgehen und jeweils die Rückmeldungsdaten anhand der einzelnen UUIDs im Array ermitteln und senden        
         for (const key in obj_waip_uuid_with_rmld_uuid) {
 
           waip_uuid = key;
@@ -132,6 +137,8 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           const waip_id = await sql.db_einsatz_get_waipid_by_uuid(waip_uuid);
           
           // anhand der waip_id die beteiligten Wachennummern / Socket-Räume in '/waip' zum Einsatz ermitteln
+          // BUG hier werden die Räume anhand der Waip-Id ermittelt, das ist nicht ganz passend, 
+          // einzelne Websockets können aber schon einen anderen Einsatz anzeigen
           const waip_rooms = await sql.db_einsatz_get_waip_rooms(waip_id);
 
           // Rückmeldungen an alle beteiligten Wachen ('/waip'-Websocket-Raum) verteilen
@@ -146,8 +153,14 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
             
             // an jeden Socket entsprechende Daten senden
             for (const waip_socket of waip_sockets) {
-              // Rückmeldungen an Socket versenden
-              rmld_arr_verteilen_socket(rmld_waip_arr, waip_socket);
+              // wenn socket.data.waip_id dem aktuellen Einsatz entspricht
+              if (waip_socket.data.waip_id === waip_id) {
+                // Rückmeldungen an Socket versenden
+                rmld_arr_verteilen_socket(rmld_waip_arr, waip_socket);
+              } else {
+                // Protokollieren das es nicht gesendet wurde
+                logger.log("log", `Rückmeldungen an Socket ${waip_socket.id} nicht gesendet, weil dieser einen anderen oder keinen Einsatz anzeigt.`);
+              }
             }
           };
 
@@ -187,8 +200,8 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
           // wenn Berechtigungen nicht passen / nicht vorhanden sind, dann Daten entfernen
           if (!permissions) {
-            rmld_data.rmld_alias = "";
-            rmld_data.rmld_address = "";
+            rmld_data.rmld_alias = null;
+            rmld_data.rmld_address = null;
           }
 
           // Rueckmeldung an Socket/Client senden
@@ -232,6 +245,8 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
             delete einsatzdaten.wgs84_x;
             delete einsatzdaten.wgs84_y;
           }
+          // Einsatz-ID dem Websocket zuweisen
+          socket.data.waip_id = einsatzdaten.id;
           // Einsatzdaten senden
           socket.emit("io.Einsatz", einsatzdaten);
           // Rueckmeldungen verteilen
@@ -417,7 +432,11 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
               // Standby senden
               const same_id = await sql.db_client_check_waip_id(socket.id, waip.id);
                 if (same_id) {
+                  // Einsatz-ID aus dem Websocket entfernen
+                  socket.data.waip_id = null;
+                  // Standby senden
                   socket.emit("io.standby", null);
+                  // Audio stoppen
                   socket.emit("io.stopaudio", null);
                   logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet.`);
                   sql.db_client_update_status(socket, null);
@@ -458,8 +477,11 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       for (const row of socket_ids) {
         const sockets = await io.of("/waip").in(row.socket_id).fetchSockets();
         for (const socket of sockets) {
+          // Einsatz-ID aus dem Websocket entfernen
+          socket.data.waip_id = null;
           // Standby senden
           socket.emit("io.standby", null);
+          // Audio stoppen
           socket.emit("io.stopaudio", null);
           logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet`);
           sql.db_client_update_status(socket, null);

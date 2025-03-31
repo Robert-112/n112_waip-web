@@ -10,12 +10,16 @@ style(type='text/css').
     background-color: #00bc8c;
     border-color: #444;
   }
-  .vis-item.ma {
+  .vis-item.gf {
     background-color: #3498DB;
     border-color: #444;
   }
-  .vis-item.fk {
+  .vis-item.zf {
     background-color: #adb5bd;
+    border-color: #444;
+  }
+  .vis-item.vf {
+    background-color: #E74C3C;
     border-color: #444;
   }
   .vis-item.ek-agt {
@@ -23,18 +27,28 @@ style(type='text/css').
     border-color: #F39C12;
     border-width: 2px;
   }
-  .vis-item.ma-agt {
+  .vis-item.gf-agt {
     background-color: #3498DB;
     border-color: #F39C12;
     border-width: 2px;
   }
-  .vis-item.fk-agt {
+  .vis-item.zf-agt {
     background-color: #adb5bd;
     border-color: #F39C12;
     border-width: 2px;
   }
-  .vis-item, .vis-inner, .vis-time-axis .vis-text {
+  .vis-item.vf-agt {
+    background-color: #E74C3C;
+    border-color: #F39C12;
+    border-width: 2px;
+  }
+  .vis-inner, .vis-time-axis .vis-text {
     color: #fff;
+  }
+  .vis-item {
+    color: #fff;
+    font-size: 0.875em;
+    font-weight: 400;
   }
   .vis-timeline {
     /*border: 1px solid #444;*/
@@ -56,24 +70,28 @@ style(type='text/css').
   .vis-rolling-mode-btn:before {
     content: "\2B8C";
   }
+  .vis-inner, .vis-label .vis-group-level-0  {
+    width: 25px;
+    transform: rotate(90deg);
+    white-space: nowrap;
+  }
+
 .row
-  .col-12.d-flex.justify-content-between.flex-wrap
+  .col-12.d-flex.justify-content-between.flex-wrap.pb-2
     .d-flex.justify-content-start
-      .text-muted Alarmierung:&nbsp;
-      #einsatz_datum.text-muted.text-right &nbsp; 2345
+      .text-muted Alarmierung vom&nbsp;
+      #einsatz_datum.text-muted.text-right &nbsp;-Datum-
     .d-flex.justify-content-end
       #dbrd_id.text-secondary 2341234345453
 
 .row
-  //.col-12.text-center.p-3
-    h2.rounded.bg-danger Einsatzübersicht
-  .col-lg-4.col-12
-    .row.no-gutters
-      .col-10.mt-2
-        #einsatz_art.align-items-center.font-weight-bold.rounded.bg-secondary.p-3.mr-2
+  .col-lg-5.col-12
+    #einsatz_art.row.no-gutters.bg-secondary.rounded.p-3
+      .col-10
+        .align-items-center.font-weight-bold
           #einsatz_stichwort.ion-md-apps  -Stichwort-
-      .col-2.mt-2
-        .align-items-center.justify-content-center.rounded.bg-secondary.text-info.p-3.text-center
+      .col-2
+        .align-items-center.justify-content-center.rounded.text-center
           #sondersignal.ion-md-apps
     div.border-top.m-3
     .row
@@ -93,249 +111,117 @@ style(type='text/css').
               li.list-group-item -Orststeil-
               li.list-group-item -Straße Hsnr-
               li.list-group-item.text-warning -Besonderheiten-
-    div.border-top.mx-3.mt-3.mb-2.d-block.d-lg-none
-
-                
-  //.col-12
-    div.border-top.my-3
-    .card.bg-secondary.mt-2
-      .card-header.bg-light.p-2
-        //h5.text-info.font-weight-bold CB FW Cottbus 1
-        div.border-top.my-3.border-warning
-      .card-body.p-1
-        div.d-flex.flex-wrap.justify-content-between.align-items-center
-          div.flex-fill.rounded.bg-light.p-2.m-1
-            div.d-flex.justify-content-between
-              div.pr-2 FL CB 00/00-00
-              div.p-2.badge.badge-success 2
-          div.flex-fill.rounded.bg-light.p-2.m-1
-            div.d-flex.justify-content-between
-              div.pr-2 FL CB 01/00-00
-              div.p-2.badge.badge-warning 3
-          div.flex-fill.rounded.bg-light.p-2.m-1
-            div.d-flex.justify-content-between
-              div.pr-2 FL CB T-Dienst
-              div.p-2.badge.badge-danger 4
-    .card.bg-secondary.mt-2
-      .card-header.bg-light.p-2
-        h5.text-info.font-weight-bold CB FW Madlow
-      .card-body.p-1
-        p Alarmierte Einsatzmittel
-        div.d-flex.flex-wrap.justify-content-between.align-items-center
-          div.flex-fill.rounded.bg-light.p-2.m-1
-            div.d-flex.justify-content-between 
-              div.pr-2 FL CB 12/00-00
-              div.p-2.badge.badge-success 2
-          div.flex-fill.rounded.bg-light.p-2.m-1
-            div.d-flex.justify-content-between
-              div.pr-2 FL SPN 00/00-00
-              div.p-2.badge.badge-info 1
-    .card.bg-secondary.mt-2
-      .card-header.bg-light.p-2
-        h5.text-info.font-weight-bold CB FW Cottbus 3
-      .card-body.p-1
-        div.d-flex.flex-wrap.justify-content-between.align-items-center
-          div.flex-fill.rounded.bg-light.p-2.m-1
-            div.d-flex.justify-content-between 
-              div.pr-2 KAT CB 00/00-00
-              div.p-2.badge.badge-success 2
-    //table.table.table-striped
-      tbody
-        tr 
-          th
-            div.d-flex.justify-content-between.align-items-center
-              div FL CB 00/00-00
-              div.badge.badge-success 2
-          th
-            div.d-flex.justify-content-between.align-items-center
-              div FL CB 12/00-00
-              div.badge.badge-warning 3
-        tr
-          th
-            div.d-flex.justify-content-between.align-items-center
-              div FL CB T-Dienst
-              div.badge.badge-danger 4
-          th
-            div.d-flex.justify-content-between.align-items-center
-              div KAT CB 00/00-00
-              div.badge.badge-success 2
-        tr
-          th
-            div.d-flex.justify-content-between.align-items-center
-              div FL SPN 00/00-00
-              div.badge.badge-info 1
-  .col-lg-8.col-12
-    .row.no-gutters
+    div.border-top.m-3
+    .row
       .col-12
-        //.card.bg-dark.mt-2
-          .card-header.bg-secondary.p-2
-            h5.text-danger.text-center Alarmierte Einsatzmittel
-          .card-body.p-1
         .card.mt-2
           table#table_einsatzmittel.table.table-hover  
             thead.table-borderless 
               tr
-                th(scope='col').text-info.pl-3 Wache
-                th(scope='col').text-info.pl-3 Einsatzmittel
+                th.col-4.text-info.pl-3 Wache
+                th.col.text-info.pl-3 Einsatzmittel
             tbody
               tr
-                th(scope='row') CB FW Cottbus 1
+                th(scope='row') 1. Wache
                 td
                   div.d-flex.flex-wrap.justify-content-between.align-items-center
                     div.flex-fill.rounded.bg-secondary.p-2.m-1
                       div.d-flex.justify-content-between
-                        div.pr-2 FL CB 01/42-01
+                        div.pr-2 Einsatzmittel 1
                         div.p-2.badge.badge-success 2
                     div.flex-fill.rounded.bg-secondary.p-2.m-1
                       div.d-flex.justify-content-between
-                        div.pr-2 FL CB 01/82-01
+                        div.pr-2 Einsatzmittel 2
                         div.p-2.badge.badge-warning 3
                     div.flex-fill.rounded.bg-secondary.p-2.m-1
                       div.d-flex.justify-content-between
-                        div.pr-2 FL CB 01/71-01
+                        div.pr-2 Einsatzmittel 3
                         div.p-2.badge.badge-danger 4
                     div.flex-fill.rounded.bg-secondary.p-2.m-1
                       div.d-flex.justify-content-between
-                        div.pr-2 FL CB 01/85-01
+                        div.pr-2 Einsatzmittel 4
                         div.p-2.badge.badge-info 1
               tr
-                th(scope='row') CB FW Madlow
+                th(scope='row') 2. Wache
                 td 
                   div.d-flex.flex-wrap.justify-content-between.align-items-center
                     div.flex-fill.rounded.bg-secondary.p-2.m-1
                       div.d-flex.justify-content-between
-                        div.pr-2 FL CB 11/23-01
+                        div.pr-2 Einsatzmittel 5
                         div.p-2.badge.badge-success 2
                     div.flex-fill.rounded.bg-secondary.p-2.m-1
                       div.d-flex.justify-content-between
-                        div.pr-2 FL CB 12/46-01
+                        div.pr-2 Einsatzmittel 6
                         div.p-2.badge.badge-warning 3 
-        //.card.bg-dark.mt-2
-          .card-header.bg-secondary.p-2
-            h5.text-danger.text-center Alarmierte Einsatzmittel
-          .card-body.p-1
-            .row              
-              .col-3
-                div.border-right CB FW Cottbus 1
-              .col-9
-                div.d-flex.flex-wrap.justify-content-between.align-items-center
-                  div.flex-fill.rounded.bg-secondary.p-2.m-1
-                    div.d-flex.justify-content-between
-                      div.pr-2 FL CB 01/42-01
-                      div.p-2.badge.badge-success 2
-                  div.flex-fill.rounded.bg-secondary.p-2.m-1
-                    div.d-flex.justify-content-between
-                      div.pr-2 FL CB 01/82-01
-                      div.p-2.badge.badge-warning 3
-                  div.flex-fill.rounded.bg-secondary.p-2.m-1
-                    div.d-flex.justify-content-between
-                      div.pr-2 FL CB 01/71-01
-                      div.p-2.badge.badge-danger 4
-                  div.flex-fill.rounded.bg-secondary.p-2.m-1
-                    div.d-flex.justify-content-between
-                      div.pr-2 FL CB 01/85-01
-                      div.p-2.badge.badge-info 2
-          .card-body.p-1
-            .row
-              .col-3
-                CB FW Madlow
-              .col-9 
-                div.d-flex.flex-wrap.justify-content-between.align-items-center
-                  div.flex-fill.rounded.bg-secondary.p-2.m-1
-                    div.d-flex.justify-content-between
-                      div.pr-2 FL CB 11/23-01
-                      div.p-2.badge.badge-success 2
-                  div.flex-fill.rounded.bg-secondary.p-2.m-1
-                    div.d-flex.justify-content-between
-                      div.pr-2 FL CB 12/46-01
-                      div.p-2.badge.badge-warning 3 
-        div.border-top.m-3
-        .card
-          .card-header.bg-dark.px-3
-            .text-info.font-weight-bold Rückmeldungen - Rollen
-          .card-body.p-2#rmld_container
-            .d-flex.fustify-content-between.font-weight-bold
-              .list-group.list-group-horizontal.text-center.w-100
-                .list-group-item.flex-fill.text-success 
-                  a#ek-counter 0
-                  a &nbsp;EK
-                .list-group-item.flex-fill.text-info 
-                  a#ma-counter 0
-                  a &nbsp;GF
-                .list-group-item.flex-fill.text-light 
-                  a#fk-counter 0 
-                  a &nbsp;ZF
-                .list-group-item.flex-fill.text-light 
-                  a#fk-counter 0 
-                  a &nbsp;VF
-        div.border-top.m-3
-        .card
-          .card-header.bg-dark.px-3
-            .text-info.font-weight-bold Rückmeldungen - Funktionen
-          .card-body.p-2#rmld_container
-            .d-flex.fustify-content-between.font-weight-bold
-              .list-group.list-group-horizontal.text-center.w-100
-                .list-group-item.flex-fill.text-success 
-                  a#ek-counter 0
-                  a &nbsp;AGT
-                .list-group-item.flex-fill.text-info 
-                  a#ma-counter 0
-                  a &nbsp;MA
-                .list-group-item.flex-fill.text-light 
-                  a#fk-counter 0 
-                  a &nbsp;FZF
-                .list-group-item.flex-fill.text-light 
-                  a#fk-counter 0 
-                  a &nbsp;MED
-            .row
-              .col-4#pg-ek.pr-1
-                //.progress.mt-1
-                    .progress-bar.progress-bar-striped.bg-success(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 
-                      a(style='') 2min
-                //.progress.mt-1.border.border-warning(style='height: 20px;')
-                    .progress-bar.progress-bar-striped.bg-success(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 
-                      h 2min
-                //.progress.mt-1
+    div.border-top.mx-3.mt-3.mb-2.d-block.d-lg-none
+  .col-lg-7.col-12
+    .row.no-gutters
+      .col-12
+        div#rmld_container
+          .card#rmld_container
+            .card-header.bg-dark.px-3
+              .text-light.font-weight-bold Rückmeldungen
+            .card-body.p-2
+              .row.no-gutters.p-1
+                .col-12.border.rounded.border-light.d-flex.align-items-center.justify-content-center.p-2
+                  h4.font-weight-bold Gesamt &nbsp;
+                    #gs-counter.badge.badge-primary.badge.font-weight-bold.p-1 0
+              .row.no-gutters.p-1
+                .col-3.border.rounded-left.border-light.text-success.d-flex.align-items-center.justify-content-center.p-2
+                  h5 EK&nbsp;
+                    #ek-counter.badge.badge-success.badge.p-1 0
+                .col-3.border.border-light.text-info.d-flex.align-items-center.justify-content-center.p-2
+                  h5 GF&nbsp;
+                    #gf-counter.badge.badge-info.badge.p-1 0
+                .col-3.border.border-light.text-light.d-flex.align-items-center.justify-content-center.p-2
+                  h5 ZF&nbsp;
+                    #zf-counter.badge.badge-light.badge.p-1 0
+                .col-3.border.rounded-right.border-light.text-danger.d-flex.align-items-center.justify-content-center.p-2
+                  h5 VF&nbsp;
+                    #vf-counter.badge.badge-danger.badge.p-1 0
+          div.border-top.m-3
+          .card
+            .card-header.bg-dark.px-3
+              .text-light.font-weight-bold Verfügbare Funktionen
+            .card-body.p-2
+              .row.no-gutters.p-1
+                .col-3.border.rounded-left.border-warning.d-flex.align-items-center.justify-content-center.p-2
+                  h5.text-warning AGT&nbsp;
+                    span#agt-counter.badge.badge-warning.badge.p-1 0
+                .col-3.border.border-light.d-flex.align-items-center.justify-content-center.p-2
+                  h5 MA&nbsp;
+                    span#ma-counter.badge.badge-primary.badge.p-1 0
+                .col-3.border.border-light.d-flex.align-items-center.justify-content-center.p-2
+                  h5 FZF&nbsp;
+                    span#fzf-counter.badge.badge-primary.badge.p-1 0
+                .col-3.border.border-light.d-flex.align-items-center.justify-content-center.p-2
+                  h5 MED&nbsp;
+                    span#med-counter.badge.badge-primary.badge.p-1 0
+          div.border-top.m-3
+          .card
+            .card-header.bg-dark.px-3
+              .text-light.font-weight-bold Detailierte Rückmeldungen
+            .card-body.p-0
+              .row.px-3#pg-container.p-2
+                //.col-4#pg-ek
+                  .progress.mt-1
                     .progress-bar.progress-bar-striped.bg-success.ion-md-checkmark-circle(role='progressbar', style='width: 100%', aria-valuenow='100', aria-valuemin='0', aria-valuemax='100')
-              .col-4#pg-ma.px-1
-                //.progress.mt-1
+                //.col-4#pg-gf
+                  .progress.mt-1
                     .progress-bar.progress-bar-striped.bg-info(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 3min
-                //.progress.mt-1
+                  .progress.mt-1
                     .progress-bar.progress-bar-striped.bg-info(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 1min     
-              .col-4#pg-fk.pl-1
-                //.progress.mt-1.border.border-warning
+                //.col-4#pg-zf
+                  .progress.mt-1.border.border-warning
                     .progress-bar.progress-bar-striped.bg-light(role='progressbar', style='width: 50%', aria-valuenow='50', aria-valuemin='0', aria-valuemax='100') 10min    
-        div.border-top.m-3  
-        .card-body.p-2
-          #visualization.border.rounded(style='background-color:white')
-        //div.border-top.m-3
-        //.card.bg-dark.mt-2
-          .card-header.bg-secondary.p-2
-            h5.text-danger.text-center CB FW Madlow
-          
-        //.card-body.p-2
-          #visualization2.border.rounded(style='background-color:white')
-        //.card-body.p-2
-          .row
-            .col-10
-              #rueckmeldung.list-group.list-group-horizontal.text-center
-                a.list-group-item.list-group-item-warning.flex-fill.text-info 1 EK
-                a.list-group-item.list-group-item-light.flex-fill.text-danger 1 MA
-                a.list-group-item.list-group-item-light.flex-fill 0 FK
-            .col-2
-              a.bg-warning.rounded.text-dark 0 AGT
-      //.col-12
-        div.border-top.m-3
-        .card.bg-dark.mt-2
-          .card-header.bg-secondary.p-2
-            h5.text-center.text-warning Zusammenfassung
-          .card-body.p-1
-            #rueckmeldung.list-group.list-group-horizontal.text-center.font-weight-bold
-              h3.list-group-item.flex-fill.text-info 5 EK
-              h3.list-group-item.flex-fill.text-danger 2 MA
-              h3.list-group-item.flex-fill 0 FK
-              h3.list-group-item.list-group-item-light.flex-fill.text-dark 0 AGT
-        //button#rueckmeldung.btn.btn-danger.btn-lg.btn-block.ion-md-paper-plane(type='button')  Rückmeldung senden
+                //.col-4#pg-vf
+                  .progress.mt-1.border.border-warning
+                    .progress-bar.progress-bar-striped.bg-danger(role='progressbar', style='width: 50%', aria-valuenow='50', aria-valuemin='0', aria-valuemax='100') 10min    
+          div.border-top.m-3
+          div.px-2
+            input.btn.btn-info.btn-block(type="button", value="Zeitschiene auf alle Rückmeldungen anpassen", id="fit_timeline")  
+          .card-body.p-2
+            #visualization.border.rounded(style='background-color:white')
   // TODO: zeitstrahl der den Ablauf anzeigt
 .d-none
   audio#audio(controls='')

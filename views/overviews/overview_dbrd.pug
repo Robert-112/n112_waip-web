@@ -10,7 +10,7 @@ block content
         .col-12.p-3
           .card.bg-dark
             .card-body.text-muted.text-center
-              h3 Dashboard-Übersicht
+              h3 Dashboard - Einsatzübersicht
         .col-12
           div.border-top.m-3
       .row 
@@ -62,5 +62,13 @@ block content
       let geojson = L.geoJSON(JSON.parse(data[i].geometry)).addTo(map);
       map.fitBounds(geojson.getBounds());
       map.setZoom(13);
+      map.dragging.disable();
+      map.touchZoom.disable();
+      map.doubleClickZoom.disable();
+      map.scrollWheelZoom.disable();
+      map.boxZoom.disable();
+      map.keyboard.disable();
+      map.scrollWheelZoom.disable();
+
     };    
  

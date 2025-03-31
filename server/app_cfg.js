@@ -17,7 +17,7 @@ app_cfg.global = {
   // Namespace zur Erzeugung von UUIDs für Texte
   uuidNamespace: "59cc72ec-4ff5-499d-81e2-ec49c1d01252",
   // Zeit in Minuten nach der Einsaetze automatisch geloescht werden
-  time_to_delete_waip: 30,
+  time_to_delete_waip: 120,
   // Zeit in Minuten nach der standardmäßig Standby im Alarmmonitor aktiviert wird
   default_time_for_standby: 10,
   // Millisekunden nach denen zyklisch aufgeräumt wird

@@ -185,7 +185,7 @@ module.exports = (db, app_cfg) => {
         } else {
         
           // User-ID ermitteln
-          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+          const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt2 = db.prepare(`
@@ -507,7 +507,7 @@ module.exports = (db, app_cfg) => {
           LEFT JOIN waip_einsatzmittel em ON em.em_waip_einsaetze_id = we.id
           LEFT JOIN waip_wachen wa ON wa.id = em.em_station_id
           GROUP BY we.id
-          ORDER BY we.einsatzart, we.stichwort;
+          ORDER BY we.zeitstempel DESC, we.einsatzart, we.stichwort;
         `);
         const rows = stmt.all();
         if (rows.length === 0) {
@@ -949,13 +949,13 @@ module.exports = (db, app_cfg) => {
         }
 
         // Nutzername, falls bekannt
-        let user_name = socket.request.user.user;
+        let user_name = socket.data.user.user;
         if (user_name === undefined) {
           user_name = "Gast";
         }
 
         // Berechtigungen, falls bekannt
-        let user_permissions = socket.request.user.permissions;
+        let user_permissions = socket.data.user.permissions;
         if (user_permissions === undefined) {
           user_permissions = "keine";
         }
@@ -968,7 +968,7 @@ module.exports = (db, app_cfg) => {
       
         if (client_status !== "Standby") {
           // User-ID ermitteln
-          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+          const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt1 = db.prepare(`
@@ -1249,17 +1249,20 @@ module.exports = (db, app_cfg) => {
         // Anzeigezeit für einen Alarmmonitor ermitteln
         if (client_nsp === "/waip") {
           // User-ID aus Socket ermitteln
-          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+          const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt1 = db.prepare(`
             SELECT config_value FROM waip_user_config
             WHERE user_id = ? AND config_type = 'resetcounter';
           `);
-          const row1 = stmt1.get(user_id);
+          let row1 = stmt1.get(user_id);
 
           // sollte kein Reset-Counter vorhanden sein, dann die Standard-Reset-Zeit aus app_cfg verwenden
-          if (row1 === undefined) {
+          console.log('row1 config user', row1)
+          if (row1 == null) {
+            // wenn row1 keine werte hat, das objekt config_value auf den default setzen
+            row1 = {};
             row1.config_value = app_cfg.global.default_time_for_standby;
           }
 
@@ -1273,7 +1276,7 @@ module.exports = (db, app_cfg) => {
           const row2 = stmt2.get(row1.config_value, waip_id, row1.config_value);
 
           // null zurückgeben, wenn der Einsatz nicht mehr angezeigt werden kann, ansonsten die Uhrzeit der Reset-Time
-          if (row2 === undefined) {
+          if (row2 == null) {
             resolve(null);
           } else {
             resolve(row2.reset_time);
@@ -1313,8 +1316,8 @@ module.exports = (db, app_cfg) => {
       try {
 
         // User-ID und Berechtigung aus Socket ermitteln
-        const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
-        const permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
+        const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
+        const permissions = socket.data.user && socket.data.user.permissions ? socket.data.user.permissions : null;
 
         // wenn keine user_id oder permissions übergeben wurden, dann false
         if (!user_id || !permissions) {
@@ -1347,7 +1350,7 @@ module.exports = (db, app_cfg) => {
           }
         }
       } catch (error) {
-        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + socket.request.user + waip_id + error));
+        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + socket.data.user + waip_id + error));
       }
     });
   };
@@ -1358,8 +1361,8 @@ module.exports = (db, app_cfg) => {
       try {
 
         // User-ID und Berechtigung aus Socket ermitteln
-        const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
-        const permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
+        const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
+        const permissions = socket.data.user && socket.data.user.permissions ? socket.data.user.permissions : null;
 
         // wenn keine user_id oder permissions übergeben wurden, dann false
         if (!user_id || !permissions) {
@@ -1381,7 +1384,7 @@ module.exports = (db, app_cfg) => {
         }
 
       } catch (error) {
-        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.request.user + wache_nr + error));
+        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.data.user + wache_nr + error));
       }
     });
   };

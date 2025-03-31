@@ -41,12 +41,16 @@ audio {
   height: 10% !important;
 }
 
-.h-12-5 {
-  height: 12.5% !important;
+.h-14 {
+  height: 14% !important;
 }
 
 .h-15 {
   height: 15% !important;
+}
+
+.h-16-5 {
+  height: 16.5% !important;
 }
 
 .h-20 {
@@ -55,6 +59,10 @@ audio {
 
 .h-30 {
   height: 30% !important;
+}
+
+.h-33 {
+  height: 33% !important;
 }
 
 .h-35 {
@@ -89,10 +97,6 @@ audio {
   height: 80% !important;
 }
 
-.h-87-5 {
-  height: 87.5% !important;
-} 
-
 .h-90 {
   height: 90% !important;
 }
@@ -101,6 +105,13 @@ audio {
   height: 95% !important;
 }
 
+.w-10 {
+  width: 10% !important;
+}
+
+.w-90 {
+  width: 90% !important;
+}
 
 #rueckmeldung .list-group-item {
   padding: 0.25rem;
@@ -108,9 +119,30 @@ audio {
 
 /*** Klassen in Abhängigkeit der Rotation ******/
 
-@media screen and (orientation:portrait) {
-  .pt-3_pt {
-    padding-top: 1rem !important;
+@media (orientation:portrait) {
+
+  .h-5_p {
+    height: 5% !important;
+  }
+
+  .h-7_p {
+    height: 7% !important;
+  }
+
+  .h-40_p {
+    height: 40% !important;
+  }
+
+  .h-60_p {
+    height: 60% !important;
+  }
+
+  .h-93_p {
+    height: 93% !important;
+  }
+
+  .h-95_p {
+    height: 95% !important;
   }
 
   .w-100_pt {
@@ -118,7 +150,7 @@ audio {
   }
 }
 
-@media screen and (orientation:landscape) {
+@media (orientation:landscape) {
   .ptr-3_ls {
     padding-top: 1rem !important;
     padding-right: 1rem !important;
@@ -127,6 +159,10 @@ audio {
   .py-3_ls {
     padding-bottom: 1rem !important;
     padding-top: 1rem !important;
+  }
+
+  .pr-3_ls {
+    padding-right: 1rem !important;
   }
 
   .col-5_ls {
@@ -153,6 +189,14 @@ audio {
     padding-left: 15px;
   }
 
+  .h-2-5_ls {
+    height: 2.5% !important;
+  }
+
+  .h-12-5_ls {
+    height: 12.5% !important;
+  }
+
   .h-15_ls {
     height: 15% !important;
   }
@@ -171,6 +215,14 @@ audio {
 
   .h-80_ls {
     height: 80% !important;
+  }
+
+  .h-87-5_ls {
+    height: 87.5% !important;
+  } 
+
+  .h-97-5_ls {
+    height: 97.5% !important;
   }
 
   .h-100_ls {
@@ -194,7 +246,7 @@ audio {
   /*padding: 0 1rem;*/
 }
 
-#em_alarmiert, #rmld_container {
+#em_alarmiert {
   font-size: 1.6vw;
 }
 

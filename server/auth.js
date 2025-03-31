@@ -40,10 +40,10 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   io.of("/waip").use(wrap(passport.session()));
   io.of("/waip").use((socket, next) => {
     if (socket.request.user) {
+      socket.data.user = socket.request.user; // Benutzerinformationen im Socket speichern
       next();
     } else {
-      // ohne Login als Gast weiter
-      socket.request.user = { id: null, user: "Gast" };
+      socket.data.user = { id: null, user: "Gast" }; // Gast-Benutzer speichern
       next();
     }
   });
@@ -54,10 +54,10 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   io.of("/dbrd").use(wrap(passport.session()));
   io.of("/dbrd").use((socket, next) => {
     if (socket.request.user) {
+      socket.data.user = socket.request.user; // Benutzerinformationen im Socket speichern
       next();
     } else {
-      // ohne Login als Gast weiter
-      socket.request.user = { id: null, user: "Gast" };
+      socket.data.user = { id: null, user: "Gast" }; // Gast-Benutzer speichern
       next();
     }
   });
