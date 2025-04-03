@@ -18,14 +18,14 @@ $(document).ready(function() {
 
 // Karte definieren
 var map = L.map('map', {
-  zoomControl: false
+  zoomControl: false,
+  attributionControl: false
 }).setView([51.733005, 14.338048], 13);
 
 // Layer der Karte
 mapLink = L.tileLayer(
   map_tile, {
-    maxZoom: 18,
-    attribution: map_attribution
+    maxZoom: 18
   }).addTo(map);
 
 // Icon der Karte zuordnen

@@ -30,6 +30,7 @@
     "passport.socketio": "^3.7.0",
     "pug": "^3.0.3",
     "req-flash": "0.0.3",
+    "request": "^2.88.2",
     "serve-favicon": "^2.5.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",

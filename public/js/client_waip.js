@@ -94,6 +94,7 @@ function resize_text() {
     textFit(document.getElementsByClassName("tf_multiline"), {
       minFontSize: 3,
       maxFontSize: 500,
+      multiLine: true,
       reProcess: true,
     });
     // Karte neu setzen
@@ -241,12 +242,12 @@ function do_progressbar(start, end) {
 // Karte definieren
 let map = L.map("map", {
   zoomControl: false,
+  attributionControl: false
 }).setView([51.733005, 14.338048], 13);
 
 // Layer der Karte
 mapLink = L.tileLayer(map_tile, {
   maxZoom: 18,
-  attribution: map_attribution,
 }).addTo(map);
 
 // Icon der Karte zuordnen
@@ -273,7 +274,7 @@ let geojson = L.geoJSON().addTo(map);
 
 // Websocket
 let socket = io("/waip", {
-  withCredentials: true
+  withCredentials: true,
 });
 
 // Wachen-ID bei Connect an Server senden
@@ -295,7 +296,7 @@ socket.on("io.version", function (server_id) {
     $("#waipModal").modal("hide");
     setTimeout(function () {
       $("#waipModalTitle").text("ACHTUNG");
-      $("#waipModalBody").text("Neue Server-Version. Seite wird in 10 Sekunden neu geladen!");
+      $("#waipModalBody").text("Neue Server-Version. Seite wird gleich automatisch neu geladen!");
       $("#waipModal").modal("show");
       setTimeout(function () {
         location.reload();
@@ -878,7 +879,6 @@ function recount_rmld(p_uuid) {
   $("#ma-counter").text($(".p_ma").length);
   $("#fzf-counter").text($(".p_fzf").length);
   $("#med-counter").text($(".p_med").length);
-
 }
 
 function reset_view() {

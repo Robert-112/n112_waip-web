@@ -49,13 +49,13 @@ block content
     for (let i in data) {
       // Karte definieren
       let map = L.map('map'+data[i].uuid, {
-        zoomControl: false
+        zoomControl: false,
+        attributionControl: false
       });
       // Layer der Karte
       mapLink = L.tileLayer(        
         '#{map_tile}', {
-          maxZoom: 12,
-          attribution: '!{map_attribution}'
+          maxZoom: 12
         }).addTo(map);
       // Karte setzen
       

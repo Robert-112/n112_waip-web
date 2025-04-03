@@ -1,4 +1,4 @@
-module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
+module.exports = function (app, sql, app_cfg, passport, auth, saver, request, logger) {
   // Hilfsfunktion zum prüfen ob der Inhaltstyp JSON ist
   const checkContentType = (req, res, next) => {
     if (!req.is("application/json")) {
@@ -284,26 +284,39 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Einstellungen",
         user: req.user,
-        reset_counter: data.config_value,
+        user_reset_counter: data.resetcounter,
+        user_standbyurl: data.standbyurl,
         error: req.flash("errorMessage"),
         success: req.flash("successMessage"),
       });
     } catch (error) {
-      const err = new Error(`Fehler beim Laden der Seite /config. ` + error);
+      const err = new Error(`Fehler beim Laden der Seite für die Einstellungen. ` + error);
       logger.log("error", err);
       err.status = 500;
       next(err);
     }
   });
 
-  // Einstellungen speichern
-  app.post("/einstellungen", auth.ensureAuthenticated, async (req, res) => {
+  // Einstellungen zur Anzeigezeit speichern
+  app.post("/einstellungen_zeit", auth.ensureAuthenticated, async (req, res) => {
     try {
-      await sql.db_user_set_config(req.user.id, req.body.set_reset_counter);
-      req.flash('successMessage', 'Einstellungen wurden erfolgreich gespeichert');
+      await sql.db_user_set_config_time(req.user.id, req.body.set_reset_counter);
+      req.flash('successMessage', 'Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert');
       res.redirect("/einstellungen");
     } catch (error) {
-      req.flash('errorMessage', 'Fehler beim Speichern der Einstellungen');
+      req.flash('errorMessage', 'Fehler beim Speichern der Einstellungen für die Anzeigezeit. ' + error);
+      res.redirect("/einstellungen");
+    }
+  });
+
+  // Einstellungen zur URL speichern
+  app.post("/einstellungen_url", auth.ensureAuthenticated, async (req, res) => {
+    try {
+      await sql.db_user_set_config_url(req.user.id, req.body.url_standby);
+      req.flash('successMessage', 'Einstellungen für die Standbyanzeige wurden erfolgreich gespeichert');
+      res.redirect("/einstellungen");
+    } catch (error) {
+      req.flash('errorMessage', 'Fehler beim Speichern der Einstellungen für die Standbyanzeige. ' + error);
       res.redirect("/einstellungen");
     }
   });
@@ -335,6 +348,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     try {
       const parameter_id = req.params.wachen_id;
       const wache = await sql.db_wache_vorhanden(parameter_id);
+      //const standbyurl = await sql.db_user_get_standbyurl(req.user.id);
       if (wache) {
         res.render("waip", {
           public: app_cfg.public,
@@ -342,9 +356,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           wachen_id: parameter_id,
           data_wache: wache.name,
           map_tile: app_cfg.public.map_tile,
-          map_attribution: app_cfg.public.map_attribution,
           app_id: app_cfg.global.app_id,
           user: req.user,
+          //standbyurl: standbyurl,
         });
       } else {
         const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);
@@ -371,7 +385,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Dashboard",
         map_tile: app_cfg.public.map_tile,
-        map_attribution: app_cfg.public.map_attribution,
         user: req.user,
         dataSet: data,
       });
@@ -394,7 +407,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           title: "Dashboard",
           dbrd_uuid: dbrd_uuid,
           map_tile: app_cfg.public.map_tile,
-          map_attribution: app_cfg.public.map_attribution,
           app_id: app_cfg.global.app_id,
           user: req.user,
         });
@@ -502,6 +514,46 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       }
     } else {
       res.redirect("/adm_edit_users");
+    }
+  });
+
+  /* ###################### */
+  /* ##### URL-Proxy  ##### */
+  /* ###################### */
+
+  app.get('/url_proxy', auth.ensureAuthenticated, async (req, res, next) => {
+    try {      
+      const standbyurl = await sql.db_user_get_standbyurl(req.user.id);
+      if (standbyurl) {
+        request(standbyurl).pipe(res);
+      } else {
+        throw new Error("Keine URL angegeben!");
+      }
+    } catch (error) {
+      const err = new Error(`Fehler beim Laden des URL-Proxys. ` + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
+    }
+  });
+
+  app.get("/einstellungen", auth.ensureAuthenticated, async (req, res, next) => {
+    try {
+      const data = await sql.db_user_get_config(req.user.id);
+      res.render("user/user_config", {
+        public: app_cfg.public,
+        title: "Einstellungen",
+        user: req.user,
+        user_reset_counter: data.resetcounter,
+        user_standbyurl: data.standbyurl,
+        error: req.flash("errorMessage"),
+        success: req.flash("successMessage"),
+      });
+    } catch (error) {
+      const err = new Error(`Fehler beim Laden der Seite für die Einstellungen. ` + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
     }
   });
 

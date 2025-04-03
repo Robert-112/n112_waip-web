@@ -1191,15 +1191,15 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Konfiguration eines Users speichern
-  const db_user_set_config = (user_id, reset_counter) => {
+  // Konfiguration der Anzeigezeit eines Users speichern
+  const db_user_set_config_time = (user_id, reset_counter) => {
     return new Promise((resolve, reject) => {
       try {
         // reset_counter validieren, ansonsten auf default setzen
         if (!(reset_counter >= 1 && reset_counter <= app_cfg.global.time_to_delete_waip)) {
           reset_counter = app_cfg.global.default_time_for_standby;
         }
-        // Benutzer-Einstellungen speichern
+        // Anzeigezeit speichern
         const stmt = db.prepare(`
           INSERT OR REPLACE INTO waip_user_config
           (id, user_id, config_type, config_value)
@@ -1213,7 +1213,35 @@ module.exports = (db, app_cfg) => {
         const info = stmt.run(user_id, user_id, "resetcounter", reset_counter);
         resolve(info.changes);
       } catch (error) {
-        reject(new Error("Fehler beim speichern / aktualisieren von Benutzer-Einstellungen. " + user_id + reset_counter + error));
+        reject(new Error("Fehler beim speichern / aktualisieren der Einstellung der Anzeigezeit eines Benutzers. " + reset_counter + error));
+      }
+    });
+  };
+
+  // Konfiguration der Standby-URL eines Users speichern
+  const db_user_set_config_url = (user_id, url) => {
+    return new Promise((resolve, reject) => {
+      try {
+        // prüfen der übermittelte Wert wirklich eine URL ist, sonst fehler zurückgeben
+        const url_regex = new RegExp("^(https?:\\/\\/)?([\\da-z.-]+)\\.([a-z.]{2,6})([\\/\\w .-]*)*\\/?$", "i");
+        if (url && !url_regex.test(url)) {
+          throw `Die übergebene URL ${url} ist nicht valide!`;
+        }
+        // URL speichern
+        const stmt = db.prepare(`
+          INSERT OR REPLACE INTO waip_user_config
+          (id, user_id, config_type, config_value)
+          VALUES (
+            (select ID from waip_user_config where user_id = ? ),
+            ?,
+            ?,
+            ?
+          );
+        `);
+        const info = stmt.run(user_id, user_id, "standbyurl", url);
+        resolve(info.changes);
+      } catch (error) {
+        reject(new Error("Fehler beim speichern / aktualisieren der Einstellung der Standby-URL eines Benutzers. "  + error));
       }
     });
   };
@@ -1223,18 +1251,20 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT config_value FROM waip_user_config
-          WHERE user_id = ? AND config_type = 'resetcounter';
+          SELECT 
+            COALESCE(
+              (SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'resetcounter'), 
+              ${app_cfg.global.default_time_for_standby}
+            ) AS resetcounter,
+            COALESCE(
+              (SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'standbyurl'), 
+              null
+            ) AS standbyurl;
         `);
-        const row = stmt.get(user_id);
-        if (row === undefined) {
-          //throw "Keine Benutzer-Einstellungen für " + user_id + " gefunden!";
-          resolve(app_cfg.global.default_time_for_standby);
-        } else {
-          resolve(row);
-        }
+        const row = stmt.get(user_id, user_id);
+        resolve(row);
       } catch (error) {
-        reject(new Error("Fehler beim laden von Benutzer-Einstellungen. " + user_id + error));
+        reject(new Error("Fehler beim laden von Benutzer-Einstellungen. " + error));
       }
     });
   };
@@ -1259,7 +1289,6 @@ module.exports = (db, app_cfg) => {
           let row1 = stmt1.get(user_id);
 
           // sollte kein Reset-Counter vorhanden sein, dann die Standard-Reset-Zeit aus app_cfg verwenden
-          console.log('row1 config user', row1)
           if (row1 == null) {
             // wenn row1 keine werte hat, das objekt config_value auf den default setzen
             row1 = {};
@@ -1309,6 +1338,27 @@ module.exports = (db, app_cfg) => {
       }
     });
   };
+
+  //  Standby-URL eines Benutzer laden
+  const db_user_get_standbyurl = (user_id) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`
+          SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'standbyurl';
+        `);
+        const row = stmt.get(user_id);
+        if (row === undefined) {
+          resolve(null);
+        } else {
+          resolve(row.config_value);
+        }
+      } catch (error) {
+        reject(new Error("Fehler beim laden der Standby-URL eines Benutzers. " + error));
+      }
+    });
+  };
+
+
 
   // Berechtigung eines Nutzers für einen Einsatz überpruefen
   const db_user_check_permission_for_waip = (socket, waip_id) => {
@@ -1854,9 +1904,11 @@ module.exports = (db, app_cfg) => {
     db_log_get_10000: db_log_get_10000,
     db_socket_get_by_id: db_socket_get_by_id,
     db_socket_get_all_to_standby: db_socket_get_all_to_standby,
-    db_user_set_config: db_user_set_config,
+    db_user_set_config_time: db_user_set_config_time,
+    db_user_set_config_url: db_user_set_config_url,
     db_user_get_config: db_user_get_config,
     db_user_get_all: db_user_get_all,
+    db_user_get_standbyurl: db_user_get_standbyurl,
     db_client_get_alarm_anzeigbar: db_client_get_alarm_anzeigbar,
     db_user_check_permission_for_waip: db_user_check_permission_for_waip,
     db_user_check_permission_for_rmld: db_user_check_permission_for_rmld,

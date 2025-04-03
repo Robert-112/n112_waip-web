@@ -25,24 +25,47 @@ block content
                   .col-3.text-right
                     button#close_info.btn.btn-info.ion-md-close
       .row
-        .col-12.d-flex.align-self-stretch
-          .card.border-dark.mb-3.w-100
-            .card-header Einstellungen
-            .card-body.text-dark
-              .row
-                .col-8
-                  p persönliche Anzeigezeit für Wachalarme
-                  p.text-muted (Wachalarme werden nach Ablauf der hier gesetzten Zeit automatisch ausgeblendet)
-                .col-4
-                  form(action="/einstellungen", method="POST")
-                    .form-group
-                      label(for='ResetCounterSelect') Zeit in Minuten
-                      select#ResetCounterSelect.form-control(name='set_reset_counter', onchange='this.form.submit()')
-                        option= 'Standard'
-                        each _, i in Array(60)
-                          if(i+1 == reset_counter)
-                            option(selected)= i+1
-                          else
-                            option= i+1              
-                // TODO: anpassen der Durchsage je Benutzer, durch eigene Ersetzung und Reihenfolge
-                // TODO: Ausnahmen festlegen können, wann keine Musik abgespielt wird        
+        .col-12.p-3
+          .card.bg-dark
+            .card-body.text-muted.text-center
+              h3 Einstellungen
+        .col-12
+          div.border-top.m-3
+        .col-12.mt-3
+          .row
+            .col-12.border-dark.w-100.pb-3
+              .card
+                .card-header Anzeigezeit
+                .card-body
+                  .row
+                    .col-8
+                      p persönliche Anzeigezeit für Wachalarme
+                      p.text-info Wachalarme werden nach Ablauf der hier gesetzten Zeit automatisch ausgeblendet
+                    .col-4
+                      form(action="/einstellungen_zeit", method="POST")
+                        .form-group
+                          label(for='ResetCounterSelect') Zeit in Minuten
+                          select#ResetCounterSelect.form-control(name='set_reset_counter', onchange='this.form.submit()')
+                            option= 'Standard'
+                            each _, i in Array(60)
+                              if(i+1 == user_reset_counter)
+                                option(selected)= i+1
+                              else
+                                option= i+1              
+                    // TODO: anpassen der Durchsage je Benutzer, durch eigene Ersetzung und Reihenfolge
+                    // TODO: Ausnahmen festlegen können, wann keine Musik abgespielt wird  
+            .col-12.border-dark.w-100.pb-3
+              .card
+                .card-header Webseite im Standby
+                .card-body
+                  .row
+                    .col-12
+                      p URL der Webseite, die im Standby anstatt der Uhr angezeigt werden soll. 
+                      p Soll die Uhr angzeigt werden, muss dieses Feld leer bleiben.
+                      p.text-warning Die Anzeige wird nicht automatisch aktualisiert. Dies muss über die Webseite erfolgen.
+                    .col-12
+                      form#formurl(action="/einstellungen_url", method="POST")
+                        .form-group
+                          label(for='url_standby').text-muted URL im Format http(s)://name.der.webseite.de/unterseite
+                          input#url_standby.form-control(type="text", name='url_standby', value=user_standbyurl || '', placeholder="http(s)://..", pattern='^(http|https)://[a-zA-Z0-9. -]+\\. [a-zA-Z]{2,}$')          
+                        button.btn.btn-primary(type="submit" form="formurl", value='submit') URL speichern

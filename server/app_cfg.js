@@ -60,8 +60,6 @@ app_cfg.public = {
   company: "Netzwerk 112",
   // Base-URL für Kartendaten
   map_tile: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  // Links innerhalb der Karte
-  map_attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   // soll auf ein externes Impressum verwiesen werden
   ext_imprint: false,
   // Link zum externen Impressum
