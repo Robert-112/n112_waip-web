@@ -1204,7 +1204,7 @@ module.exports = (db, app_cfg) => {
           INSERT OR REPLACE INTO waip_user_config
           (id, user_id, config_type, config_value)
           VALUES (
-            (select ID from waip_user_config where user_id = ? ),
+            (SELECT id FROM waip_user_config WHERE user_id = ? AND config_type = 'resetcounter'),
             ?,
             ?,
             ?
@@ -1223,16 +1223,19 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         // prüfen der übermittelte Wert wirklich eine URL ist, sonst fehler zurückgeben
-        const url_regex = new RegExp("^(https?:\\/\\/)?([\\da-z.-]+)\\.([a-z.]{2,6})([\\/\\w .-]*)*\\/?$", "i");
+        const url_regex = new RegExp(
+          "^(https?:\\/\\/)?((?!localhost)(?!127\\.0\\.0\\.1)((\\d{1,3}\\.){3}\\d{1,3}|[\\da-z.-]+)\\.([a-z.]{2,6}|\\d{1,5})(:[0-9]{1,5})?(\\/.*)?)$",
+          "i"
+        );
         if (url && !url_regex.test(url)) {
-          throw `Die übergebene URL ${url} ist nicht valide!`;
+          throw `Die übergebene URL ${url} ist nicht valide!`; 
         }
         // URL speichern
         const stmt = db.prepare(`
           INSERT OR REPLACE INTO waip_user_config
           (id, user_id, config_type, config_value)
           VALUES (
-            (select ID from waip_user_config where user_id = ? ),
+            (SELECT id FROM waip_user_config WHERE user_id = ? AND config_type = 'standbyurl'),
             ?,
             ?,
             ?
@@ -1340,7 +1343,7 @@ module.exports = (db, app_cfg) => {
   };
 
   //  Standby-URL eines Benutzer laden
-  const db_user_get_standbyurl = (user_id) => {
+  const db_user_get_config_url = (user_id) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
@@ -1353,7 +1356,7 @@ module.exports = (db, app_cfg) => {
           resolve(row.config_value);
         }
       } catch (error) {
-        reject(new Error("Fehler beim laden der Standby-URL eines Benutzers. " + error));
+        reject(new Error("Fehler beim laden der URL eines Benutzers. " + error));
       }
     });
   };
@@ -1623,10 +1626,11 @@ module.exports = (db, app_cfg) => {
             FROM waip_rueckmeldungen 
             WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE ID = ?)
             AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%')
+            AND type_decision = ? 
             AND rmld_uuid IN (SELECT value FROM json_each(?));
           `);
 
-          const rows = stmt.all(waip_id, wachen_nr.toString(), JSON.stringify(arr_rmld_uuid));
+          const rows = stmt.all(waip_id, wachen_nr.toString(), 'accept', JSON.stringify(arr_rmld_uuid));
 
           if (rows.length === 0) {
             resolve(null);
@@ -1639,10 +1643,11 @@ module.exports = (db, app_cfg) => {
             SELECT * 
             FROM waip_rueckmeldungen 
             WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE ID = ?)
-            AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%');
+            AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%')
+            AND type_decision = ? ;
           `);
 
-          const rows = stmt.all(waip_id, wachen_nr.toString());
+          const rows = stmt.all(waip_id, wachen_nr.toString(), 'accept',);
 
           if (rows.length === 0) {
             resolve(null);
@@ -1908,7 +1913,7 @@ module.exports = (db, app_cfg) => {
     db_user_set_config_url: db_user_set_config_url,
     db_user_get_config: db_user_get_config,
     db_user_get_all: db_user_get_all,
-    db_user_get_standbyurl: db_user_get_standbyurl,
+    db_user_get_config_url: db_user_get_config_url,
     db_client_get_alarm_anzeigbar: db_client_get_alarm_anzeigbar,
     db_user_check_permission_for_waip: db_user_check_permission_for_waip,
     db_user_check_permission_for_rmld: db_user_check_permission_for_rmld,

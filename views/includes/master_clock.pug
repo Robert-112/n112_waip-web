@@ -3,10 +3,10 @@
     #clock_day.h-60.w-50
       #time.h-80.text-muted.font-weight-bold.d-flex.align-items-end.clock_frame -Uhrzeit-
       #day.h-20.text-secondary.d-flex.align-items-start.day_frame -Datum-
-    //#frame_web.h-100.w-100.bg-danger
+    #frame_web.h-100.w-100.d-none
       .embed-responsive.embed-responsive-16by9
-        iframe.embed-responsive-item(src='/url_proxy' allowfullscreen)
-  .h-5
+        iframe.embed-responsive-item(src='/proxy' allowfullscreen)
+  .h-5.pt-2
     #wachenname_footer.text-secondary
       .h4.ion-md-business= ' ' + (data_wache || ' -Wachenname-')
       

@@ -1,4 +1,4 @@
-module.exports = function (app, sql, app_cfg, passport, auth, saver, request, logger) {
+module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   // Hilfsfunktion zum prüfen ob der Inhaltstyp JSON ist
   const checkContentType = (req, res, next) => {
     if (!req.is("application/json")) {
@@ -13,18 +13,14 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, request, lo
   // Hilfsfunktion zum Ermitteln der Client-IP
   const getRemoteIp = (req) => {
     // Prüfe verschiedene Header in der Reihenfolge ihrer Zuverlässigkeit
-    const headers = [
-      req.headers["x-real-ip"],
-      req.headers["x-forwarded-for"],
-      req.socket.remoteAddress
-    ];
+    const headers = [req.headers["x-real-ip"], req.headers["x-forwarded-for"], req.socket.remoteAddress];
 
     for (const header of headers) {
       if (!header) continue;
 
       // Bei x-forwarded-for nehmen wir die erste IP (Client-IP)
       if (header === req.headers["x-forwarded-for"]) {
-        const ips = header.split(",").map(ip => ip.trim());
+        const ips = header.split(",").map((ip) => ip.trim());
         if (ips.length > 0) return ips[0];
       } else {
         return header;
@@ -209,61 +205,32 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, request, lo
       public: app_cfg.public,
       title: "Login",
       user: req.user,
-      error: req.flash("errorMessage")
+      error: req.flash("errorMessage"),
     });
   });
 
   // Login-Formular verarbeiten
-  app.post(
-    "/login",
-    (req, res, next) => {
-      passport.authenticate("local", (err, user, info) => {
+  app.post("/login", (req, res, next) => {
+    passport.authenticate("local", (err, user, info) => {
+      if (err) {
+        return next(err);
+      }
+      if (!user) {
+        req.flash("errorMessage", "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.");
+        return res.redirect("/login");
+      }
+      req.logIn(user, (err) => {
         if (err) {
           return next(err);
         }
-        if (!user) {
-          req.flash("errorMessage", "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.");
-          return res.redirect("/login");
+        if (req.body.rememberme) {
+          // der Benutzer muss sich fuer 5 Jahre nicht anmelden
+          req.session.cookie.maxAge = 5 * 365 * 24 * 60 * 60 * 1000;
         }
-        req.logIn(user, (err) => {
-          if (err) {
-            return next(err);
-          }
-          if (req.body.rememberme) {
-            // der Benutzer muss sich fuer 5 Jahre nicht anmelden
-            req.session.cookie.maxAge = 5 * 365 * 24 * 60 * 60 * 1000;
-          }
-          return res.redirect("/");
-        });
-      })(req, res, next);
-    }
-  );
-
-  // Login mit IP verarbeiten
-  app.post(
-    "/login_ip",
-    (req, res, next) => {
-      passport.authenticate("ip", (err, user, info) => {
-        if (err) {
-          return next(err);
-        }
-        if (!user) {
-          req.flash("errorMessage", "Login mittels IP-Adresse fehlgeschlagen!");
-          return res.redirect("/login");
-        }
-        req.logIn(user, (err) => {
-          if (err) {
-            return next(err);
-          }
-          if (req.body.rememberme) {
-            // der Benutzer muss sich fuer 5 Jahre nicht anmelden
-            req.session.cookie.maxAge = 5 * 365 * 24 * 60 * 60 * 1000;
-          }
-          return res.redirect("/");
-        });
-      })(req, res, next);
-    }
-  );
+        return res.redirect("/");
+      });
+    })(req, res, next);
+  });
 
   // Logout verarbeiten
   app.post("/logout", function (req, res) {
@@ -301,10 +268,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, request, lo
   app.post("/einstellungen_zeit", auth.ensureAuthenticated, async (req, res) => {
     try {
       await sql.db_user_set_config_time(req.user.id, req.body.set_reset_counter);
-      req.flash('successMessage', 'Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert');
+      req.flash("successMessage", "Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert");
       res.redirect("/einstellungen");
     } catch (error) {
-      req.flash('errorMessage', 'Fehler beim Speichern der Einstellungen für die Anzeigezeit. ' + error);
+      req.flash("errorMessage", "Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error);
       res.redirect("/einstellungen");
     }
   });
@@ -313,10 +280,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, request, lo
   app.post("/einstellungen_url", auth.ensureAuthenticated, async (req, res) => {
     try {
       await sql.db_user_set_config_url(req.user.id, req.body.url_standby);
-      req.flash('successMessage', 'Einstellungen für die Standbyanzeige wurden erfolgreich gespeichert');
+      req.flash("successMessage", "Einstellungen für die Standbyanzeige wurden erfolgreich gespeichert");
       res.redirect("/einstellungen");
     } catch (error) {
-      req.flash('errorMessage', 'Fehler beim Speichern der Einstellungen für die Standbyanzeige. ' + error);
+      req.flash("errorMessage", "Fehler beim Speichern der Einstellungen für die Standbyanzeige. " + error);
       res.redirect("/einstellungen");
     }
   });
@@ -348,7 +315,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, request, lo
     try {
       const parameter_id = req.params.wachen_id;
       const wache = await sql.db_wache_vorhanden(parameter_id);
-      //const standbyurl = await sql.db_user_get_standbyurl(req.user.id);
       if (wache) {
         res.render("waip", {
           public: app_cfg.public,
@@ -358,7 +324,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, request, lo
           map_tile: app_cfg.public.map_tile,
           app_id: app_cfg.global.app_id,
           user: req.user,
-          //standbyurl: standbyurl,
         });
       } else {
         const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);
@@ -521,36 +486,41 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, request, lo
   /* ##### URL-Proxy  ##### */
   /* ###################### */
 
-  app.get('/url_proxy', auth.ensureAuthenticated, async (req, res, next) => {
-    try {      
-      const standbyurl = await sql.db_user_get_standbyurl(req.user.id);
+  const axios = require("axios");
+  const { Transform } = require("stream");
+
+  app.get("/proxy", auth.ensureAuthenticated, async (req, res, next) => {
+    try {
+      const standbyurl = await sql.db_user_get_config_url(req.user.id);
       if (standbyurl) {
-        request(standbyurl).pipe(res);
+        const response = await axios.get(standbyurl, { responseType: "stream" });
+
+        // CORS-Header setzen
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.setHeader("Content-Type", response.headers["content-type"]);
+
+        // Stream transformieren, um URLs umzuschreiben
+        const transformStream = new Transform({
+          transform(chunk, encoding, callback) {
+            let data = chunk.toString();
+
+            // URLs umschreiben (z. B. für HTML-Inhalte)
+            data = data.replace(/(href|src)="\/([^"]*)"/g, (match, p1, p2) => {
+              return `${p1}="${standbyurl.replace(/\/$/, "")}/${p2}"`;
+            });
+            callback(null, data);
+          },
+        });
+
+        // Antwort durch den Transform-Stream leiten
+        response.data.pipe(transformStream).pipe(res);
       } else {
         throw new Error("Keine URL angegeben!");
       }
     } catch (error) {
       const err = new Error(`Fehler beim Laden des URL-Proxys. ` + error);
-      logger.log("error", err);
-      err.status = 500;
-      next(err);
-    }
-  });
-
-  app.get("/einstellungen", auth.ensureAuthenticated, async (req, res, next) => {
-    try {
-      const data = await sql.db_user_get_config(req.user.id);
-      res.render("user/user_config", {
-        public: app_cfg.public,
-        title: "Einstellungen",
-        user: req.user,
-        user_reset_counter: data.resetcounter,
-        user_standbyurl: data.standbyurl,
-        error: req.flash("errorMessage"),
-        success: req.flash("successMessage"),
-      });
-    } catch (error) {
-      const err = new Error(`Fehler beim Laden der Seite für die Einstellungen. ` + error);
       logger.log("error", err);
       err.status = 500;
       next(err);

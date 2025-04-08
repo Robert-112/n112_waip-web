@@ -73,8 +73,12 @@ $("#replay").on("click", function (event) {
 
 // Größen dynamisch anpassen, Hintergrundfarbe ggf. anpassen
 function resize_text() {
-  // Uhr-Text nur Anpassen wenn sichtbar
+  // Hintergrund im Standby schwarz setzen
   if ($("#waipclock").is(":visible")) {
+    $("body").css("background-color", "#000");
+  }
+  // Uhr-Text nur Anpassen wenn sichtbar
+  if ($("#clock_day").is(":visible")) {
     textFit(document.getElementsByClassName("clock_frame"), {
       minFontSize: 4,
       maxFontSize: 500,
@@ -83,7 +87,6 @@ function resize_text() {
       minFontSize: 3,
       maxFontSize: 500,
     });
-    $("body").css("background-color", "#000");
   }
   // Tableau nur Anpassen wenn sichtbar
   if ($("#waiptableau").is(":visible")) {
@@ -242,7 +245,7 @@ function do_progressbar(start, end) {
 // Karte definieren
 let map = L.map("map", {
   zoomControl: false,
-  attributionControl: false
+  attributionControl: false,
 }).setView([51.733005, 14.338048], 13);
 
 // Layer der Karte
@@ -355,10 +358,10 @@ socket.on("io.playtts", function (data) {
 
 // Daten löschen, Uhr anzeigen
 socket.on("io.standby", function (data) {
-  console.log("Standby");
+  console.log("Standby", data);
   // Einsatz-ID auf 0 setzen
   waip_id = null;
-  // TODO: Wenn vorhanden, hier #standbytimer-bar zurücksetzen
+
   $("#einsatz_art").removeClass(function (index, className) {
     return (className.match(/(^|\s)bg-\S+/g) || []).join(" ");
   });
@@ -375,6 +378,12 @@ socket.on("io.standby", function (data) {
   // Tareset_responsebleau ausblenden
   $("#waiptableau").addClass("d-none");
   $("#waipclock").removeClass("d-none");
+  // Art der Standbyanzeige bestimmen
+  if (data) {
+    // statt der Uhr ein iFrame anzeigen
+    $("#clock_day").addClass("d-none");
+    $("#frame_web").removeClass("d-none");
+  }
   // 200ms warten
   setTimeout(function () {
     resize_text();

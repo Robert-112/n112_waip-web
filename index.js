@@ -3,7 +3,6 @@ const app_cfg = require("./server/app_cfg.js");
 // Module laden
 const fs = require("fs");
 const express = require("express");
-const request = require("request");
 const app = express();
 const http = require("http");
 const webserver = http.createServer(
@@ -51,7 +50,7 @@ let waip = require("./server/waip.js")(io, sql, fs, logger, app_cfg);
 let saver = require("./server/saver.js")(app_cfg, sql, waip, logger);
 let socket = require("./server/socket.js")(io, sql, app_cfg, logger, waip);
 let auth = require("./server/auth.js")(app, app_cfg, sql, bcrypt, passport, io, logger);
-let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, saver, request, logger);
+let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, saver, logger);
 
 // Server starten
 webserver.listen(app_cfg.global.http_port, () => {

@@ -52,8 +52,8 @@ block content
                                 option(selected)= i+1
                               else
                                 option= i+1              
-                    // TODO: anpassen der Durchsage je Benutzer, durch eigene Ersetzung und Reihenfolge
-                    // TODO: Ausnahmen festlegen können, wann keine Musik abgespielt wird  
+                    // TODO: anpassen der Durchsage je Benutzer, durch eigene Ersetzung und Reihenfolge
+                    // TODO: Ausnahmen festlegen können, wann keine Musik abgespielt wird  
             .col-12.border-dark.w-100.pb-3
               .card
                 .card-header Webseite im Standby
@@ -63,9 +63,10 @@ block content
                       p URL der Webseite, die im Standby anstatt der Uhr angezeigt werden soll. 
                       p Soll die Uhr angzeigt werden, muss dieses Feld leer bleiben.
                       p.text-warning Die Anzeige wird nicht automatisch aktualisiert. Dies muss über die Webseite erfolgen.
+                      p.text-danger Die Nutzung erfolgt auf eigene Gefahr. Die Funktion ist nicht bei jeder Webseite gegeben.
                     .col-12
                       form#formurl(action="/einstellungen_url", method="POST")
                         .form-group
                           label(for='url_standby').text-muted URL im Format http(s)://name.der.webseite.de/unterseite
-                          input#url_standby.form-control(type="text", name='url_standby', value=user_standbyurl || '', placeholder="http(s)://..", pattern='^(http|https)://[a-zA-Z0-9. -]+\\. [a-zA-Z]{2,}$')          
+                          input#url_standby.form-control(type="text", name='url_standby', value=user_standbyurl || '', placeholder="http(s)://..")          
                         button.btn.btn-primary(type="submit" form="formurl", value='submit') URL speichern

@@ -3,7 +3,6 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   const flash = require("req-flash");
   const SQLiteStore = require("connect-sqlite3")(session);
   const LocalStrategy = require("passport-local").Strategy;
-  const IpStrategy = require("passport-ip").Strategy;
   const sessionStore = new SQLiteStore();
 
   const jwt = require("jsonwebtoken");
@@ -81,29 +80,6 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
           return done(null, userRow);
         } catch (error) {
           logger.log("error", "Fehler bei der Benutzer-Authentifizierung: " + error);
-        }
-      }
-    )
-  );
-
-  // Benutzerauthentifizierung per IP-Adresse
-  passport.use(
-    new IpStrategy(
-      {
-        range: app_cfg.global.ip_auth_range,
-      },
-      async (profile, done) => {
-        let profile_ip = profile.id;
-        profile_ip = profile_ip.replace(/^(::ffff:)/, "");
-        try {
-          const row = await sql.auth_ipstrategy(profile_ip);
-          if (!row) {
-            return done(null, false);
-          } else {
-            return done(null, row);
-          }
-        } catch (error) {
-          logger.log("error", "Fehler bei der IP-Authentifizierung: " + error);
         }
       }
     )
