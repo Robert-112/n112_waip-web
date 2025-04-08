@@ -14,19 +14,10 @@ Der Web-Server empfängt Einsatzdaten über eine definierte Schnittstelle aus de
 
 Mithilfe der eingebauten Rückmeldefunktion können Einsatzkräfte mitteilen ob Sie an einem Einsatz teilnehmen. Dabei wird die fachliche Qualifikation und wahrscheinliche Eintreffzeit übermittelt. Persönliche Daten (wie Name, Vorname etc.) werden nicht verarbeitet.
 
-Die Anwendung ist Open-Source und kann - unter Berücksichtung der [Lizenz](https://github.com/Robert-112/Wachalarm-IP-Web/blob/master/LICENSE.md) - von jedem frei verwendet werden. Außerdem ist jeder dazu eingeladen an der Weiterentwicklung dieses Repositories mitzuhelfen.
+Die Anwendung ist Open-Source und kann - unter Berücksichtung der [Lizenz](https://github.com/Robert-112/n112-waip-web/blob/master/LICENSE.md) - von jedem frei verwendet werden. Außerdem ist jeder dazu eingeladen an der Weiterentwicklung dieses Repositories mitzuhelfen.
 
-**Weitere Informationen zur Benutzung und Funktionsweise finden Sie im [Wiki](https://github.com/Robert-112/Wachalarm-IP-Web/wiki)**
+**Weitere Informationen zur Benutzung und Funktionsweise finden Sie im [Wiki](https://github.com/Robert-112/n112-waip-web/wiki)**
 
-# DEMO
-
-Die Demo-Version zeigt frei erfundene Einsätze an, die jede Stunde neu alarmiert werden.
-
-[📺🔥 https://wachalarm.mooo.com/](https://wachalarm.mooo.com/)
-
-Login-Daten:
-- Benutzer: me
-- Passwort: 123
 
 # Funktionsumfang (Auszug)
 * Anzeige verschiedener Wachalarme für einzelne Wachen, Träger oder ganze Kreise
@@ -100,4 +91,4 @@ benötigt externen Verteilerdienst wie z.B. Twitter
 ![FireShot Capture 004 - Benutzer und Rechte verwalten - localhost](https://user-images.githubusercontent.com/19272095/54091419-0c22e880-4380-11e9-8677-b7f9db1a422d.png)
 
 # Lizenz
-#### [\[Creative Commons Attribution Share Alike 4.0 International\]](https://github.com/Robert-112/Wachalarm-IP-Web/blob/master/LICENSE.md)
+#### [\[Creative Commons Attribution Share Alike 4.0 International\]](https://github.com/Robert-112/n112-waip-web/blob/master/LICENSE.md)
