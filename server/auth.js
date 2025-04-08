@@ -154,8 +154,8 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         if (api_user) {
           // User wird mit seiner ID identifiziert
           let payload = { id: user_id };
-          // TODO Gültigkeit des API-Token auf eine bestimmte Zeit begrenzen
-          let token = jwt.sign(payload, jwtOptions.secretOrKey /* , expiresIn: "1h" */);
+          // Gültigkeit des API-Tokens auf 15 Minuten begrenzen
+          let token = jwt.sign(payload, jwtOptions.secretOrKey, { expiresIn: "15m" });
           resolve(token);
         } else {
           resolve(null);
