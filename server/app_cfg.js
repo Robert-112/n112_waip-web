@@ -32,8 +32,6 @@ app_cfg.global = {
   defaultapipass: "apiuser123",
   // Standard-I-P für den Standard-Admin (für ersten Start)
   defaultuserip: "127.0.0.1",
-  // IP-Bereiche für deine Authentifzierung per IP erlaubt wird
-  ip_auth_range: ["::ffff:172.16.5.0/24", "::ffff:192.168.2.0/24"],
   // Verschlüsselung Nutzerpasswort
   saltRounds: 10,
   // Session-Secret
