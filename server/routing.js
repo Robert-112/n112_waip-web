@@ -1,4 +1,7 @@
 module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
+  const base64url = require("base64url");
+  const uuid = require('uuid').v4;
+
   // Hilfsfunktion zum prüfen ob der Inhaltstyp JSON ist
   const checkContentType = (req, res, next) => {
     if (!req.is("application/json")) {
@@ -197,8 +200,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   /* ####### Login ####### */
   /* ##################### */
 
-  // BUG -> /login liefert keine Fehlermeldung bei falschem Login
-
   // Loginseite
   app.get("/login", (req, res) => {
     res.render("login", {
@@ -230,6 +231,74 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         return res.redirect("/");
       });
     })(req, res, next);
+  });
+
+  // WebAuthn-Login Public-Key
+  app.post(
+    "/login/public-key",
+    passport.authenticate("webauthn", { failWithError: true }),
+    (req, res, next) => {
+      res.json({ ok: true });
+    },
+    (err, req, res, next) => {
+      res.json({ ok: false });
+    }
+  );
+
+  // WebAuthn-Login Challenge
+  app.post("/login/public-key/challenge", (req, res, next) => {
+    console.warn('login-challange');
+    auth.webauthnStore.challenge(req, (err, challenge) => {
+      if (err) {
+        return next(err);
+      }
+      res.json({ challenge: base64url.encode(challenge) });
+    });
+  });
+
+  // WebAuthn-Registrierung: Antwort verarbeiten
+  app.post("/register", auth.ensureAuthenticated, (req, res, next) => {
+    const user = req.user;
+
+    console.warn('register');
+    // Verifiziere die Antwort des Clients
+    auth.webauthnStore.verifyRegistrationResponse(user, req.body, (err, result) => {
+      if (err || !result) {
+        return res.status(400).json({ ok: false, error: "Registrierung fehlgeschlagen." });
+      }
+
+      // Registrierung erfolgreich
+      res.json({ ok: true });
+    });
+  });
+
+  // WebAuthn-Registrierung: Challenge anfordern
+  app.post("/register/public-key/challenge", auth.ensureAuthenticated, (req, res, next) => {
+    console.warn('register-challange');
+    //console.warn(req);
+    try {
+      var user = {
+        id: uuid({}, Buffer.alloc(16)),
+        // TODO: ggf. selbst gewaehlten User-Namen aus req.body.username verwenden
+        name: req.user.user,
+      };
+      console.warn('user:', user)
+      auth.webauthnStore.challenge(req, { user: user }, function (err, challenge) {
+        if (err) {
+          logger.log("error", err);
+          return next(err);
+        }
+        user.id = base64url.encode(user.id);
+        
+        res.json({ user: user, challenge: base64url.encode(challenge) });
+      });  
+    } catch (error) {
+      const err = new Error(`Fehler beim Registrierung. ` + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
+    }
+    
   });
 
   // Logout verarbeiten
@@ -321,7 +390,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           title: "Alarmmonitor",
           wachen_id: parameter_id,
           data_wache: wache.name,
-          map_tile: app_cfg.public.map_tile,
+          map_service: app_cfg.public.map_service,
           app_id: app_cfg.global.app_id,
           user: req.user,
         });
@@ -349,7 +418,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       res.render("overviews/overview_dbrd", {
         public: app_cfg.public,
         title: "Dashboard",
-        map_tile: app_cfg.public.map_tile,
+        map_service: app_cfg.public.map_service,
         user: req.user,
         dataSet: data,
       });
@@ -371,7 +440,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           public: app_cfg.public,
           title: "Dashboard",
           dbrd_uuid: dbrd_uuid,
-          map_tile: app_cfg.public.map_tile,
+          map_service: app_cfg.public.map_service,
           app_id: app_cfg.global.app_id,
           user: req.user,
         });

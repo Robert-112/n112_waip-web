@@ -13,7 +13,7 @@ block content
       include includes/master_wachalarm
 
   script.
-    map_tile='#{map_tile}'
+    map_service=!{JSON.stringify(map_service)};
     client_id="#{app_id}"
   script(src='/js/leaflet.js')
   script(src='/js/textFit.min.js')

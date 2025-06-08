@@ -248,10 +248,21 @@ let map = L.map("map", {
   attributionControl: false,
 }).setView([51.733005, 14.338048], 13);
 
-// Layer der Karte
-mapLink = L.tileLayer(map_tile, {
-  maxZoom: 18,
-}).addTo(map);
+// Layer der Karte basierend auf dem Typ des Kartendienstes
+if (map_service.type === "tile") {
+  L.tileLayer(map_service.tile_url, {
+    maxZoom: 18,
+  }).addTo(map);
+} else if (map_service.type === "wms") {
+  var wmsLayer = L.tileLayer
+    .wms(map_service.wms_url, {
+      layers: map_service.wms_layers,
+      format: map_service.wms_format,
+      transparent: map_service.wms_transparent,
+      version: map_service.wms_version,
+    })
+    .addTo(map);
+}
 
 // Icon der Karte zuordnen
 let redIcon = new L.Icon({

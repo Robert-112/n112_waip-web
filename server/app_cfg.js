@@ -9,7 +9,7 @@ app_cfg.global = {
   // Limit für Tabellen Einsaetze Einsatzmittel, Rueckmeldungen
   db_limit: 500,
   // Limit für Log-Tabelle
-  db_limit_log: 100000, 
+  db_limit_log: 100000,
   // Pfad zur Sound-Datei
   soundpath: "/public/media/",
   // Pfad zu Medien-Dateien
@@ -21,7 +21,7 @@ app_cfg.global = {
   // Zeit in Minuten nach der standardmäßig Standby im Alarmmonitor aktiviert wird
   default_time_for_standby: 10,
   // Millisekunden nach denen zyklisch aufgeräumt wird
-  system_cleanup_time: 10000, 
+  system_cleanup_time: 10000,
   // Standard-Admin-Nutzer (für ersten Start)
   defaultuser: "me",
   // Standard-Admin-Kennwort (für ersten Start)
@@ -57,7 +57,15 @@ app_cfg.public = {
   // Firmenname (in der Fusszeile)
   company: "Netzwerk 112",
   // Base-URL für Kartendaten
-  map_tile: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  map_service: {
+    type: "tile", // "tile" für Tile-Server, "wms" für WMS-Server
+    tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    wms_url: "http://ows.mundialis.de/services/service?",
+    wms_layers: "OSM-WMS",
+    wms_format: "image/png", // Format des Bildes
+    wms_transparent: true, // Transparenz aktivieren
+    wms_version: "1.1.1", // WMS-Version
+  },
   // soll auf ein externes Impressum verwiesen werden
   ext_imprint: false,
   // Link zum externen Impressum
@@ -2175,7 +2183,7 @@ app_cfg.sqlite = {
     ('em_tts','88','Rettungsboot'),
     ('em_tts','91','Gerätewagen Dekontamination Personal')
     ;
-    `
+    `,
 };
 
 module.exports = app_cfg;

@@ -63,7 +63,6 @@ module.exports = (bcrypt, app_cfg) => {
         em_fmsstatus TEXT,                           -- vorher: status TEXT,
         em_wgs84_x REAL,                             -- vorher: wgs84_x TEXT,
         em_wgs84_y REAL,                             -- vorher: wgs84_y TEXT,
-        em_wgs84_route TEXT,                         -- neu (Darstellung Einsatzroute)
         em_issi TEXT,                                -- neu
         em_opta TEXT,                                -- neu
         em_radiochannel TEXT,                        -- neu
@@ -92,7 +91,9 @@ module.exports = (bcrypt, app_cfg) => {
         name_wache TEXT,
         name_beschreibung TEXT,         -- neu
         wgs84_x REAL,                   -- vorher: wgs84_x TEXT,
-        wgs84_y REAL                    -- vorher: wgs84_y TEXT
+        wgs84_y REAL,                   -- vorher: wgs84_y TEXT
+        em_wgs84_route_full TEXT,       -- neu (Darstellung Einsatzroute)
+        em_wgs84_route_half TEXT        -- neu (Darstellung Einsatzroute)
       );
       
       -- Tabelle für Historie

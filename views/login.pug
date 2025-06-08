@@ -39,6 +39,20 @@ block content
                     input#rembemerme.custom-control-input(type='checkbox' name='rememberme' checked='')
                     label.custom-control-label.text-warning(for='rembemerme') Anmeldung dauerhaft speichern
                 button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') Anmelden
+              hr
+          .card.my-5 
+            .card-body 
+              h5.card-title.text-center WebAuthn
+              form#registration-form
+                // WebAuthn-Register
+                label(for='email') E-Mail 
+                input#email(type='email' name='email' autocomplete='email' placeholder='E-Mail-Adresse eingeben')
+                button.btn.btn-lg.btn-outline-success.btn-block.text-uppercase(type='submit') für WebAuthn registrieren
+                small.form-text.text-muted.text-center WebAuthn-Registrierung benötigt einen neuen Sicherheitsschlüssel oder biometrische Daten.
+              // WebAuthn-Login
+              button#webauthn-login.btn.btn-lg.btn-outline-primary.btn-block.text-uppercase(type='button') Mit WebAuthn anmelden
+              small.form-text.text-muted.text-center WebAuthn benötigt einen registrierten Sicherheitsschlüssel oder biometrische Daten.
+              
       //.row
         .col-sm-9.col-md-7.col-lg-5.mx-auto
           .card.my-5
@@ -50,3 +64,7 @@ block content
                     | können Sie sich auch ohne Benutzername/Kennwort anmelden. 
                     | Ihre Anmeldung wird dann dauerhaft gespeichert.
                 button.btn.btn-lg.btn-outline-primary.btn-block.text-uppercase(type='submit') Anmelden
+
+    script(src='/js/base64url.js')
+    script(src='/js/webauthn-login.js')
+    script(src='/js/webauthn-register.js')

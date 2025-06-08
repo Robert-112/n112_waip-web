@@ -169,7 +169,7 @@ module.exports = (db, app_cfg) => {
           wachen_nr = "%";
         }
 
-        // neuesten Einsatz für die gewählte Wachen-ID abfragen 
+        // neuesten Einsatz für die gewählte Wachen-ID abfragen
         const stmt1 = db.prepare(`
           SELECT 
           em.em_waip_einsaetze_id AS waip_id
@@ -183,7 +183,6 @@ module.exports = (db, app_cfg) => {
         if (row1 === undefined) {
           resolve(null);
         } else {
-        
           // User-ID ermitteln
           const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
 
@@ -196,7 +195,7 @@ module.exports = (db, app_cfg) => {
 
           // Standard-Reset-Zeit aus app_cfg als Fallback
           reset_timestamp = app_cfg.global.default_time_for_standby;
-          
+
           // Wenn ein benutzerdefinierter Reset-Counter vorhanden ist, diesen verwenden
           if (row2 !== undefined && row2.config_value) {
             reset_timestamp = row2.config_value;
@@ -210,13 +209,12 @@ module.exports = (db, app_cfg) => {
             AND DATETIME(we.zeitstempel, ? || ' minutes') > DATETIME('now', 'localtime');
           `);
           const row3 = stmt3.get(reset_timestamp, row1.waip_id, reset_timestamp);
-          
+
           if (row3 === undefined) {
             resolve(null);
           } else {
             resolve(row3);
           }
-
         }
       } catch (error) {
         reject(new Error("Fehler beim Abfragen der Einsätze für Wachen-ID " + wachen_nr + "). " + error));
@@ -247,7 +245,6 @@ module.exports = (db, app_cfg) => {
   const db_einsatz_check_history = (einsatzdaten, socket) => {
     return new Promise((resolve, reject) => {
       try {
-
         const uuidNamespace = app_cfg.global.uuidNamespace;
 
         // Nur die relevanten Felder für den Vergleich behalten
@@ -296,8 +293,7 @@ module.exports = (db, app_cfg) => {
           resolve(false);
         } else {
           // wenn History-Daten hinterlegt sind, dann prüfen ob sich etwas verändert hat
-          const isDoppelalarm = uuid_einsatzdaten === row.uuid_einsatz_grunddaten &&
-            uuid_em_alarmiert === row.uuid_em_alarmiert;
+          const isDoppelalarm = uuid_einsatzdaten === row.uuid_einsatz_grunddaten && uuid_em_alarmiert === row.uuid_em_alarmiert;
 
           // Nur aktualisieren wenn sich etwas geändert hat
           if (!isDoppelalarm) {
@@ -965,7 +961,7 @@ module.exports = (db, app_cfg) => {
 
         // Reset-Zeitstempel in Abhängigkeit der Einstellungen ermitteln
         let reset_timestamp = null;
-      
+
         if (client_status !== "Standby") {
           // User-ID ermitteln
           const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
@@ -979,7 +975,7 @@ module.exports = (db, app_cfg) => {
 
           // Standard-Reset-Zeit aus app_cfg als Fallback
           let time_for_standby = app_cfg.global.default_time_for_standby;
-          
+
           // Wenn ein benutzerdefinierter Reset-Counter vorhanden ist, diesen verwenden
           if (row1 !== undefined && row1.config_value) {
             time_for_standby = row1.config_value;
@@ -999,7 +995,6 @@ module.exports = (db, app_cfg) => {
           } else {
             reset_timestamp = row2.reset_time;
           }
-
         }
 
         // Client-Status in DB speichern
@@ -1028,7 +1023,18 @@ module.exports = (db, app_cfg) => {
             ?
           );        
         `);
-        const info = stmt2.run(socket_id, socket_id, client_ips, client_nsp, client_room, client_status, user_name, user_permissions, user_agent, reset_timestamp);
+        const info = stmt2.run(
+          socket_id,
+          socket_id,
+          client_ips,
+          client_nsp,
+          client_room,
+          client_status,
+          user_name,
+          user_permissions,
+          user_agent,
+          reset_timestamp
+        );
         resolve(info.changes);
       } catch (error) {
         reject(new Error("Fehler bei Aktualisierung des Clientstatus. Status:" + client_status + error));
@@ -1228,7 +1234,7 @@ module.exports = (db, app_cfg) => {
           "i"
         );
         if (url && !url_regex.test(url)) {
-          throw `Die übergebene URL ${url} ist nicht valide!`; 
+          throw `Die übergebene URL ${url} ist nicht valide!`;
         }
         // URL speichern
         const stmt = db.prepare(`
@@ -1244,7 +1250,7 @@ module.exports = (db, app_cfg) => {
         const info = stmt.run(user_id, user_id, "standbyurl", url);
         resolve(info.changes);
       } catch (error) {
-        reject(new Error("Fehler beim speichern / aktualisieren der Einstellung der Standby-URL eines Benutzers. "  + error));
+        reject(new Error("Fehler beim speichern / aktualisieren der Einstellung der Standby-URL eines Benutzers. " + error));
       }
     });
   };
@@ -1361,13 +1367,10 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-
-
   // Berechtigung eines Nutzers für einen Einsatz überpruefen
   const db_user_check_permission_for_waip = (socket, waip_id) => {
     return new Promise((resolve, reject) => {
       try {
-
         // User-ID und Berechtigung aus Socket ermitteln
         const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
         const permissions = socket.data.user && socket.data.user.permissions ? socket.data.user.permissions : null;
@@ -1384,8 +1387,8 @@ module.exports = (db, app_cfg) => {
           // Berechtigungen aus DB abfragen -> 52,62,6690,....
           const stmt = db.prepare(`
             SELECT GROUP_CONCAT(DISTINCT wa.nr_wache) wache FROM waip_einsatzmittel em
-            LEFT JOIN waip_wachen wa ON wa.id = em.waip_wachen_ID
-            WHERE waip_einsaetze_ID = ?;
+            LEFT JOIN waip_wachen wa ON wa.id = em.em_station_id
+            WHERE em_waip_einsaetze_id = ?;
           `);
           const row = stmt.get(waip_id);
           // keine Wache für Benutzer hinterlegt, dann false
@@ -1412,7 +1415,6 @@ module.exports = (db, app_cfg) => {
   const db_user_check_permission_for_rmld = (socket, wache_nr) => {
     return new Promise((resolve, reject) => {
       try {
-
         // User-ID und Berechtigung aus Socket ermitteln
         const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
         const permissions = socket.data.user && socket.data.user.permissions ? socket.data.user.permissions : null;
@@ -1435,7 +1437,6 @@ module.exports = (db, app_cfg) => {
         } else {
           resolve(false);
         }
-
       } catch (error) {
         reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.data.user + wache_nr + error));
       }
@@ -1630,14 +1631,13 @@ module.exports = (db, app_cfg) => {
             AND rmld_uuid IN (SELECT value FROM json_each(?));
           `);
 
-          const rows = stmt.all(waip_id, wachen_nr.toString(), 'accept', JSON.stringify(arr_rmld_uuid));
+          const rows = stmt.all(waip_id, wachen_nr.toString(), "accept", JSON.stringify(arr_rmld_uuid));
 
           if (rows.length === 0) {
             resolve(null);
           } else {
             resolve(rows);
           }
-
         } else {
           const stmt = db.prepare(`
             SELECT * 
@@ -1647,7 +1647,7 @@ module.exports = (db, app_cfg) => {
             AND type_decision = ? ;
           `);
 
-          const rows = stmt.all(waip_id, wachen_nr.toString(), 'accept',);
+          const rows = stmt.all(waip_id, wachen_nr.toString(), "accept");
 
           if (rows.length === 0) {
             resolve(null);
@@ -1655,8 +1655,6 @@ module.exports = (db, app_cfg) => {
             resolve(rows);
           }
         }
-
-
       } catch (error) {
         reject(new Error("Fehler beim laden von Rückmeldungen. " + wachen_nr + waip_id + arr_rmld_uuid + error));
       }
@@ -1793,7 +1791,7 @@ module.exports = (db, app_cfg) => {
   };
 
   // Neuen User anlegen
-  const auth_create_new_user = (user, password, permissions, ip_address) => {
+  const auth_create_new_user = (user, password, description, permissions, ip_address) => {
     return new Promise((resolve, reject) => {
       try {
         // Prüfen ob User bereits in Datenbank vorhanden
@@ -1810,18 +1808,20 @@ module.exports = (db, app_cfg) => {
         const stmt2 = db.prepare(`
           INSERT INTO waip_user ( 
             user, 
-            password, 
+            password,
+            description,
             permissions, 
             ip_address 
           ) VALUES ( 
             ?, 
             ?, 
             ?, 
+            ?, 
             ? 
           );
         `);
-        const info = stmt2.run(user, password, permissions, ip_address);
-        resolve(info.changes);
+        const info = stmt2.run(user, password, description, permissions, ip_address);
+        resolve(info.lastInsertRowid);
       } catch (error) {
         reject(new Error("Fehler beim Anlegen eines neuen Users. " + user + error));
       }
@@ -1883,6 +1883,48 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // neuen Credential anlegen
+  const auth_create_credentials = (user_id, external_id, public_key) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt2 = db.prepare(`
+        INSERT INTO waip_user_credentials ( 
+          user_id, 
+          external_id,
+          public_key,
+        ) VALUES ( 
+          ?, 
+          ?, 
+          ? 
+        );
+      `);
+        const info = stmt2.run(user_id, external_id, public_key);
+        resolve(info.lastInsertRowid);
+      } catch (error) {
+        reject(new Error("Fehler beim Anlegen eines Credential für einen Users. " + user_id + error));
+      }
+    });
+  };
+
+  // einen Nutzer in der Datenbank anhand seiner ID suchen
+  const auth_getCredentials = (id) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`
+            SELECT * FROM waip_user_credentials WHERE external_id = ?;
+          `);
+        const row = stmt.run(id);
+        if (row === undefined) {
+          resolve(null);
+        } else {
+          resolve(row);
+        }
+      } catch (error) {
+        reject(new Error("Fehler bei auth_getCredentials. " + id + error));
+      }
+    });
+  };
+
   return {
     db_einsatz_speichern: db_einsatz_speichern,
     db_einsatz_for_client_ermitteln: db_einsatz_for_client_ermitteln,
@@ -1930,5 +1972,7 @@ module.exports = (db, app_cfg) => {
     auth_deleteUser: auth_deleteUser,
     auth_editUser: auth_editUser,
     auth_getUser: auth_getUser,
+    auth_create_credentials: auth_create_credentials,
+    auth_getCredentials: auth_getCredentials,
   };
 };
