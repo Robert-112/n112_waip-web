@@ -155,7 +155,7 @@ module.exports = (bcrypt, app_cfg) => {
         reference TEXT                  -- neu
       );
 
-      -- Tabelle für Benutzer-Anmeldeinformationen
+      -- Tabelle für erweiterte Benutzer-Anmeldeinformationen
       CREATE TABLE IF NOT EXISTS waip_user_credentials  (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,                -- neu

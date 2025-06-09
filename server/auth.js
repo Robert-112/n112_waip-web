@@ -15,11 +15,6 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     secretOrKey: app_cfg.global.jwtsecret,
   };
 
-  // WebAuthn-Authentifizierung
-  var WebAuthnStrategy = require("passport-fido2-webauthn");
-  var SessionChallengeStore = require("passport-fido2-webauthn").SessionChallengeStore;
-  var webauthnStore = new SessionChallengeStore();
-
   const sessionMiddleware = session({
     store: sessionStore,
     key: "connect.sid",
@@ -101,47 +96,6 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
       }
       return done(null, false);
     })
-  );
-
-  // WebAuthn-Authentifizierung
-  passport.use(
-    new WebAuthnStrategy(
-      { store: webauthnStore },
-      async function verify(id, userHandle, cb) {
-        // Credentials aus der DB holen
-        let row = await sql.auth_getCredentials(id);
-        if (row) {
-          const publicKey = row.public_key;
-        } else {
-          return cb(null, false, { message: "Invalid Credentials." });
-        }
-        // ID des Benutzers aus DB holen
-        let user_id = await sql.auth_getUser(row.user_id);
-        if (user_id) {
-          if (Buffer.compare(row.id, userHandle) != 0) {
-            return cb(null, false, { message: "Invalid key (1)." });
-          }
-          return cb(null, row, publicKey);
-        } else {
-          return cb(null, false, { message: "Invalid key. (2)" });
-        }
-      },
-      async function register(user, id, publicKey, cb) {
-        // Nutzer in DB anlegen
-        let InsertRowid = await sql.auth_create_new_user(user.name, "", user.displayName, "", "");
-        if (InsertRowid) {
-          const newUser = {
-            id: InsertRowid,
-            username: user.name,
-            name: user.displayName,
-          };
-          // Credentials in DB speichern
-          await sql.auth_create_credentials(newUser.id, id, publicKey);
-        } else {
-          return cb("Fehler beim Anlegen des Benutzers (WebAuthn).");
-        }
-      }
-    )
   );
 
   // Funktion die den Benutzer anhand der ID speichert
@@ -300,6 +254,5 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     createUser: createUser,
     deleteUser: deleteUser,
     editUser: editUser,
-    webauthnStore: webauthnStore,
   };
 };

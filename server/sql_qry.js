@@ -1224,37 +1224,6 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Konfiguration der Standby-URL eines Users speichern
-  const db_user_set_config_url = (user_id, url) => {
-    return new Promise((resolve, reject) => {
-      try {
-        // prüfen der übermittelte Wert wirklich eine URL ist, sonst fehler zurückgeben
-        const url_regex = new RegExp(
-          "^(https?:\\/\\/)?((?!localhost)(?!127\\.0\\.0\\.1)((\\d{1,3}\\.){3}\\d{1,3}|[\\da-z.-]+)\\.([a-z.]{2,6}|\\d{1,5})(:[0-9]{1,5})?(\\/.*)?)$",
-          "i"
-        );
-        if (url && !url_regex.test(url)) {
-          throw `Die übergebene URL ${url} ist nicht valide!`;
-        }
-        // URL speichern
-        const stmt = db.prepare(`
-          INSERT OR REPLACE INTO waip_user_config
-          (id, user_id, config_type, config_value)
-          VALUES (
-            (SELECT id FROM waip_user_config WHERE user_id = ? AND config_type = 'standbyurl'),
-            ?,
-            ?,
-            ?
-          );
-        `);
-        const info = stmt.run(user_id, user_id, "standbyurl", url);
-        resolve(info.changes);
-      } catch (error) {
-        reject(new Error("Fehler beim speichern / aktualisieren der Einstellung der Standby-URL eines Benutzers. " + error));
-      }
-    });
-  };
-
   // Einstellungen eines Benutzers laden
   const db_user_get_config = (user_id) => {
     return new Promise((resolve, reject) => {
@@ -1264,11 +1233,7 @@ module.exports = (db, app_cfg) => {
             COALESCE(
               (SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'resetcounter'), 
               ${app_cfg.global.default_time_for_standby}
-            ) AS resetcounter,
-            COALESCE(
-              (SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'standbyurl'), 
-              null
-            ) AS standbyurl;
+            ) AS resetcounter;
         `);
         const row = stmt.get(user_id, user_id);
         resolve(row);
@@ -1344,25 +1309,6 @@ module.exports = (db, app_cfg) => {
         }
       } catch (error) {
         reject(new Error("Fehler beim laden aller Benutzerdaten. " + error));
-      }
-    });
-  };
-
-  //  Standby-URL eines Benutzer laden
-  const db_user_get_config_url = (user_id) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const stmt = db.prepare(`
-          SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'standbyurl';
-        `);
-        const row = stmt.get(user_id);
-        if (row === undefined) {
-          resolve(null);
-        } else {
-          resolve(row.config_value);
-        }
-      } catch (error) {
-        reject(new Error("Fehler beim laden der URL eines Benutzers. " + error));
       }
     });
   };
@@ -1883,48 +1829,6 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // neuen Credential anlegen
-  const auth_create_credentials = (user_id, external_id, public_key) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const stmt2 = db.prepare(`
-        INSERT INTO waip_user_credentials ( 
-          user_id, 
-          external_id,
-          public_key,
-        ) VALUES ( 
-          ?, 
-          ?, 
-          ? 
-        );
-      `);
-        const info = stmt2.run(user_id, external_id, public_key);
-        resolve(info.lastInsertRowid);
-      } catch (error) {
-        reject(new Error("Fehler beim Anlegen eines Credential für einen Users. " + user_id + error));
-      }
-    });
-  };
-
-  // einen Nutzer in der Datenbank anhand seiner ID suchen
-  const auth_getCredentials = (id) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const stmt = db.prepare(`
-            SELECT * FROM waip_user_credentials WHERE external_id = ?;
-          `);
-        const row = stmt.run(id);
-        if (row === undefined) {
-          resolve(null);
-        } else {
-          resolve(row);
-        }
-      } catch (error) {
-        reject(new Error("Fehler bei auth_getCredentials. " + id + error));
-      }
-    });
-  };
-
   return {
     db_einsatz_speichern: db_einsatz_speichern,
     db_einsatz_for_client_ermitteln: db_einsatz_for_client_ermitteln,
@@ -1952,10 +1856,8 @@ module.exports = (db, app_cfg) => {
     db_socket_get_by_id: db_socket_get_by_id,
     db_socket_get_all_to_standby: db_socket_get_all_to_standby,
     db_user_set_config_time: db_user_set_config_time,
-    db_user_set_config_url: db_user_set_config_url,
     db_user_get_config: db_user_get_config,
     db_user_get_all: db_user_get_all,
-    db_user_get_config_url: db_user_get_config_url,
     db_client_get_alarm_anzeigbar: db_client_get_alarm_anzeigbar,
     db_user_check_permission_for_waip: db_user_check_permission_for_waip,
     db_user_check_permission_for_rmld: db_user_check_permission_for_rmld,
@@ -1972,7 +1874,5 @@ module.exports = (db, app_cfg) => {
     auth_deleteUser: auth_deleteUser,
     auth_editUser: auth_editUser,
     auth_getUser: auth_getUser,
-    auth_create_credentials: auth_create_credentials,
-    auth_getCredentials: auth_getCredentials,
   };
 };

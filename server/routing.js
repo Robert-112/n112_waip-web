@@ -1,5 +1,4 @@
 module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
-  const base64url = require("base64url");
   const uuid = require('uuid').v4;
 
   // Hilfsfunktion zum prüfen ob der Inhaltstyp JSON ist
@@ -233,74 +232,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     })(req, res, next);
   });
 
-  // WebAuthn-Login Public-Key
-  app.post(
-    "/login/public-key",
-    passport.authenticate("webauthn", { failWithError: true }),
-    (req, res, next) => {
-      res.json({ ok: true });
-    },
-    (err, req, res, next) => {
-      res.json({ ok: false });
-    }
-  );
-
-  // WebAuthn-Login Challenge
-  app.post("/login/public-key/challenge", (req, res, next) => {
-    console.warn('login-challange');
-    auth.webauthnStore.challenge(req, (err, challenge) => {
-      if (err) {
-        return next(err);
-      }
-      res.json({ challenge: base64url.encode(challenge) });
-    });
-  });
-
-  // WebAuthn-Registrierung: Antwort verarbeiten
-  app.post("/register", auth.ensureAuthenticated, (req, res, next) => {
-    const user = req.user;
-
-    console.warn('register');
-    // Verifiziere die Antwort des Clients
-    auth.webauthnStore.verifyRegistrationResponse(user, req.body, (err, result) => {
-      if (err || !result) {
-        return res.status(400).json({ ok: false, error: "Registrierung fehlgeschlagen." });
-      }
-
-      // Registrierung erfolgreich
-      res.json({ ok: true });
-    });
-  });
-
-  // WebAuthn-Registrierung: Challenge anfordern
-  app.post("/register/public-key/challenge", auth.ensureAuthenticated, (req, res, next) => {
-    console.warn('register-challange');
-    //console.warn(req);
-    try {
-      var user = {
-        id: uuid({}, Buffer.alloc(16)),
-        // TODO: ggf. selbst gewaehlten User-Namen aus req.body.username verwenden
-        name: req.user.user,
-      };
-      console.warn('user:', user)
-      auth.webauthnStore.challenge(req, { user: user }, function (err, challenge) {
-        if (err) {
-          logger.log("error", err);
-          return next(err);
-        }
-        user.id = base64url.encode(user.id);
-        
-        res.json({ user: user, challenge: base64url.encode(challenge) });
-      });  
-    } catch (error) {
-      const err = new Error(`Fehler beim Registrierung. ` + error);
-      logger.log("error", err);
-      err.status = 500;
-      next(err);
-    }
-    
-  });
-
   // Logout verarbeiten
   app.post("/logout", function (req, res) {
     req.session.destroy(function (err) {
@@ -341,18 +272,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       res.redirect("/einstellungen");
     } catch (error) {
       req.flash("errorMessage", "Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error);
-      res.redirect("/einstellungen");
-    }
-  });
-
-  // Einstellungen zur URL speichern
-  app.post("/einstellungen_url", auth.ensureAuthenticated, async (req, res) => {
-    try {
-      await sql.db_user_set_config_url(req.user.id, req.body.url_standby);
-      req.flash("successMessage", "Einstellungen für die Standbyanzeige wurden erfolgreich gespeichert");
-      res.redirect("/einstellungen");
-    } catch (error) {
-      req.flash("errorMessage", "Fehler beim Speichern der Einstellungen für die Standbyanzeige. " + error);
       res.redirect("/einstellungen");
     }
   });
@@ -548,51 +467,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       }
     } else {
       res.redirect("/adm_edit_users");
-    }
-  });
-
-  /* ###################### */
-  /* ##### URL-Proxy  ##### */
-  /* ###################### */
-
-  const axios = require("axios");
-  const { Transform } = require("stream");
-
-  app.get("/proxy", auth.ensureAuthenticated, async (req, res, next) => {
-    try {
-      const standbyurl = await sql.db_user_get_config_url(req.user.id);
-      if (standbyurl) {
-        const response = await axios.get(standbyurl, { responseType: "stream" });
-
-        // CORS-Header setzen
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        res.setHeader("Content-Type", response.headers["content-type"]);
-
-        // Stream transformieren, um URLs umzuschreiben
-        const transformStream = new Transform({
-          transform(chunk, encoding, callback) {
-            let data = chunk.toString();
-
-            // URLs umschreiben (z. B. für HTML-Inhalte)
-            data = data.replace(/(href|src)="\/([^"]*)"/g, (match, p1, p2) => {
-              return `${p1}="${standbyurl.replace(/\/$/, "")}/${p2}"`;
-            });
-            callback(null, data);
-          },
-        });
-
-        // Antwort durch den Transform-Stream leiten
-        response.data.pipe(transformStream).pipe(res);
-      } else {
-        throw new Error("Keine URL angegeben!");
-      }
-    } catch (error) {
-      const err = new Error(`Fehler beim Laden des URL-Proxys. ` + error);
-      logger.log("error", err);
-      err.status = 500;
-      next(err);
     }
   });
 

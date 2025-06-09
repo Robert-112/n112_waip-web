@@ -12,10 +12,8 @@
     "debug": "DEBUG=* node index.js"
   },
   "dependencies": {
-    "axios": "^1.8.4",
-    "base64url": "^3.0.1",
-    "bcrypt": "^5.1.1",
-    "better-sqlite3": "^11.9.1",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^11.10.0",
     "body-parser": "^2.2.0",
     "connect-sqlite3": "^0.9.15",
     "console-stamp": "^3.1.2",
@@ -23,7 +21,6 @@
     "express-session": "^1.18.1",
     "jsonwebtoken": "^9.0.2",
     "passport": "^0.7.0",
-    "passport-fido2-webauthn": "^0.1.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "pug": "^3.0.3",

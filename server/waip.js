@@ -114,15 +114,8 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
         // die Einsatz-ID aus dem Websocket entfernen
         socket.data.waip_id = null;
 
-        // Standby-URL für nutzer laden, falls vorhanden
-        const standbyurl = await sql.db_user_get_config_url(socket.data.user.id);
-        if (standbyurl) {
-          // Standby-URL senden
-          socket.emit("io.standby", standbyurl);
-        } else {
-          // Standby ohne Daten senden senden
-          socket.emit("io.standby", null);
-        }
+        // Standby ohne Daten senden senden
+        socket.emit("io.standby", null);
 
         // Client-Status mit Standby aktualisieren
         sql.db_client_update_status(socket, "Standby");
