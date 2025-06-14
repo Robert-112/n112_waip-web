@@ -1,6 +1,4 @@
 module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
-  const uuid = require('uuid').v4;
-
   // Hilfsfunktion zum prüfen ob der Inhaltstyp JSON ist
   const checkContentType = (req, res, next) => {
     if (!req.is("application/json")) {
