@@ -456,17 +456,31 @@ socket.on("io.new_waip", function (data) {
   // Ortsdaten zusammenstellen und setzen
   let small_ortsdaten;
   small_ortsdaten = "";
+  // Objekt anfuegen
   if (data.objekt) {
     small_ortsdaten = small_ortsdaten + break_text_20(data.objekt) + "<br />";
   }
+  // Ort anfuegen
   if (data.ort) {
     small_ortsdaten = small_ortsdaten + break_text_20(data.ort) + "<br />";
   }
+  // Ortsteil anfuegen, aber nur wenn nicht gleich Ort
   if (data.ortsteil) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.ortsteil) + "<br />";
+    // wenn Ortsteil gleich Ort, dann nicht anzeigen
+    if (data.ortsteil !== data.ort) {
+      small_ortsdaten = small_ortsdaten + break_text_20(data.ortsteil) + "<br />";
+    }
   }
+  // Strasse und Hausnummer anfuegen
   if (data.strasse) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.strasse) + "<br />";
+    // Hausnummer an Strasse anfuegen, falls vorhanden
+    tmp_strasse = data.strasse;
+    if (data.hausnummer) {
+      tmp_strasse = data.strasse + "&nbsp;" + data.hausnummer;
+    } else {
+      tmp_strasse = data.strasse;
+    }
+    small_ortsdaten = small_ortsdaten + break_text_20(tmp_strasse) + "<br />";
   }
   if (small_ortsdaten.substr(small_ortsdaten.length - 4) == "<br />") {
     small_ortsdaten = small_ortsdaten.slice(0, -4);

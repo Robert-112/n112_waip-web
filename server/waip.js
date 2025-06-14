@@ -12,6 +12,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           einsatzdaten.objekt = "";
           einsatzdaten.besonderheiten = "";
           einsatzdaten.strasse = "";
+          einsatzdaten.hausnummer = "";
           einsatzdaten.wgs84_x = "";
           einsatzdaten.wgs84_y = "";
         }
