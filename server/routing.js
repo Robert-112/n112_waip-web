@@ -250,7 +250,6 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         title: "Einstellungen",
         user: req.user,
         user_reset_counter: data.resetcounter,
-        user_standbyurl: data.standbyurl,
         error: req.flash("errorMessage"),
         success: req.flash("successMessage"),
       });

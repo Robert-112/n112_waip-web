@@ -58,7 +58,7 @@ app_cfg.public = {
   company: "Netzwerk 112",
   // Base-URL für Kartendaten
   map_service: {
-    type: "tile", // "tile" für Tile-Server, "wms" für WMS-Server
+    type: "wms", // "tile" für Tile-Server, "wms" für WMS-Server (Backup: Tile-Server)
     tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     wms_url: "http://ows.mundialis.de/services/service?",
     wms_layers: "OSM-WMS",
