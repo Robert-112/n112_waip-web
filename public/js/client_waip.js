@@ -13,6 +13,38 @@ $(window).on("resize", function () {
   updateRandomPosition();
 });
 
+// Funktion zum Hinzufügen und Testen eines WMS-Layers
+function AddMapLayer() {
+  let maxMapZoom = 18; // Standard-Zoomstufe
+
+  // Layer der Karte basierend auf dem Typ des Kartendienstes hinzufuegen
+  if (map_service.type === "tile") {
+    // Tile-Map hinzufuegen
+    L.tileLayer(map_service.tile_url, {
+      maxZoom: maxMapZoom,
+    }).addTo(map);
+  } else if (map_service.type === "wms") {
+    // WMS-Map hinzufuegen
+    var wmsLayer = L.tileLayer.wms(map_service.wms_url, {
+      layers: map_service.wms_layers,
+      format: map_service.wms_format,
+      transparent: map_service.wms_transparent,
+      version: map_service.wms_version,
+    });
+
+    // Fehlerbehandlung: Wenn der WMS-Layer nicht geladen werden kann, dann versuche den Tile-Layer
+    wmsLayer.on("tileerror", function () {
+      console.warn("WMS-Layer konnte nicht geladen werden, versuche Tile-Layer:", map_service.tile_url);
+      // Tile-Map hinufuegen
+      L.tileLayer(map_service.tile_url, {
+        maxZoom: maxMapZoom,
+      }).addTo(map);
+    });
+
+    wmsLayer.addTo(map);
+  }
+}
+
 /* ############################ */
 /* ######### BUTTONS ########## */
 /* ############################ */
@@ -248,21 +280,7 @@ let map = L.map("map", {
   attributionControl: false,
 }).setView([51.733005, 14.338048], 13);
 
-// Layer der Karte basierend auf dem Typ des Kartendienstes
-if (map_service.type === "tile") {
-  L.tileLayer(map_service.tile_url, {
-    maxZoom: 18,
-  }).addTo(map);
-} else if (map_service.type === "wms") {
-  var wmsLayer = L.tileLayer
-    .wms(map_service.wms_url, {
-      layers: map_service.wms_layers,
-      format: map_service.wms_format,
-      transparent: map_service.wms_transparent,
-      version: map_service.wms_version,
-    })
-    .addTo(map);
-}
+AddMapLayer();
 
 // Icon der Karte zuordnen
 let redIcon = new L.Icon({
@@ -411,8 +429,15 @@ socket.on("io.new_waip", function (data) {
   waip_id = data.id;
   // Alarmzeitsetzen setzen, das format "YYYY-MM-DD HH:MM:SS" soll in "YYYY-MM-DD" & "HH:MM" umgewandelt werden
   let alarmzeit = data.zeitstempel.split(" ");
-  $("#alert_date").text("\xA0" + alarmzeit[0]);
+  //$("#alert_date").text("\xA0" + alarmzeit[0]);
   $("#alert_time").text("\xA0" + alarmzeit[1]);
+  // Einsatznummer setzen, falls vorhanden
+  if (data.einsatznummer) {
+    $("#einsatznummer").text("\xA0" + data.einsatznummer);
+  } else {
+    // div fuer Einsatznummer entfernen
+    $("#einsatznummer").remove();
+  }
   // Hintergrund der Einsatzart zunächst entfernen
   $("#einsatz_art").removeClass(function (index, className) {
     return (className.match(/(^|\s)bg-\S+/g) || []).join(" ");

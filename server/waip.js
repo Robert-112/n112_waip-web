@@ -9,6 +9,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
         // wenn Berechtigungen nicht passen / nicht vorhanden sind, dann Daten entfernen
         if (!permissions) {
+          einsatzdaten.einsatznummer = "";
           einsatzdaten.objekt = "";
           einsatzdaten.besonderheiten = "";
           einsatzdaten.strasse = "";

@@ -344,6 +344,7 @@ module.exports = (db, app_cfg) => {
               SELECT
                 e.id,
                 e.uuid,
+                e.els_einsatznummer einsatznummer,
                 DATETIME(e.zeitstempel) zeitstempel,
                 e.einsatzart, 
                 e.stichwort, 
@@ -1235,7 +1236,7 @@ module.exports = (db, app_cfg) => {
               ${app_cfg.global.default_time_for_standby}
             ) AS resetcounter;
         `);
-        const row = stmt.get(user_id, user_id);
+        const row = stmt.get(user_id);
         resolve(row);
       } catch (error) {
         reject(new Error("Fehler beim laden von Benutzer-Einstellungen. " + error));
@@ -1373,15 +1374,20 @@ module.exports = (db, app_cfg) => {
         // wenn admin, dann true, ansonsten Berechtigung abfragen
         if (permissions == "admin") {
           resolve(true);
-        }
-
-        // Berechtigungen mit Wache vergleichen (52,62,6690,....), wenn gefunden, dann true, sonst false
-        let permission_arr = permissions.split(",");
-        const found = permission_arr.some((r) => wache_nr.search(RegExp("," + r + "|\\b" + r)) >= 0);
-        if (found) {
-          resolve(true);
         } else {
-          resolve(false);
+          // keine Wache für Benutzer hinterlegt, dann false
+          if (wache_nr === undefined) {
+            resolve(false);
+          } else {
+            // Berechtigungen mit Wache vergleichen, wenn gefunden, dann true, sonst false
+            let permission_arr = permissions.split(",");
+            const found = permission_arr.some((r) => wache_nr.toString().search(RegExp("," + r + "|\\b" + r)) >= 0);
+            if (found) {
+              resolve(true);
+            } else {
+              resolve(false);
+            }
+          }
         }
       } catch (error) {
         reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.data.user + wache_nr + error));
