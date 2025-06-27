@@ -230,6 +230,45 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     })(req, res, next);
   });
 
+  app.get("/login_cert", (req, res, next) => {
+  passport.authenticate("trusted-header", {
+    session: true,
+    failureFlash: "Authentifizierung mit Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.",
+  }, (err, user, info) => {
+    const cn = req.headers["x-ssl-client-cn"];
+    const dn = req.headers["x-ssl-client-dn"];
+    const verify = req.headers["x-ssl-client-verify"];
+    console.log("Zertifikats-Login:", { cn, dn, verify });
+
+/*
+  Zertifikats-Login: {
+  cn: undefined,
+  dn: 'CN=04.52.404,OU=FW137404,OU=XQRW4GQC57',
+  verify: 'SUCCESS'
+}
+ */
+
+    if (err) {
+      console.error("Fehler bei Zertifikats-Login:", err);
+      req.flash("errorMessage", "Interner Fehler bei der Zertifikats-Authentifizierung.");
+      return res.redirect("/login");
+    }
+    if (!user) {
+      console.warn("Zertifikats-Login fehlgeschlagen:", info);
+      req.flash("errorMessage", "Authentifizierung mit Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.");
+      return res.redirect("/login");
+    }
+    req.logIn(user, (err) => {
+      if (err) {
+        console.error("Fehler beim Login nach Zertifikats-Authentifizierung:", err);
+        req.flash("errorMessage", "Interner Fehler beim Login.");
+        return res.redirect("/login");
+      }
+      return res.redirect("/");
+    });
+  })(req, res, next);
+});
+
   // Logout verarbeiten
   app.post("/logout", function (req, res) {
     req.session.destroy(function (err) {

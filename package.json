@@ -23,6 +23,7 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
+    "passport-trusted-header": "^1.1.0",
     "pug": "^3.0.3",
     "req-flash": "0.0.3",
     "serve-favicon": "^2.5.1",

@@ -3,6 +3,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   const flash = require("req-flash");
   const SQLiteStore = require("connect-sqlite3")(session);
   const LocalStrategy = require("passport-local").Strategy;
+  var Strategy = require('passport-trusted-header').Strategy;
   const sessionStore = new SQLiteStore();
 
   // JWT-Authentifizierung
@@ -85,6 +86,24 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
       }
     )
   );
+
+  var options =  {
+    headers: ['X-SSL-Client-DN', 'X-SSL-Client-CN', 'X-SSL-Client-Verify'],
+  passReqToCallback: true
+  }
+  
+  passport.use(new Strategy(options, function(req, requestHeaders, done) {
+    console.log("Trusted Header Strategy called with headers:", requestHeaders);
+    var user = null;
+    var userDn = requestHeaders.TLS_CLIENT_DN;
+  
+    // Authentication logic here!
+    if(userDn === 'CN=test-cn') {
+      user = { name: 'Test User' }
+    }
+  
+    done(null, user);
+  }));
 
   // JWT-Authentifizierung
   passport.use(
