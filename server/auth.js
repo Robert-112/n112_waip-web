@@ -3,7 +3,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   const flash = require("req-flash");
   const SQLiteStore = require("connect-sqlite3")(session);
   const LocalStrategy = require("passport-local").Strategy;
-  var Strategy = require('passport-trusted-header').Strategy;
+  const CertStrategy = require("passport-trusted-header").Strategy;
   const sessionStore = new SQLiteStore();
 
   // JWT-Authentifizierung
@@ -87,23 +87,31 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     )
   );
 
-  var options =  {
-    headers: ['X-SSL-Client-DN', 'X-SSL-Client-CN', 'X-SSL-Client-Verify'],
-  passReqToCallback: true
-  }
-  
-  passport.use(new Strategy(options, function(req, requestHeaders, done) {
-    console.log("Trusted Header Strategy called with headers:", requestHeaders);
-    var user = null;
-    var userDn = requestHeaders.TLS_CLIENT_DN;
-  
-    // Authentication logic here!
-    if(userDn === 'CN=test-cn') {
-      user = { name: 'Test User' }
-    }
-  
-    done(null, user);
-  }));
+  // Optionen für die Trusted Header Strategie, Schreibweise der Header ist entscheidend!
+  var certOptions = {
+    headers: ["x-ssl-client-dn"],
+  };
+
+  // Trusted Header Strategie für Client-Zertifikate
+  passport.use(
+    new CertStrategy(certOptions, async (requestHeaders, done) => {
+      try {
+        // Überprüfen, ob der Header x-ssl-client-dn vorhanden ist und daraus DN und CN extrahieren
+        const dn = requestHeaders["x-ssl-client-dn"];
+        const cn = dn.split(",")[0].split("=")[1];
+
+        // User anhand des CN (Common Name) aus der Datenbank holen
+        let userRow = await sql.auth_certstrategy_userid(cn);
+        if (userRow) {
+          return done(null, userRow);
+        }   
+
+        return done(null, false);
+      } catch (error) {
+        logger.log("error", "Fehler bei der Authentifizierung mit Client-Zertifikat: " + error);
+      }
+    })
+  );
 
   // JWT-Authentifizierung
   passport.use(

@@ -1695,6 +1695,34 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+
+  // Authorisierung mittels Client-Zertifikat (CN)
+  const auth_certstrategy_userid = (cn) => {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log("auth_certstrategy_userid: " + cn);
+        // Username = CN
+        // Prüfen ob User bereits in dB, dann übernehmen
+        // falls nicht in DB
+        // Permission per Regex auslesen
+        // User anlegen und übermitteln
+        /*
+        const stmt = db.prepare(`
+          SELECT user, id FROM waip_user WHERE user = ?;
+        `);
+        const row = stmt.get(user);
+        if (row === undefined) {
+          resolve(null);
+        } else {
+          resolve(row);
+        }*/
+        resolve(null);
+      } catch (error) {
+        reject(new Error("Fehler bei auth_certstrategy_userid. " + cn + error));
+      }
+    });
+  };
+
   // sicherstellen das User Rechte für die API hat
   const auth_ensureApi = (id) => {
     return new Promise((resolve, reject) => {
@@ -1874,6 +1902,7 @@ module.exports = (db, app_cfg) => {
     auth_ipstrategy: auth_ipstrategy,
     auth_localstrategy_cryptpassword: auth_localstrategy_cryptpassword,
     auth_localstrategy_userid: auth_localstrategy_userid,
+    auth_certstrategy_userid: auth_certstrategy_userid,
     auth_ensureApi: auth_ensureApi,
     auth_ensureAdmin: auth_ensureAdmin,
     auth_create_new_user: auth_create_new_user,
