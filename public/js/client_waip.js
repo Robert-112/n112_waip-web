@@ -481,9 +481,18 @@ socket.on("io.new_waip", function (data) {
   // Ortsdaten zusammenstellen und setzen
   let small_ortsdaten;
   small_ortsdaten = "";
+  // Teilbjekt anfuegen
+  if (data.objektteil) {
+    small_ortsdaten = small_ortsdaten + break_text_20(data.objektteil) + "<br />";
+  }
   // Objekt anfuegen
   if (data.objekt) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.objekt) + "<br />";
+    small_ortsdaten = small_ortsdaten + break_text_20(data.objekt);
+    // ggf. weitere Einsatzdetails an Objekt anfügen, wenn Brand- oder Hilfeleistungseinsatz
+    if (data.einsatzdetails && (data.einsatzart === "Brandeinsatz" || data.einsatzart === "Hilfeleistungseinsatz")) {
+      small_ortsdaten = small_ortsdaten + " (" + (data.einsatzdetails) + ") ";
+    }
+    small_ortsdaten = small_ortsdaten + "<br />";
   }
   // Ort anfuegen
   if (data.ort) {
@@ -821,7 +830,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
     $("#rmld_progressbars").append('<div class="col-sm-4 col-6 px-1 pg-' + p_type + '" id="pg-' + p_id + '"></div>');
     // Progressbar hinzufügen mit id
     $("#pg-" + p_id).append(
-      '<div class="progress position-relative ' + bar_border + " " + bar_uuid + '" id="pg-' + p_type + "-" + p_id + '" style=""></div>'
+      '<div class="progress rmld-bar position-relative ' + bar_border + " " + bar_uuid + '" id="pg-' + p_type + "-" + p_id + '"></div>'
     );
     // wenn p_agt > 0 ist, dann als Klasse p_agt hinterlegen
     if (p_agt > 0) {
@@ -908,8 +917,8 @@ function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
   } else {
     $("#pg-bar-" + p_id)
       .css("width", current_progress + "%")
-      .attr("aria-valuenow", current_progress);
-    $("#pg-text-" + p_id).text(pg_text_time);
+      .attr("aria-valuenow", current_progress)
+      .text(pg_text_time);
   }
 }
 

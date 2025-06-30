@@ -113,6 +113,45 @@ audio {
   width: 90% !important;
 }
 
+/*** Darstellung der Rückmeldungen ***/
+
+@media (min-width: 576px) { 
+  .rmld-bar {
+    height: 17px;
+    font-size: 0.6rem;
+    line-height: 0.9;
+  }
+}
+
+@media (min-width: 768px) { 
+  .rmld-bar {
+    height: 22px;
+    font-size: 0.7rem;
+    line-height: 0.9;
+  }
+}
+
+@media (min-width: 992px) { 
+  .rmld-bar {
+    height: 27px;
+    font-size: 0.8rem;
+    line-height: 0.9;
+  }
+}
+
+@media (min-width: 1200px) { 
+  .rmld-bar {
+    height: 32px;
+    font-size: 1.0rem;
+    line-height: 0.9;
+  }
+}
+
+#rmld_progressbars .progress-bar {
+  overflow: visible;
+  padding-left: 2px;
+}
+
 #rueckmeldung .list-group-item {
   padding: 0.25rem;
 }

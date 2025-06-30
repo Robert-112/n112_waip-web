@@ -11,9 +11,11 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
         if (!permissions) {
           einsatzdaten.einsatznummer = "";
           einsatzdaten.objekt = "";
+          einsatzdaten.objektteil = "";
           einsatzdaten.besonderheiten = "";
           einsatzdaten.strasse = "";
           einsatzdaten.hausnummer = "";
+          einsatzdaten.einsatzdetails = "";
           einsatzdaten.wgs84_x = "";
           einsatzdaten.wgs84_y = "";
         }
