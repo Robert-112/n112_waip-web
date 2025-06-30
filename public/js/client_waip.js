@@ -528,8 +528,18 @@ socket.on("io.new_waip", function (data) {
   const anzahl_em_alarmiert = data_em_alarmiert.length;
   let hight_em_alarmiert = 0;
   let col_em_alarmiert = 0;
-  // wenn anzahl max 6 dann
-  if (anzahl_em_alarmiert <= 6) {
+  // wenn anzahl max 2 dann
+  if (anzahl_em_alarmiert <= 2) {
+    hight_em_alarmiert = "h-100";
+    col_em_alarmiert = "col-6";
+  }
+  // wenn anzahl zwischen 3 und 4 dann
+  if (anzahl_em_alarmiert > 2 && anzahl_em_alarmiert <= 4) {
+    hight_em_alarmiert = "h-50";
+    col_em_alarmiert = "col-6";
+  }
+  // wenn anzahl zwischen 5 und 6 dann
+  if (anzahl_em_alarmiert > 4 && anzahl_em_alarmiert <= 6) {
     hight_em_alarmiert = "h-33";
     col_em_alarmiert = "col-6";
   }
@@ -1008,10 +1018,18 @@ function reset_view() {
   if (!rmld_on && (em_weitere_on || !em_weitere_on) && besonderheiten_on) {
     console.log("v3, v5");
     $("#container_rmld").addClass("d-none");
-    alterClass("#container_ortsdaten", "h-*", "h-40");
-    alterClass("#container_ortsdaten", "col-*", "col-12");
-    alterClass("#container_einsatzmittel", "h-*", "h-40");
-    alterClass("#container_einsatzmittel", "col-*", "col-12");
+    // wenn max. 2 Einsatzmittel alarmirt sind, dann mehr Höhe für Text
+    if ($("#em_alarmiert_new").children().length <= 2) {
+      alterClass("#container_ortsdaten", "h-*", "h-55");
+      alterClass("#container_ortsdaten", "col-*", "col-12");
+      alterClass("#container_einsatzmittel", "h-*", "h-25");
+      alterClass("#container_einsatzmittel", "col-*", "col-12");
+    } else {
+      alterClass("#container_ortsdaten", "h-*", "h-40");
+      alterClass("#container_ortsdaten", "col-*", "col-12");
+      alterClass("#container_einsatzmittel", "h-*", "h-40");
+      alterClass("#container_einsatzmittel", "col-*", "col-12");
+    };
     alterClass("#container_weitere", "h-*", "h-5");
     alterClass("#container_besonderheiten", "h-*", "h-15");
   }
