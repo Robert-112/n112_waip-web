@@ -230,6 +230,28 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     })(req, res, next);
   });
 
+  app.get("/login_cert", (req, res, next) => {
+    passport.authenticate(
+      "trusted-header",
+      (err, user, info) => {
+        if (err) {
+          req.flash("errorMessage", "Interner Fehler bei der Zertifikats-Authentifizierung.");
+          return res.redirect("/login");
+        }
+        if (!user) {
+          req.flash("errorMessage", "Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.");
+          return res.redirect("/login");
+        }
+        req.logIn(user, (err) => {
+           if (err) {
+             return next(err);
+           }
+          return res.redirect("/");
+        });
+      }
+    )(req, res, next);
+  });
+
   // Logout verarbeiten
   app.post("/logout", function (req, res) {
     req.session.destroy(function (err) {

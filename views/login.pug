@@ -23,7 +23,7 @@ block content
                     button#close_info.btn.btn-info.ion-md-close
       .row
         .col-sm-9.col-md-7.col-lg-5.mx-auto
-          .card.my-5
+          .card.my-3
             .card-body
               h5.card-title.text-center Benutzeranmeldung
               form(action='/login', method='POST')
@@ -38,17 +38,15 @@ block content
                   .custom-control.custom-switch
                     input#rembemerme.custom-control-input(type='checkbox' name='rememberme' checked='')
                     label.custom-control-label.text-warning(for='rembemerme') Anmeldung dauerhaft speichern
-                button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') Anmelden
-      
-      //.row
+                button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') anmelden
+      .row
         .col-sm-9.col-md-7.col-lg-5.mx-auto
-          .card.my-5
+          .card.my-3
             .card-body
-              h5.card-title.text-center Anmeldung mit IP-Adresse
-              form(action='/login_ip', method='POST')
+              h5.card-title.text-center Client-Zertifikat
+              form(action='/login_cert', method='GET')
                 .form-group
-                  small.form-text.text-muted Wenn die IP-Adresse Ihres Gerätes hinterlegt ist, 
-                    | können Sie sich auch ohne Benutzername/Kennwort anmelden. 
-                    | Ihre Anmeldung wird dann dauerhaft gespeichert.
-                button.btn.btn-lg.btn-outline-primary.btn-block.text-uppercase(type='submit') Anmelden
+                  small.form-text.text-muted Diese Anmeldung ist für Endgeräte gedacht, welche ein Client-Zertifikat besitzen. 
+                    | Sie erlaubt ein Login ohne Benutzername/Kennwort.
+                button.btn.btn-lg.btn-outline-primary.btn-block.text-uppercase(type='submit') anmelden
 
