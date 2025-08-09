@@ -1695,28 +1695,50 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-
   // Authorisierung mittels Client-Zertifikat (CN)
   const auth_certstrategy_userid = (cn) => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
-        console.log("auth_certstrategy_userid: " + cn);
-        // Username = CN
-        // Prüfen ob User bereits in dB, dann übernehmen
-        // falls nicht in DB
-        // Permission per Regex auslesen
-        // User anlegen und übermitteln
-        /*
-        const stmt = db.prepare(`
-          SELECT user, id FROM waip_user WHERE user = ?;
-        `);
-        const row = stmt.get(user);
-        if (row === undefined) {
+        const auth_regex = app_cfg.global.authRegex || "([a-zA-Z0-9_.-]+)"; // Default Regex falls nicht gesetzt
+        const a_regex = new RegExp(auth_regex);
+        const a_match = cn.match(a_regex);
+
+        if (!a_match) {
+          // Abbruch, Nutzername nicht ermittelbar
           resolve(null);
         } else {
-          resolve(row);
-        }*/
-        resolve(null);
+          // prüfen ob CN als User bereits in Datenbank enthalten ist
+          const user_name = a_match[0];
+
+          // User aus DB abfragen
+          const user_obj = await auth_localstrategy_userid(user_name)
+   
+          if (user_obj !== null) {
+            // User in DB gefunden, zurückgeben
+            resolve(user_obj);
+          } else {
+            // User nicht in DB gefunden, neuen User anlegen
+            let permissions = "keine";
+
+            // Berechtigung aus CN ermitteln
+            const rights_regex = app_cfg.global.rightsRegex || "([a-zA-Z0-9_.-]+)"; // Default Regex falls nicht gesetzt
+            const r_regex = new RegExp(rights_regex);
+            const r_match = cn.match(r_regex);
+            // Berechtigung setzen
+            if (r_match) {
+              permissions = r_match[1];
+            }
+
+            // User anlegen
+            await auth_create_new_user(user_name, null, "Nutzer mit Zertifikat", permissions, null);
+
+            // User-Objekt abfragen
+            const user_obj = await auth_localstrategy_userid(user_name);
+
+            // User zurueckgeben
+            resolve(user_obj);
+          }
+        }
       } catch (error) {
         reject(new Error("Fehler bei auth_certstrategy_userid. " + cn + error));
       }

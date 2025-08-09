@@ -38,6 +38,10 @@ app_cfg.global = {
   sessionsecret: "0987654321abcdef#xyz",
   // JWT-Secret
   jwtsecret: "1234567890abcdef#xyz",
+  // Regex für die Authentifizierung von Zertifikaten
+  authRegex: "(\\d+)[\\.\\-](\\d+)[\\.\\-](\\w+)",
+  // Regex für die Validierung von Nutzern
+  rightsRegex: "\\.(\\d+)[.-]",
 };
 
 // Einstellungen für die Entwicklung
@@ -54,6 +58,8 @@ app_cfg.public = {
   url: "https://fb-am7.kms2.de",
   // Name der Anwendung (in der Navigation)
   app_name: "Wachalarm IP-Web",
+  // Weitere Details zur Version
+  app_info: "(Development Version)",
   // Firmenname (in der Fusszeile)
   company: "Netzwerk 112",
   // Base-URL für Kartendaten

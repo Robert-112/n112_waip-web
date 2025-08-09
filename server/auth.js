@@ -79,6 +79,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
           if (!res) return done(null, false);
           // Benutzerdaten zurückgeben
           const userRow = await sql.auth_localstrategy_userid(user);
+          console.warn("Debug: User ID from local strategy:", userRow);
           return done(null, userRow);
         } catch (error) {
           logger.log("error", "Fehler bei der Benutzer-Authentifizierung: " + error);
@@ -101,11 +102,14 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         const cn = dn.split(",")[0].split("=")[1];
 
         // User anhand des CN (Common Name) aus der Datenbank holen
-        let userRow = await sql.auth_certstrategy_userid(cn);
-        if (userRow) {
-          return done(null, userRow);
-        }   
-
+        let user_id = await sql.auth_certstrategy_userid(cn);
+        console.warn("Debug: User ID from cert strategy: ", user_id);
+        if (user_id) {
+          logger.log("debug", "Benutzer gefunden für CN: " + cn);
+          return done(null, user_id);
+        } 
+        logger.log("debug", "Kein Benutzer gefunden für CN: " + cn);
+        // Kein Benutzer gefunden, Authentifizierung fehlgeschlagen
         return done(null, false);
       } catch (error) {
         logger.log("error", "Fehler bei der Authentifizierung mit Client-Zertifikat: " + error);
