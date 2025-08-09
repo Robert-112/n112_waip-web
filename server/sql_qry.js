@@ -350,10 +350,12 @@ module.exports = (db, app_cfg) => {
                 e.stichwort, 
                 e.sondersignal, 
                 e.objekt, 
+                e.objektteil,
                 e.ort, 
                 e.ortsteil, 
                 e.strasse, 
                 e.hausnummer,
+                e.einsatzdetails,
                 e.besonderheiten, 
                 e.wgs84_x, 
                 e.wgs84_y,
@@ -1325,6 +1327,7 @@ module.exports = (db, app_cfg) => {
         // wenn keine user_id oder permissions übergeben wurden, dann false
         if (!user_id || !permissions) {
           resolve(false);
+          return;
         }
 
         // wenn admin, dann true, ansonsten Berechtigung abfragen

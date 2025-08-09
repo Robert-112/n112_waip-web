@@ -481,9 +481,18 @@ socket.on("io.new_waip", function (data) {
   // Ortsdaten zusammenstellen und setzen
   let small_ortsdaten;
   small_ortsdaten = "";
+  // Teilbjekt anfuegen
+  if (data.objektteil) {
+    small_ortsdaten = small_ortsdaten + break_text_20(data.objektteil) + "<br />";
+  }
   // Objekt anfuegen
   if (data.objekt) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.objekt) + "<br />";
+    small_ortsdaten = small_ortsdaten + break_text_20(data.objekt);
+    // ggf. weitere Einsatzdetails an Objekt anfügen, wenn Brand- oder Hilfeleistungseinsatz
+    if (data.einsatzdetails && (data.einsatzart === "Brandeinsatz" || data.einsatzart === "Hilfeleistungseinsatz")) {
+      small_ortsdaten = small_ortsdaten + " (" + (data.einsatzdetails) + ") ";
+    }
+    small_ortsdaten = small_ortsdaten + "<br />";
   }
   // Ort anfuegen
   if (data.ort) {
@@ -519,8 +528,18 @@ socket.on("io.new_waip", function (data) {
   const anzahl_em_alarmiert = data_em_alarmiert.length;
   let hight_em_alarmiert = 0;
   let col_em_alarmiert = 0;
-  // wenn anzahl max 6 dann
-  if (anzahl_em_alarmiert <= 6) {
+  // wenn anzahl max 2 dann
+  if (anzahl_em_alarmiert <= 2) {
+    hight_em_alarmiert = "h-100";
+    col_em_alarmiert = "col-6";
+  }
+  // wenn anzahl zwischen 3 und 4 dann
+  if (anzahl_em_alarmiert > 2 && anzahl_em_alarmiert <= 4) {
+    hight_em_alarmiert = "h-50";
+    col_em_alarmiert = "col-6";
+  }
+  // wenn anzahl zwischen 5 und 6 dann
+  if (anzahl_em_alarmiert > 4 && anzahl_em_alarmiert <= 6) {
     hight_em_alarmiert = "h-33";
     col_em_alarmiert = "col-6";
   }
@@ -821,7 +840,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
     $("#rmld_progressbars").append('<div class="col-sm-4 col-6 px-1 pg-' + p_type + '" id="pg-' + p_id + '"></div>');
     // Progressbar hinzufügen mit id
     $("#pg-" + p_id).append(
-      '<div class="progress position-relative ' + bar_border + " " + bar_uuid + '" id="pg-' + p_type + "-" + p_id + '" style=""></div>'
+      '<div class="progress rmld-bar position-relative ' + bar_border + " " + bar_uuid + '" id="pg-' + p_type + "-" + p_id + '"></div>'
     );
     // wenn p_agt > 0 ist, dann als Klasse p_agt hinterlegen
     if (p_agt > 0) {
@@ -908,8 +927,8 @@ function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
   } else {
     $("#pg-bar-" + p_id)
       .css("width", current_progress + "%")
-      .attr("aria-valuenow", current_progress);
-    $("#pg-text-" + p_id).text(pg_text_time);
+      .attr("aria-valuenow", current_progress)
+      .text(pg_text_time);
   }
 }
 
@@ -999,10 +1018,18 @@ function reset_view() {
   if (!rmld_on && (em_weitere_on || !em_weitere_on) && besonderheiten_on) {
     console.log("v3, v5");
     $("#container_rmld").addClass("d-none");
-    alterClass("#container_ortsdaten", "h-*", "h-40");
-    alterClass("#container_ortsdaten", "col-*", "col-12");
-    alterClass("#container_einsatzmittel", "h-*", "h-40");
-    alterClass("#container_einsatzmittel", "col-*", "col-12");
+    // wenn max. 2 Einsatzmittel alarmirt sind, dann mehr Höhe für Text
+    if ($("#em_alarmiert_new").children().length <= 2) {
+      alterClass("#container_ortsdaten", "h-*", "h-55");
+      alterClass("#container_ortsdaten", "col-*", "col-12");
+      alterClass("#container_einsatzmittel", "h-*", "h-25");
+      alterClass("#container_einsatzmittel", "col-*", "col-12");
+    } else {
+      alterClass("#container_ortsdaten", "h-*", "h-40");
+      alterClass("#container_ortsdaten", "col-*", "col-12");
+      alterClass("#container_einsatzmittel", "h-*", "h-40");
+      alterClass("#container_einsatzmittel", "col-*", "col-12");
+    };
     alterClass("#container_weitere", "h-*", "h-5");
     alterClass("#container_besonderheiten", "h-*", "h-15");
   }

@@ -22,8 +22,8 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     resave: false,
     saveUninitialized: true,
     cookie: {
-      maxAge: 60 * 60 * 1000,
-    }, // Standard ist eine Stunde
+      maxAge: app_cfg.global.session_cookie_max_age,
+    },
   });
 
   app.use(sessionMiddleware);
@@ -31,36 +31,30 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // convert a connect middleware to a Socket.IO middleware
-  const wrap = (middleware) => (socket, next) => middleware(socket.request, {}, next);
+  function onlyForHandshake(middleware) {
+    return (req, res, next) => {
+      const isHandshake = req._query.sid === undefined;
+      if (isHandshake) {
+        middleware(req, res, next);
+      } else {
+        next();
+      }
+    };
+  }
 
-  // Passport Middleware an /waip Namespace anhängen
-  io.of("/waip").use(wrap(sessionMiddleware));
-  io.of("/waip").use(wrap(passport.initialize()));
-  io.of("/waip").use(wrap(passport.session()));
-  io.of("/waip").use((socket, next) => {
-    if (socket.request.user) {
-      socket.data.user = socket.request.user; // Benutzerinformationen im Socket speichern
-      next();
-    } else {
-      socket.data.user = { id: null, user: "Gast" }; // Gast-Benutzer speichern
-      next();
-    }
-  });
-
-  // Passport Middleware an /dbrd Namespace anhängen
-  io.of("/dbrd").use(wrap(sessionMiddleware));
-  io.of("/dbrd").use(wrap(passport.initialize()));
-  io.of("/dbrd").use(wrap(passport.session()));
-  io.of("/dbrd").use((socket, next) => {
-    if (socket.request.user) {
-      socket.data.user = socket.request.user; // Benutzerinformationen im Socket speichern
-      next();
-    } else {
-      socket.data.user = { id: null, user: "Gast" }; // Gast-Benutzer speichern
-      next();
-    }
-  });
+  io.engine.use(onlyForHandshake(sessionMiddleware));
+  io.engine.use(onlyForHandshake(passport.session()));
+  io.engine.use(
+    onlyForHandshake((req, res, next) => {
+      if (req.user) {
+        next();
+      } else {
+        //res.writeHead(401);
+        //res.end();
+        next();
+      }
+    }),
+  );
 
   // Benutzerauthentifizierung per Login
   passport.use(

@@ -38,6 +38,8 @@ app_cfg.global = {
   sessionsecret: "0987654321abcdef#xyz",
   // JWT-Secret
   jwtsecret: "1234567890abcdef#xyz",
+  // Gueltigkeitszeit Session-Cookie in Millisekunden
+  session_cookie_max_age: 60000, // 1 Minute
 };
 
 // Einstellungen für die Entwicklung

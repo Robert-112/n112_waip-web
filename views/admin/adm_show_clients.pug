@@ -11,7 +11,7 @@ append head
 
 block content
   main(role='main')
-    .container
+    .container-fluid
       .row
         .col-12
           h3 Zeigt alle jetzt verbundenen Clients und deren Status an
@@ -22,6 +22,8 @@ block content
                 th ID
                 th Verbunden seit
                 th Socket-ID
+                th Benutzername
+                th Berechtigungen
                 th Client-IPs
                 th Namespace
                 th Raum 
@@ -40,6 +42,8 @@ block content
           { "data": "id" },
           { "data": "connect_time" },
           { "data": "socket_id" },
+          { "data": "user_name"},
+          { "data": "user_permissions" },
           { "data": "client_ips" },
           { "data": "client_nsp" },
           { "data": "client_room" },
