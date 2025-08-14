@@ -1,5 +1,4 @@
 // TODO: Remote-Reload per Socket
-// TODO: Modal bei Server-Verbindung, und Modal bei Reload
 
 $(document).ready(function () {
   set_clock();
@@ -50,53 +49,115 @@ function AddMapLayer() {
 /* ############################ */
 
 let waipAudio = document.getElementById("audio");
+// Flag für laufendes TTS
+let ttsActive = false;
+let lastTTSSrc = null;
 
-waipAudio.addEventListener("ended", function () {
-  console.log("ended");
+// Autoplay-Blockade anzeigen (Blinken des Volume-Off Icons)
+function indicateAudioBlocked() {
+  try {
+    let icon = document.querySelector(".ion-md-volume-off") || document.querySelector(".ion-md-volume-high");
+    if (!icon) return;
+    if (icon.classList.contains("ion-md-volume-high")) {
+      icon.classList.remove("ion-md-volume-high");
+      icon.classList.add("ion-md-volume-off");
+    }
+    if (!document.getElementById("audio-blocked-style")) {
+      const style = document.createElement("style");
+      style.id = "audio-blocked-style";
+      style.textContent = ".blink-audio{animation:blink-audio 1s linear infinite}@keyframes blink-audio{0%,50%{opacity:1}25%,75%{opacity:.2}}";
+      document.head.appendChild(style);
+    }
+    icon.classList.add("blink-audio");
+  } catch (e) {
+    console.log("indicateAudioBlocked error", e);
+  }
+}
 
+function resetAudioUi() {
   let tmp_element;
   // Pause-Symbol in Play-Symbol
   tmp_element = document.querySelector(".ion-md-pause");
-  if (tmp_element.classList.contains("ion-md-pause")) {
+  if (tmp_element && tmp_element.classList.contains("ion-md-pause")) {
     tmp_element.classList.remove("ion-md-pause");
     tmp_element.classList.add("ion-md-play-circle");
   }
   // Lautsprecher-Symbol in Leise-Symbol
   tmp_element = document.querySelector(".ion-md-volume-high");
-  if (tmp_element.classList.contains("ion-md-volume-high")) {
+  if (tmp_element && tmp_element.classList.contains("ion-md-volume-high")) {
     tmp_element.classList.remove("ion-md-volume-high");
     tmp_element.classList.add("ion-md-volume-off");
   }
   // Button Hintergrund entfernen, falls vorhanden
   tmp_element = document.querySelector("#volume");
-  if (tmp_element.classList.contains("btn-danger")) {
+  if (tmp_element && tmp_element.classList.contains("btn-danger")) {
     tmp_element.classList.remove("btn-danger");
+  }
+}
+
+waipAudio.addEventListener("ended", function () {
+  console.log("ended");
+  resetAudioUi();
+  // TTS-Flag zurücksetzen
+  if (lastTTSSrc && waipAudio.src.indexOf("bell_message.mp3") === -1) {
+    ttsActive = false;
+    lastTTSSrc = null;
+  }
+});
+
+// Neuer Pause-Handler (nutzerinitiiert)
+waipAudio.addEventListener("pause", function () {
+  // Wenn wirklich pausiert (nicht direkt nach play), UI anpassen
+  if (waipAudio.paused) {
+    resetAudioUi();
+    if (ttsActive) {
+      ttsActive = false;
+      lastTTSSrc = null;
+    }
   }
 });
 
 waipAudio.addEventListener("play", function () {
   let tmp_element;
+  // Beim erfolgreichen Start Blinken entfernen
+  const blinkIcon = document.querySelector(".blink-audio");
+  if (blinkIcon) blinkIcon.classList.remove("blink-audio");
   // Pause-Symbol in Play-Symbol
   tmp_element = document.querySelector(".ion-md-play-circle");
-  if (tmp_element.classList.contains("ion-md-play-circle")) {
+  if (tmp_element && tmp_element.classList.contains("ion-md-play-circle")) {
     tmp_element.classList.remove("ion-md-play-circle");
     tmp_element.classList.add("ion-md-pause");
   }
   // Lautsprecher-Symbol in Leise-Symbol
   tmp_element = document.querySelector(".ion-md-volume-off");
-  if (tmp_element.classList.contains("ion-md-volume-off")) {
+  if (tmp_element && tmp_element.classList.contains("ion-md-volume-off")) {
     tmp_element.classList.remove("ion-md-volume-off");
     tmp_element.classList.add("ion-md-volume-high");
   }
   // Button Hintergrund entfernen, falls vorhanden
   tmp_element = document.querySelector("#volume");
-  if (tmp_element.classList.contains("btn-danger")) {
+  if (tmp_element && tmp_element.classList.contains("btn-danger")) {
     tmp_element.classList.remove("btn-danger");
   }
 });
 
+// Play/Pause Steuerung: Button mit ID #playpause oder direkt Icon mit Klasse .ion-md-pause
+$(document).on("click", "#playpause, .ion-md-pause", function (e) {
+  // Falls Audio läuft -> stoppen & zurücksetzen
+  if (!waipAudio.paused && !waipAudio.ended) {
+    waipAudio.pause();
+    waipAudio.currentTime = 0; // komplett abbrechen
+    // UI sofort aktualisieren (pause Event feuert auch, aber zur Sicherheit direkt)
+    resetAudioUi();
+  } else if (waipAudio.paused) {
+    // Erneut starten (falls erwünscht) -> hier optional, aktuell nicht automatisch Starten
+    // waipAudio.play();
+  }
+});
+
 $("#replay").on("click", function (event) {
-  document.getElementById("audio").play();
+  waipAudio.currentTime = 0;
+  waipAudio.play();
 });
 
 /* ############################ */
@@ -353,6 +414,8 @@ socket.on("io.stopaudio", function (data) {
 socket.on("io.playtts", function (data) {
   let audio = document.getElementById("audio");
   audio.src = data;
+  lastTTSSrc = audio.src;
+  ttsActive = true;
   console.log($("#audio"));
 
   // Audio-Blockade des Browsers erkennen
@@ -377,10 +440,11 @@ socket.on("io.playtts", function (data) {
         tmp_element.classList.add('btn-danger');
       };*/
         tmp_element = document.querySelector(".ion-md-volume-high");
-        if (tmp_element.classList.contains("ion-md-volume-high")) {
+        if (tmp_element && tmp_element.classList.contains("ion-md-volume-high")) {
           tmp_element.classList.remove("ion-md-volume-high");
           tmp_element.classList.add("ion-md-volume-off");
         }
+        indicateAudioBlocked();
       });
   }
 });
@@ -490,7 +554,7 @@ socket.on("io.new_waip", function (data) {
     small_ortsdaten = small_ortsdaten + break_text_20(data.objekt);
     // ggf. weitere Einsatzdetails an Objekt anfügen, wenn Brand- oder Hilfeleistungseinsatz
     if (data.einsatzdetails && (data.einsatzart === "Brandeinsatz" || data.einsatzart === "Hilfeleistungseinsatz")) {
-      small_ortsdaten = small_ortsdaten + " (" + (data.einsatzdetails) + ") ";
+      small_ortsdaten = small_ortsdaten + " (" + data.einsatzdetails + ") ";
     }
     small_ortsdaten = small_ortsdaten + "<br />";
   }
@@ -729,42 +793,36 @@ socket.on("io.new_rmld", function (data) {
   recount_rmld(pg_waip_uuid);
   // View anpassen
   reset_view();
-  //
-  resize_text();
   // Textgröße der Rückmeldungen anpassen
-  /*const progressBars = document.querySelectorAll('.progress .position-relative');
-let maxFontSize = 20; // Startwert für die maximale Schriftgröße
-let minFontSize = 4;  // Mindestwert für die Schriftgröße
+  resize_text();
 
-progressBars.forEach(bar => {
-  const textElement = bar.querySelector('.justify-content-center');
-  if (textElement) {
-    let fontSize = maxFontSize;
-
-    // Schriftgröße anpassen, bis der Text in die Progressbar passt
-    while (fontSize >= minFontSize) {
-      textElement.style.fontSize = `${fontSize}px`;
-      if (textElement.scrollWidth <= bar.clientWidth && textElement.scrollHeight <= bar.clientHeight) {
-        break;
-      }
-      fontSize--;
-    }
-  }
-});*/
-
-  // Bing abspielen
+  // Bing abspielen (nur wenn kein laufendes TTS überlagert wird)
   let audio = document.getElementById("audio");
-  audio.src = "/media/bell_message.mp3";
-  // Audio-Blockade des Browsers erkennen
-  let playPromise = document.querySelector("audio").play();
-  if (playPromise !== undefined) {
-    playPromise
-      .then(function () {
-        audio.play();
-      })
-      .catch(function (error) {
+  try {
+    // Wenn TTS aktiv und noch nicht beendet -> abbrechen
+    if (ttsActive && !audio.paused && !audio.ended && audio.src === lastTTSSrc && !/bell_message\.mp3/.test(audio.src)) {
+      console.log("Bell übersprungen: TTS aktiv (" + audio.src + ")");
+      return;
+    }
+    // Wenn anderes Audio (nicht Glocke) gerade spielt, überspringen
+    if (!ttsActive && !audio.paused && !audio.ended && !/bell_message\.mp3/.test(audio.src)) {
+      console.log("Bell übersprungen: anderes Audio läuft (" + audio.src + ")");
+      return;
+    }
+    // Glocke abspielen wenn nichts oder Glocke selbst
+    if (!/bell_message\.mp3/.test(audio.src)) {
+      audio.src = "/media/bell_message.mp3";
+    }
+    let playPromise = audio.play();
+    if (playPromise) {
+      playPromise.catch(function () {
         console.log("Notification playback failed");
+        indicateAudioBlocked();
       });
+    }
+  } catch (e) {
+    console.log("Bell playback error", e);
+    indicateAudioBlocked();
   }
 });
 
@@ -1029,7 +1087,7 @@ function reset_view() {
       alterClass("#container_ortsdaten", "col-*", "col-12");
       alterClass("#container_einsatzmittel", "h-*", "h-40");
       alterClass("#container_einsatzmittel", "col-*", "col-12");
-    };
+    }
     alterClass("#container_weitere", "h-*", "h-5");
     alterClass("#container_besonderheiten", "h-*", "h-15");
   }
