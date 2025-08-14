@@ -164,9 +164,16 @@ module.exports = (db, app_cfg) => {
   const db_einsatz_for_client_ermitteln = (socket, wachen_nr) => {
     return new Promise((resolve, reject) => {
       try {
+
+        let sql_filter = `(SELECT wa.nr_wache FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ${wachen_nr} || '%' `;
+
         // wenn Wachen-ID 0 ist, dann % für SQL-Abfrage setzen
         if (parseInt(wachen_nr) == 0) {
-          wachen_nr = "%";
+          sql_filter = `(SELECT wa.nr_wache FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE '%' `;
+        }
+        // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle    
+        if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+          sql_filter = `(SELECT wa.nr_leitstelle FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ${wachen_nr} `;
         }
 
         // neuesten Einsatz für die gewählte Wachen-ID abfragen
@@ -175,10 +182,10 @@ module.exports = (db, app_cfg) => {
           em.em_waip_einsaetze_id AS waip_id
           FROM waip_einsatzmittel em
           WHERE 
-          (SELECT wa.nr_wache FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ? || '%'
+          ${sql_filter}
           ORDER BY (SELECT zeitstempel FROM waip_einsaetze WHERE id = em.em_waip_einsaetze_id) DESC LIMIT 1
         `);
-        const row1 = stmt1.get(wachen_nr.toString());
+        const row1 = stmt1.get();
 
         if (row1 === undefined) {
           resolve(null);
@@ -330,13 +337,8 @@ module.exports = (db, app_cfg) => {
           // TODO hier auch andere Wachennummern berücksichtigen (z.B. 521201b), siehe auch Rückmeldungen
           // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
           let len = wachen_nr.toString().length;
-          if (parseInt(wachen_nr) != 0 && len != 2 && len != 4 && len != 6 && len == null) {
-            throw `Wachennummer ${wachen_nr} hat keine valide Länge (0, 2, 4 oder 6)!`;
-          }
-
-          // wenn wachen_nr 0, dann % fuer Abfrage festlegen
-          if (parseInt(wachen_nr) == 0) {
-            wachen_nr = "%";
+          if (len != 1 && len != 2 && len != 4 && len != 6 && len == null) {
+            throw `Wachennummer ${wachen_nr} hat keine valide Länge (1, 2, 4 oder 6)!`;
           }
 
           // FIXME: zentrale Abfrage zur Ausgabe der Alarmdaten wurde erneuert, asynchrone Rückgabe, Verweise und Verwendung prüfen!
@@ -370,6 +372,24 @@ module.exports = (db, app_cfg) => {
           if (einsatzdaten === undefined) {
             resolve(null);
           } else {
+
+            // Filter für Einsatzmittel vorbereiten
+            let em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%') `;
+            let emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%') OR em_station_id IS NULL) `;
+
+            // wenn wachen_nr 0, dann % fuer Abfrage festlegen
+            if (parseInt(wachen_nr) == 0) {
+              wachen_nr = "%";
+              em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%') `;
+              emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%') OR em_station_id IS NULL) `;
+            }
+
+            // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle
+            if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+              em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) `;
+              emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) OR em_station_id IS NULL) `;
+            } 
+
             // Abfrage der alarmierten Einsatzmittel der Wache
             const stmt1 = db.prepare(`
                 SELECT 
@@ -378,10 +398,11 @@ module.exports = (db, app_cfg) => {
                 FROM waip_einsatzmittel
                 WHERE 
                   em_waip_einsaetze_id = ? 
-                  AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%');
+                  ${em_sql_filter}
+                ;
               `);
             // alarmierte Einsatzmittel den Einsatzdaten zuordnen
-            einsatzdaten.em_alarmiert = stmt1.all(waip_id.toString(), wachen_nr.toString());
+            einsatzdaten.em_alarmiert = stmt1.all(waip_id.toString());
 
             // Abfrage der weiteren Einsatzmittel zum Einsatz
             const stmt2 = db.prepare(`
@@ -391,10 +412,11 @@ module.exports = (db, app_cfg) => {
                 FROM waip_einsatzmittel
                 WHERE 
                   em_waip_einsaetze_id = ? 
-                  AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%') OR em_station_id IS NULL);
+                  ${emnot_sql_filter}
+                ;
               `);
             // weitere Einsatzmittel den Einsatzdaten zuordnen
-            einsatzdaten.em_weitere = stmt2.all(waip_id.toString(), wachen_nr.toString());
+            einsatzdaten.em_weitere = stmt2.all(waip_id.toString());
 
             // Einsatzdaten zurückgeben
             resolve(einsatzdaten);
@@ -720,7 +742,7 @@ module.exports = (db, app_cfg) => {
           // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
           if (len != 1 && len != 2 && len != 4 && len != 6) {
             // Fehler: Wachennummer nicht plausibel.
-            throw `Wachennummer ${wachen_nr} ist nicht plausibel! 0, 2, 4 oder 6`;
+            throw `Wachennummer ${wachen_nr} ist nicht plausibel! Länge: 1, 2, 4 oder 6`;
           } else {
             // "Type" der wachen_nr in String umwandeln, damit SQL-Anweisungen wirklich funktionieren
             wachen_nr = wachen_nr + "";
@@ -1598,14 +1620,22 @@ module.exports = (db, app_cfg) => {
       try {
         // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
         let len = wachen_nr.toString().length;
-        if (parseInt(wachen_nr) != 0 && len != 2 && len != 4 && len != 6 && len == null) {
-          throw `Wachennummer ${wachen_nr} hat keine valide Länge (0, 2, 4 oder 6)!`;
+        if (len != 1 && len != 2 && len != 4 && len != 6 && len == null) {
+          throw `Wachennummer ${wachen_nr} hat keine valide Länge (1, 2, 4 oder 6)!`;
         }
+
+        // Filter für Wachen-Nummer vorbereiten
+        let wache_sql_filter = `AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%') `;
 
         // wenn wachen_nr 0, dann % fuer Abfrage festlegen
         if (parseInt(wachen_nr) == 0) {
-          wachen_nr = "%";
+          wache_sql_filter = `AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%') `;
         }
+
+        // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle
+        if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+          wache_sql_filter = `AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) `;
+        } 
 
         // Abfrage für Rückmeldungen arr_rmld_uuid, in abhängigkeit ob arr_rmld_uuid gesetzt
         if (arr_rmld_uuid) {
@@ -1613,12 +1643,12 @@ module.exports = (db, app_cfg) => {
             SELECT * 
             FROM waip_rueckmeldungen 
             WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE ID = ?)
-            AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%')
+            ${wache_sql_filter}
             AND type_decision = ? 
             AND rmld_uuid IN (SELECT value FROM json_each(?));
           `);
 
-          const rows = stmt.all(waip_id, wachen_nr.toString(), "accept", JSON.stringify(arr_rmld_uuid));
+          const rows = stmt.all(waip_id, "accept", JSON.stringify(arr_rmld_uuid));
 
           if (rows.length === 0) {
             resolve(null);
@@ -1630,11 +1660,11 @@ module.exports = (db, app_cfg) => {
             SELECT * 
             FROM waip_rueckmeldungen 
             WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE ID = ?)
-            AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%')
+            ${wache_sql_filter}
             AND type_decision = ? ;
           `);
 
-          const rows = stmt.all(waip_id, wachen_nr.toString(), "accept");
+          const rows = stmt.all(waip_id, "accept");
 
           if (rows.length === 0) {
             resolve(null);

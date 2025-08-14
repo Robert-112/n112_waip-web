@@ -10,22 +10,44 @@ block content
               h3 Alarmmonitor - Auswahl
         .col-12
           div.border-top.m-3
+      // Eingefügte Freitextsuche
+      .row.mt-2
+        .col-12.px-3
+          .form-group.position-relative
+            input#searchWache.form-control.form-control-lg(type='text', placeholder='Suche nach einem Wachennamen oder einer Nummer...')
+            ul#searchResults.list-group.position-absolute.w-100.mt-1(role='listbox', style='z-index:2000; max-height:300px; overflow-y:auto; display:none')
+        .col-12
+          div.border-top.mx-3.my-2
       .row 
-        .col-12.d-flex.align-self-stretch.p-3
+        .col-12.col-md-7.d-flex.align-self-stretch.p-3
           .card.border-success.w-100.h-100
             .card-header
               h2.text-success Alle Wachalarme 
             .card-body
-              p Zeigt Ihnen alle Wachalarme der im System hinterlegten Wachen an. Entsprechend Ihrer Berechtigungen werden alle Informationen oder nur Teilinformationen angezeigt.
-              p Wollen Sie nur Alarme für einen bestimmten Bereich erhalten, wählen Sie bitte einen Alarmmonitor für die unten genannten Bereiche.
+              p Zeigt Ihnen alle Wachalarme der im System hinterlegten Wachen an.
+              p.text-info Wollen Sie nur Alarme für einen bestimmten Bereich sehen, wählen Sie bitte einen Alarmmonitor aus den Listen aus.
             .card-footer.text-right
               a.btn.btn-success.ion-md-arrow-round-forward(href='/waip/0', role='button')  alle Wachalarme anzeigen
+        .col-12.col-md-5.d-flex.align-self-stretch.p-3
+          .card.border-warning.w-100.h-100
+            .card-header
+              h3.text-warning Alarmmonitor Leitstelle
+            .card-body
+              p Zeigt alle Wachalarme eines Leitstellebereichs an.
+            .card-footer.text-right
+              .dropdown
+                button.btn.btn-warning.dropdown-toggle(type='button', data-toggle='dropdown', aria-haspopup='true', aria-expanded='false')
+                  | bitte ausw&auml;hlen
+                .dropdown-menu
+                  each item in list_wachen
+                    if item.typ == 'leitstelle'
+                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
         .col-12.col-md-4.d-flex.align-self-stretch.p-3
           .card.w-100.h-100
             .card-header
               h3.text-info Alarmmonitor Wache
             .card-body
-              p.text-muted Zeigt den Wachalarm einer einzelnen Wache (z.B. Feuerwache, Rettungswache etc.) an.
+              p Zeigt den Wachalarm einer einzelnen Wache (z.B. Feuerwache, Rettungswache etc.) an.
             .card-footer.text-right
               .dropdown
                 button.btn.btn-info.dropdown-toggle(type='button', data-toggle='dropdown', aria-haspopup='true', aria-expanded='false')
@@ -39,7 +61,7 @@ block content
             .card-header            
               h3.text-info Alarmmonitor Tr&auml;ger
             .card-body
-              p.text-muted Zeigt alle Wachalarme der Wachen eines Tr&auml;gers (Amt, amtsfreie Gemeinde, Stadt) an.
+              p Zeigt alle Wachalarme der Wachen eines Aufgabentr&auml;gers (Amt, amtsfreie Gemeinde, Stadt) an.
             .card-footer.text-right
               .dropdown
                 button.btn.btn-info.dropdown-toggle(type='button', data-toggle='dropdown', aria-haspopup='true', aria-expanded='false')
@@ -53,7 +75,7 @@ block content
             .card-header
               h3.text-info Alarmmonitor Kreis
             .card-body
-              p.text-muted Zeigt alle Wachalarme des gesamten Kreises (in Abhängigkeit der freigeschalteten Wachen) an.
+              p Zeigt alle Wachalarme des gesamten Kreises (in Abhängigkeit der freigeschalteten Wachen) an.
             .card-footer.text-right
               .dropdown
                 button.btn.btn-info.dropdown-toggle(type='button', data-toggle='dropdown', aria-haspopup='true', aria-expanded='false')
@@ -62,3 +84,38 @@ block content
                   each item in list_wachen
                     if item.typ == 'kreis'
                       a.dropdown-item(href='/waip/'+ item.nr)= item.name
+    // Client-seitige Suchlogik
+    script.
+      (function(){
+        var data = !{JSON.stringify(list_wachen || [])};
+        var input = document.getElementById('searchWache');
+        var list = document.getElementById('searchResults');
+        if(!input || !list) return;
+        function sanitize(str){return String(str).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]);});}
+        function render(results){
+          list.innerHTML='';
+          if(!results.length){ list.style.display='none'; return; }
+            results.forEach(function(item){
+              var li = document.createElement('li');
+              li.className = 'list-group-item list-group-item-action';
+              li.setAttribute('role','option');
+              li.innerHTML = '<strong>'+ sanitize(item.name) + '</strong> <small class="text-muted">(' + sanitize(item.nr) + ', ' + sanitize(item.typ) + ')</small>';
+              li.addEventListener('click', function(){ window.location.href = '/waip/' + item.nr; });
+              list.appendChild(li);
+            });
+          list.style.display='block';
+        }
+        input.addEventListener('keyup', function(){
+          var q = input.value.trim().toLowerCase();
+          if(!q){ list.style.display='none'; list.innerHTML=''; return; }
+          var filtered = data.filter(function(item){
+            var name = (item.name||'').toLowerCase();
+            var nr = String(item.nr||'').toLowerCase();
+            return name.indexOf(q) > -1 || nr.indexOf(q) > -1;
+          }).slice(0,50);
+          render(filtered);
+        });
+        document.addEventListener('click', function(e){
+          if(!list.contains(e.target) && e.target !== input){ list.style.display='none'; }
+        });
+      })();
