@@ -63,6 +63,8 @@ module.exports = (bcrypt, app_cfg) => {
         em_fmsstatus TEXT,                           -- vorher: status TEXT,
         em_wgs84_x REAL,                             -- vorher: wgs84_x TEXT,
         em_wgs84_y REAL,                             -- vorher: wgs84_y TEXT,
+        em_wgs84_route_full TEXT,                    -- neu (Darstellung Einsatzroute, Version 2.0.4)
+        em_wgs84_route_half TEXT,                    -- neu (Darstellung Einsatzroute, Version 2.0.4)
         em_issi TEXT,                                -- neu
         em_opta TEXT,                                -- neu
         em_radiochannel TEXT,                        -- neu
@@ -78,6 +80,7 @@ module.exports = (bcrypt, app_cfg) => {
       -- Tabelle für Wachen
       CREATE TABLE IF NOT EXISTS waip_wachen (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
+        nr_leitstelle TEXT,             -- neu (Version 2.0.4)
         nr_kreis TEXT,                  -- vorher: INTEGER
         nr_traeger TEXT,
         nr_standort TEXT,               -- neu
@@ -90,10 +93,9 @@ module.exports = (bcrypt, app_cfg) => {
         name_traeger TEXT,
         name_wache TEXT,
         name_beschreibung TEXT,         -- neu
+        name_erweiterung TEXT,          -- neu (Version 2.0.4)
         wgs84_x REAL,                   -- vorher: wgs84_x TEXT,
-        wgs84_y REAL,                   -- vorher: wgs84_y TEXT
-        em_wgs84_route_full TEXT,       -- neu (Darstellung Einsatzroute)
-        em_wgs84_route_half TEXT        -- neu (Darstellung Einsatzroute)
+        wgs84_y REAL                    -- vorher: wgs84_y TEXT
       );
       
       -- Tabelle für Historie

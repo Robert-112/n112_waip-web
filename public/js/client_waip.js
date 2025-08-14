@@ -1106,37 +1106,63 @@ setInterval(set_clock, 1000);
 /* ####### WACHENNAME ####### */
 /* ############################ */
 
+// Vereinfachte Animation: alle 5s Schritt nach rechts, am Rand Richtung umkehren
+let wachennameInterval;
+let wachennameDirection = 1; // 1 = rechts, -1 = links
+const WACHENNAME_STEP = 50; // Pixel pro Schritt
+const WACHENNAME_INTERVAL_MS = 10000; // 10 Sekunden
+
 function updateWachennameAnimation() {
   const wachenname = document.getElementById("wachenname_footer");
   if (!wachenname) return;
 
-  // Animation stoppen
+  // Vorherige CSS-Animation und evtl. Style-Tag entfernen
   wachenname.style.animation = "none";
-  wachenname.offsetHeight; // Trigger reflow
-
-  // Neue Animation berechnen
-  const containerWidth = window.innerWidth;
-  const elementWidth = wachenname.offsetWidth;
-  const maxTranslate = containerWidth - elementWidth - 30;
-
-  // Neue Keyframes erstellen
-  const style = document.createElement("style");
-  style.textContent = `
-    @keyframes moveLeftRight {
-      0% { transform: translateX(0); }
-      50% { transform: translateX(${maxTranslate}px); }
-      100% { transform: translateX(0); }
-    }
-  `;
-
-  // Alte Keyframes entfernen und neue hinzufügen
   const oldStyle = document.getElementById("wachenname-animation");
   if (oldStyle) oldStyle.remove();
-  style.id = "wachenname-animation";
-  document.head.appendChild(style);
 
-  // Animation neu starten
-  wachenname.style.animation = "moveLeftRight 400s ease-in-out infinite";
+  // Positionierungsbasis setzen
+  wachenname.style.position = "relative";
+  if (!wachenname.dataset.posX) {
+    wachenname.dataset.posX = "0";
+    wachenname.style.left = "0px";
+  }
+
+  // Begrenzungen neu berechnen (Fensterbreite als Container)
+  const containerWidth = window.innerWidth;
+  const elementWidth = wachenname.offsetWidth;
+  const maxTranslate = Math.max(0, containerWidth - elementWidth - 40); // etwas Rand
+
+  // Falls aktuelle Position außerhalb nach Resize
+  let currentX = parseInt(wachenname.dataset.posX, 10) || 0;
+  if (currentX > maxTranslate) {
+    currentX = maxTranslate;
+    wachenname.dataset.posX = String(currentX);
+    wachenname.style.left = currentX + "px";
+    wachennameDirection = -1;
+  }
+
+  // Intervall zurücksetzen
+  if (wachennameInterval) {
+    clearInterval(wachennameInterval);
+  }
+
+  wachennameInterval = setInterval(() => {
+    let x = parseInt(wachenname.dataset.posX, 10) || 0;
+    x += wachennameDirection * WACHENNAME_STEP;
+
+    // Randprüfung und Richtungswechsel
+    if (x >= maxTranslate) {
+      x = maxTranslate;
+      wachennameDirection = -1;
+    } else if (x <= 0) {
+      x = 0;
+      wachennameDirection = 1;
+    }
+
+    wachenname.dataset.posX = String(x);
+    wachenname.style.left = x + "px";
+  }, WACHENNAME_INTERVAL_MS);
 }
 
 /* ############################ */

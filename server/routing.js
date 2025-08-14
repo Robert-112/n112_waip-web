@@ -489,6 +489,62 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     }
   });
 
+  // Wachen-Administration anzeigen
+  app.get("/adm_edit_wachen", auth.ensureAdmin, async (req, res, next) => {
+    try {
+      const wachen = await sql.db_wachen_get_all_full();
+      res.render("admin/adm_edit_wachen", {
+        public: app_cfg.public,
+        title: "Wachen verwalten",
+        user: req.user,
+        wachen,
+        error: req.flash("errorMessage"),
+        success: req.flash("successMessage"),
+      });
+    } catch (error) {
+      const err = new Error("Fehler beim Laden der Seite /adm_edit_wachen. " + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
+    }
+  });
+
+  // Wache bearbeiten
+  app.post("/adm_edit_wachen/edit", auth.ensureAdmin, async (req, res) => {
+    try {
+      await sql.db_wache_update(req.body);
+      req.flash("successMessage", "Wache erfolgreich bearbeitet.");
+      res.redirect("/adm_edit_wachen");
+    } catch (error) {
+      req.flash("errorMessage", "Fehler beim Bearbeiten der Wache. " + error);
+      res.redirect("/adm_edit_wachen");
+    }
+  });
+
+  // Wache löschen
+  app.post("/adm_edit_wachen/delete", auth.ensureAdmin, async (req, res) => {
+    try {
+      await sql.db_wache_delete(req.body.id);
+      req.flash("successMessage", "Wache erfolgreich gelöscht.");
+      res.redirect("/adm_edit_wachen");
+    } catch (error) {
+      req.flash("errorMessage", "Fehler beim Löschen der Wache. " + error);
+      res.redirect("/adm_edit_wachen");
+    }
+  });
+
+  // Neue Wache anlegen
+  app.post("/adm_edit_wachen/create", auth.ensureAdmin, async (req, res) => {
+    try {
+      await sql.db_wache_create(req.body);
+      req.flash("successMessage", "Wache erfolgreich angelegt.");
+      res.redirect("/adm_edit_wachen");
+    } catch (error) {
+      req.flash("errorMessage", "Fehler beim Anlegen der Wache. " + error);
+      res.redirect("/adm_edit_wachen");
+    }
+  });
+
   /* ###################### */
   /* ##### Testseiten ##### */
   /* ###################### */

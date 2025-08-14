@@ -649,18 +649,50 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT 'wache' typ, nr_wache nr, name_wache name 
+          -- Global
+          SELECT DISTINCT 
+            'global' AS typ,
+            CAST(nr_wache AS TEXT) AS nr,
+            name_wache AS name 
           FROM waip_wachen 
-          WHERE nr_wache is not '0'
+          WHERE nr_wache IS '0'
           UNION ALL
-          SELECT 'traeger' typ, nr_kreis || nr_traeger nr, name_traeger name 
+          -- Leitstellen
+          SELECT 
+            'leitstelle' AS typ,
+            CAST(nr_leitstelle AS TEXT) AS nr,
+            name_leitstelle AS name
           FROM waip_wachen 
-          WHERE nr_kreis is not '0' 
-          GROUP BY nr_traeger 
+          WHERE nr_wache IS NOT '0'
+          GROUP BY name_leitstelle 
           UNION ALL
-          SELECT 'kreis' typ, nr_kreis nr, name_kreis name 
+          -- Landkreise
+          SELECT 
+            'kreis' AS typ,
+            CAST(nr_kreis AS TEXT) AS nr,
+            name_kreis AS name 
           FROM waip_wachen 
-          GROUP BY name_kreis 
+          WHERE nr_wache IS NOT '0'
+          GROUP BY name_kreis
+          UNION ALL
+          -- Träger
+          SELECT DISTINCT 
+            'traeger' typ,
+            nr_kreis || nr_traeger AS nr, 
+            CASE 
+              WHEN name_erweiterung = '' THEN name_traeger
+              ELSE CONCAT(name_traeger, ' [', name_erweiterung , ']'  )
+            END AS name
+          FROM waip_wachen 
+          WHERE nr_wache IS NOT '0'
+          UNION ALL
+          -- Wachen
+          SELECT 
+            'wache' AS typ,
+            CAST(nr_wache AS TEXT) AS nr,
+            name_wache AS name 
+          FROM waip_wachen 
+          WHERE nr_wache IS NOT '0'
           ORDER BY typ, name;
         `);
         const rows = stmt.all();
@@ -686,18 +718,18 @@ module.exports = (db, app_cfg) => {
           // wenn wachen_nr eine Zahl ist, dann prüfen ob die Länge valide ist
           let len = wachen_nr.toString().length;
           // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
-          if (parseInt(wachen_nr) != 0 && len != 2 && len != 4 && len != 6) {
+          if (len != 1 && len != 2 && len != 4 && len != 6) {
             // Fehler: Wachennummer nicht plausibel.
             throw `Wachennummer ${wachen_nr} ist nicht plausibel! 0, 2, 4 oder 6`;
           } else {
             // "Type" der wachen_nr in String umwandeln, damit SQL-Anweisungen wirklich funktionieren
             wachen_nr = wachen_nr + "";
             // wachen_nr plausibel, jetzt je nach Länge passende SQL-Anweisung ausführen
-            if (parseInt(wachen_nr) == 0) {
+            if (len == 1) {
               const stmt = db.prepare(`
-                SELECT '1' length, nr_wache nr, name_wache name 
+                SELECT DISTINCT '1' length, nr_leitstelle nr, name_leitstelle name 
                 FROM waip_wachen 
-                WHERE nr_wache LIKE ?;
+                WHERE nr_leitstelle LIKE ?;
               `);
               const row = stmt.get(wachen_nr);
               if (row === undefined) {
@@ -1714,8 +1746,8 @@ module.exports = (db, app_cfg) => {
           const user_name = a_match[0];
 
           // User aus DB abfragen
-          const user_obj = await auth_localstrategy_userid(user_name)
-   
+          const user_obj = await auth_localstrategy_userid(user_name);
+
           if (user_obj !== null) {
             // User in DB gefunden, zurückgeben
             resolve(user_obj);
@@ -1888,51 +1920,178 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // Alle Wachen laden
+  const db_wachen_get_all_full = () => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`SELECT * FROM waip_wachen ORDER BY nr_wache ASC;`);
+        const rows = stmt.all();
+        resolve(rows);
+      } catch (error) {
+        reject(new Error("Fehler beim Laden aller Wachen. " + error));
+      }
+    });
+  };
+
+  // Wache bearbeiten
+  const db_wache_update = (wache) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`
+        UPDATE waip_wachen SET
+          nr_leitstelle = ?,
+          name_leitstelle = ?,
+          kfz_leitstelle = ?,
+          nr_wache = ?,
+          name_wache = ?,
+          nr_kreis = ?,
+          name_kreis = ?,
+          kfz_kreis = ?,
+          nr_traeger = ?,
+          name_traeger = ?,
+          nr_standort = ?,
+          nr_abteilung = ?,
+          name_beschreibung = ?,
+          wgs84_x = ?,
+          wgs84_y = ?
+        WHERE id = ?;
+      `);
+        const info = stmt.run(
+          wache.nr_leitstelle,
+          wache.name_leitstelle,
+          wache.kfz_leitstelle,
+          wache.nr_wache,
+          wache.name_wache,
+          wache.nr_kreis,
+          wache.name_kreis,
+          wache.kfz_kreis,
+          wache.nr_traeger,
+          wache.name_traeger,
+          wache.nr_standort,
+          wache.nr_abteilung,
+          wache.name_beschreibung,
+          wache.wgs84_x,
+          wache.wgs84_y,
+          wache.id
+        );
+        resolve(info.changes);
+      } catch (error) {
+        reject(new Error("Fehler beim Bearbeiten der Wache. " + error));
+      }
+    });
+  };
+
+  // Wache löschen
+  const db_wache_delete = (id) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`DELETE FROM waip_wachen WHERE id = ?;`);
+        const info = stmt.run(id);
+        resolve(info.changes);
+      } catch (error) {
+        reject(new Error("Fehler beim Löschen der Wache. " + error));
+      }
+    });
+  };
+
+  // Neue Wache anlegen
+  const db_wache_create = (wache) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`
+        INSERT INTO waip_wachen (
+          nr_leitstelle,
+          name_leitstelle,
+          kfz_leitstelle,
+          nr_wache,
+          name_wache,
+          nr_kreis,
+          name_kreis,
+          kfz_kreis,
+          nr_traeger,
+          name_traeger,
+          nr_standort,
+          nr_abteilung,
+          name_beschreibung,
+          wgs84_x,
+          wgs84_y
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        );
+      `);
+        const info = stmt.run(
+          wache.nr_leitstelle,
+          wache.name_leitstelle,
+          wache.kfz_leitstelle,
+          wache.nr_wache,
+          wache.name_wache,
+          wache.nr_kreis,
+          wache.name_kreis,
+          wache.kfz_kreis,
+          wache.nr_traeger,
+          wache.name_traeger,
+          wache.nr_standort,
+          wache.nr_abteilung,
+          wache.name_beschreibung,
+          wache.wgs84_x,
+          wache.wgs84_y
+        );
+        resolve(info.lastInsertRowid);
+      } catch (error) {
+        reject(new Error("Fehler beim Anlegen einer neuen Wache. " + error));
+      }
+    });
+  };
+
   return {
-    db_einsatz_speichern: db_einsatz_speichern,
-    db_einsatz_for_client_ermitteln: db_einsatz_for_client_ermitteln,
-    db_einsatz_check_uuid: db_einsatz_check_uuid,
-    db_einsatz_check_history: db_einsatz_check_history,
-    db_einsatz_get_for_wache: db_einsatz_get_for_wache,
-    db_einsatz_get_by_uuid: db_einsatz_get_by_uuid,
-    db_einsatz_get_uuid_by_enr: db_einsatz_get_uuid_by_enr,
-    db_einsatz_get_waipid_by_uuid: db_einsatz_get_waipid_by_uuid,
-    db_einsatz_get_active: db_einsatz_get_active,
-    db_einsatz_get_waip_rooms: db_einsatz_get_waip_rooms,
-    db_einsaetze_get_old: db_einsaetze_get_old,
-    db_einsatz_statusupdate: db_einsatz_statusupdate,
-    db_einsatz_loeschen: db_einsatz_loeschen,
-    db_wache_get_all: db_wache_get_all,
-    db_wache_vorhanden: db_wache_vorhanden,
-    db_einsatzmittel_update: db_einsatzmittel_update,
-    db_tts_einsatzmittel: db_tts_einsatzmittel,
-    db_client_update_status: db_client_update_status,
-    db_client_get_connected: db_client_get_connected,
-    db_client_delete: db_client_delete,
-    db_client_check_waip_id: db_client_check_waip_id,
-    db_log: db_log,
-    db_log_get_10000: db_log_get_10000,
-    db_socket_get_by_id: db_socket_get_by_id,
-    db_socket_get_all_to_standby: db_socket_get_all_to_standby,
-    db_user_set_config_time: db_user_set_config_time,
-    db_user_get_config: db_user_get_config,
-    db_user_get_all: db_user_get_all,
-    db_client_get_alarm_anzeigbar: db_client_get_alarm_anzeigbar,
-    db_user_check_permission_for_waip: db_user_check_permission_for_waip,
-    db_user_check_permission_for_rmld: db_user_check_permission_for_rmld,
-    db_rmld_check_einsatz: db_rmld_check_einsatz,
-    db_rmld_single_save: db_rmld_single_save,
-    db_rmlds_get_for_wache: db_rmlds_get_for_wache,
-    auth_deserializeUser: auth_deserializeUser,
-    auth_ipstrategy: auth_ipstrategy,
-    auth_localstrategy_cryptpassword: auth_localstrategy_cryptpassword,
-    auth_localstrategy_userid: auth_localstrategy_userid,
-    auth_certstrategy_userid: auth_certstrategy_userid,
-    auth_ensureApi: auth_ensureApi,
-    auth_ensureAdmin: auth_ensureAdmin,
-    auth_create_new_user: auth_create_new_user,
-    auth_deleteUser: auth_deleteUser,
-    auth_editUser: auth_editUser,
-    auth_getUser: auth_getUser,
+    db_einsatz_speichern,
+    db_einsatz_for_client_ermitteln,
+    db_einsatz_check_uuid,
+    db_einsatz_check_history,
+    db_einsatz_get_for_wache,
+    db_einsatz_get_by_uuid,
+    db_einsatz_get_uuid_by_enr,
+    db_einsatz_get_waipid_by_uuid,
+    db_einsatz_get_active,
+    db_einsatz_get_waip_rooms,
+    db_einsaetze_get_old,
+    db_einsatz_statusupdate,
+    db_einsatz_loeschen,
+    db_wache_get_all,
+    db_wache_vorhanden,
+    db_einsatzmittel_update,
+    db_tts_einsatzmittel,
+    db_client_update_status,
+    db_client_get_connected,
+    db_client_delete,
+    db_client_check_waip_id,
+    db_log,
+    db_log_get_10000,
+    db_socket_get_by_id,
+    db_socket_get_all_to_standby,
+    db_user_set_config_time,
+    db_user_get_config,
+    db_user_get_all,
+    db_client_get_alarm_anzeigbar,
+    db_user_check_permission_for_waip,
+    db_user_check_permission_for_rmld,
+    db_rmld_check_einsatz,
+    db_rmld_single_save,
+    db_rmlds_get_for_wache,
+    auth_deserializeUser,
+    auth_ipstrategy,
+    auth_localstrategy_cryptpassword,
+    auth_localstrategy_userid,
+    auth_certstrategy_userid,
+    auth_ensureApi,
+    auth_ensureAdmin,
+    auth_create_new_user,
+    auth_deleteUser,
+    auth_editUser,
+    auth_getUser,
+    db_wachen_get_all_full,
+    db_wache_update,
+    db_wache_delete,
+    db_wache_create,
   };
 };
