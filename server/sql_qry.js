@@ -266,11 +266,15 @@ module.exports = (db, app_cfg) => {
           strasse: einsatzdaten.strasse,
           besonderheiten: einsatzdaten.besonderheiten,
         };
+        
+        // Einsatzmittel-Namen extrahieren (Zeiten ignorieren) und sortieren für bessere Vergleichbarkeit
+        const emAlarmiertNames = (einsatzdaten.em_alarmiert || []).map(e => e && e.name ? e.name : '').filter(Boolean).sort();
+        const emWeitereNames = (einsatzdaten.em_weitere || []).map(e => e && e.name ? e.name : '').filter(Boolean).sort();
 
         // Einsatzdaten in kurze UUID-Strings umwandeln, diese UUIDs werden dann verglichen
         let uuid_einsatzdaten = uuidv5(JSON.stringify(relevantFields), uuidNamespace);
-        let uuid_em_alarmiert = uuidv5(JSON.stringify(einsatzdaten.em_alarmiert || []), uuidNamespace);
-        let uuid_em_weitere = uuidv5(JSON.stringify(einsatzdaten.em_weitere || []), uuidNamespace);
+        let uuid_em_alarmiert = uuidv5(JSON.stringify(emAlarmiertNames), uuidNamespace);
+        let uuid_em_weitere = uuidv5(JSON.stringify(emWeitereNames), uuidNamespace);
 
         // Abfrage ob zu Socket und Waip-ID bereits History-Daten hinterlegt sind
         const stmt = db.prepare(`
