@@ -344,13 +344,18 @@ let map = L.map("map", {
 AddMapLayer();
 
 // Icon der Karte zuordnen
+// Markergröße dynamisch für 4K anpassen (4K jetzt nochmals größer)
+let is4K = window.innerWidth >= 3840 && window.innerHeight >= 2160;
+let markerSize = is4K ? [50, 82] : [25, 41];
+let markerAnchor = is4K ? [25, 82] : [12, 41];
+let markerShadowSize = is4K ? [82, 82] : [41, 41];
 let redIcon = new L.Icon({
   iconUrl: "/media/marker-icon-2x-red.png",
   shadowUrl: "/media/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
+  iconSize: markerSize,
+  iconAnchor: markerAnchor,
   popupAnchor: [1, -34],
-  shadowSize: [41, 41],
+  shadowSize: markerShadowSize,
 });
 
 // Icon setzen
@@ -672,7 +677,7 @@ socket.on("io.new_waip", function (data) {
   map.removeLayer(marker);
   map.removeLayer(geojson);
   // Zoomsstufe bei 4K anpassen
-  let initialZoom = window.innerWidth >= 3840 && window.innerHeight >= 2160 ? 16 : 14;
+  let initialZoom = window.innerWidth >= 3840 && window.innerHeight >= 2160 ? 17 : 15;
   // Karte setzen
   if (data.wgs84_x && data.wgs84_y) {
     marker = L.marker(new L.LatLng(data.wgs84_x, data.wgs84_y), {
