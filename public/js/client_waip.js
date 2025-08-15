@@ -52,6 +52,7 @@ let waipAudio = document.getElementById("audio");
 // Flag für laufendes TTS
 let ttsActive = false;
 let lastTTSSrc = null;
+let audioBlockedAttribution = null;
 
 // Autoplay-Blockade anzeigen (Blinken des Volume-Off Icons)
 function indicateAudioBlocked() {
@@ -69,6 +70,13 @@ function indicateAudioBlocked() {
       document.head.appendChild(style);
     }
     icon.classList.add("blink-audio");
+    // Attribution für blockierte Tonausgabe hinzufügen
+    if (!audioBlockedAttribution) {
+      audioBlockedAttribution = L.control.attribution({ position: "bottomleft", prefix: "" });
+      audioBlockedAttribution.addAttribution("Tonausgabe vom Browser blockiert");
+      audioBlockedAttribution.addTo(map);
+      console.log("Audio blocked, attribution added to map.");
+    }
   } catch (e) {
     console.log("indicateAudioBlocked error", e);
   }
@@ -92,6 +100,13 @@ function resetAudioUi() {
   tmp_element = document.querySelector("#volume");
   if (tmp_element && tmp_element.classList.contains("btn-danger")) {
     tmp_element.classList.remove("btn-danger");
+  }
+  // Attribution für blockierte Tonausgabe entfernen
+  if (audioBlockedAttribution) {
+    try {
+      audioBlockedAttribution.remove();
+    } catch (e) {}
+    audioBlockedAttribution = null;
   }
 }
 
@@ -138,6 +153,13 @@ waipAudio.addEventListener("play", function () {
   tmp_element = document.querySelector("#volume");
   if (tmp_element && tmp_element.classList.contains("btn-danger")) {
     tmp_element.classList.remove("btn-danger");
+  }
+  // Attribution für blockierte Tonausgabe entfernen
+  if (audioBlockedAttribution) {
+    try {
+      audioBlockedAttribution.remove();
+    } catch (e) {}
+    audioBlockedAttribution = null;
   }
 });
 
@@ -342,6 +364,17 @@ let map = L.map("map", {
 }).setView([51.733005, 14.338048], 13);
 
 AddMapLayer();
+
+// Attribution für deaktivierte Rückmeldungen anzeigen
+try {
+  if (typeof rmld_off !== "undefined" && rmld_off) {
+    const rmldAttr = L.control.attribution({ position: "bottomleft", prefix: "" });
+    rmldAttr.addAttribution("Rückmeldungen deaktivert");
+    rmldAttr.addTo(map);
+  }
+} catch (e) {
+  // nichts tun, falls rmld_off nicht definiert ist
+}
 
 // Icon der Karte zuordnen
 // Markergröße dynamisch für 4K anpassen (4K jetzt nochmals größer)
@@ -709,6 +742,15 @@ socket.on("io.new_waip", function (data) {
 });
 
 socket.on("io.new_rmld", function (data) {
+  // Rückmeldungen deaktiviert? (rmld_off wird serverseitig ins Template injiziert)
+  try {
+    if (typeof rmld_off !== "undefined" && rmld_off) {
+      console.log("Rückmeldungen sind deaktiviert (rmld=off), io.new_rmld ignoriert.");
+      return; // nichts tun
+    }
+  } catch (e) {
+    // falls Variable nicht existiert einfach normal fortfahren
+  }
   // DEBUG
   console.log("neue Rückmeldung:", data);
   // FIXME  Änderung des Funktions-Typ berücksichtigen

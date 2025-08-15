@@ -231,25 +231,22 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   });
 
   app.get("/login_cert", (req, res, next) => {
-    passport.authenticate(
-      "trusted-header",
-      (err, user, info) => {
-        if (err) {
-          req.flash("errorMessage", "Interner Fehler bei der Zertifikats-Authentifizierung.");
-          return res.redirect("/login");
-        }
-        if (!user) {
-          req.flash("errorMessage", "Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.");
-          return res.redirect("/login");
-        }
-        req.logIn(user, (err) => {
-           if (err) {
-             return next(err);
-           }
-          return res.redirect("/");
-        });
+    passport.authenticate("trusted-header", (err, user, info) => {
+      if (err) {
+        req.flash("errorMessage", "Interner Fehler bei der Zertifikats-Authentifizierung.");
+        return res.redirect("/login");
       }
-    )(req, res, next);
+      if (!user) {
+        req.flash("errorMessage", "Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.");
+        return res.redirect("/login");
+      }
+      req.logIn(user, (err) => {
+        if (err) {
+          return next(err);
+        }
+        return res.redirect("/");
+      });
+    })(req, res, next);
   });
 
   // Logout verarbeiten
@@ -321,6 +318,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.get("/waip/:wachen_id", async (req, res, next) => {
     try {
       const parameter_id = req.params.wachen_id;
+      const rmldOff = req.query.rmld === "off"; // optionaler Parameter zum Deaktivieren der Rückmeldungen
       const wache = await sql.db_wache_vorhanden(parameter_id);
       if (wache) {
         res.render("waip", {
@@ -331,6 +329,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           map_service: app_cfg.public.map_service,
           app_id: app_cfg.global.app_id,
           user: req.user,
+          rmld_off: rmldOff,
         });
       } else {
         const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);

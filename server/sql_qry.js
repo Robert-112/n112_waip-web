@@ -780,7 +780,11 @@ module.exports = (db, app_cfg) => {
             }
             if (len == 4) {
               const stmt = db.prepare(`
-                SELECT '4' length, nr_kreis || nr_traeger nr, name_traeger name 
+                SELECT '4' length, nr_kreis || nr_traeger nr,
+                  CASE 
+                    WHEN name_erweiterung = '' THEN name_traeger
+                    ELSE CONCAT(name_traeger, ' [', name_erweiterung , ']'  )
+                  END AS name
                 FROM waip_wachen 
                 WHERE nr_kreis LIKE SUBSTR(?,-4, 2) 
                   AND nr_traeger LIKE SUBSTR(?,-2, 2) 
