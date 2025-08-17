@@ -224,9 +224,9 @@ function resize_text() {
 }
 
 // Text nach bestimmter Laenge, in Abhaengigkeit von Zeichen, umbrechen
-function break_text_20(text) {
+function break_text_25(text) {
   var new_text;
-  new_text = text.replace(/.{20}(\s+|\-+)+/g, "$&@");
+  new_text = text.replace(/.{25}(\s+|\-+)+/g, "$&@");
   new_text = new_text.split(/@/);
   new_text = new_text.join("<br />");
   //console.log(new_text);
@@ -585,11 +585,11 @@ socket.on("io.new_waip", function (data) {
   small_ortsdaten = "";
   // Teilbjekt anfuegen
   if (data.objektteil) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.objektteil) + "<br />";
+    small_ortsdaten = small_ortsdaten + break_text_25(data.objektteil) + "<br />";
   }
   // Objekt anfuegen
   if (data.objekt) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.objekt);
+    small_ortsdaten = small_ortsdaten + break_text_25(data.objekt);    
     // ggf. weitere Einsatzdetails an Objekt anfügen, wenn Brand- oder Hilfeleistungseinsatz
     if (data.einsatzdetails && (data.einsatzart === "Brandeinsatz" || data.einsatzart === "Hilfeleistungseinsatz")) {
       small_ortsdaten = small_ortsdaten + " (" + data.einsatzdetails + ") ";
@@ -598,13 +598,13 @@ socket.on("io.new_waip", function (data) {
   }
   // Ort anfuegen
   if (data.ort) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.ort) + "<br />";
+    small_ortsdaten = small_ortsdaten + break_text_25(data.ort) + "<br />";
   }
   // Ortsteil anfuegen, aber nur wenn nicht gleich Ort
   if (data.ortsteil) {
     // wenn Ortsteil gleich Ort, dann nicht anzeigen
     if (data.ortsteil !== data.ort) {
-      small_ortsdaten = small_ortsdaten + break_text_20(data.ortsteil) + "<br />";
+      small_ortsdaten = small_ortsdaten + break_text_25(data.ortsteil) + "<br />";
     }
   }
   // Strasse und Hausnummer anfuegen
@@ -616,7 +616,7 @@ socket.on("io.new_waip", function (data) {
     } else {
       tmp_strasse = data.strasse;
     }
-    small_ortsdaten = small_ortsdaten + break_text_20(tmp_strasse) + "<br />";
+    small_ortsdaten = small_ortsdaten + break_text_25(tmp_strasse) + "<br />";
   }
   if (small_ortsdaten.substr(small_ortsdaten.length - 4) == "<br />") {
     small_ortsdaten = small_ortsdaten.slice(0, -4);

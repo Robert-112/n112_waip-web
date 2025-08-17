@@ -437,9 +437,25 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT e.id, e.uuid, e.zeitstempel, e.einsatzart, e.stichwort, e.sondersignal, e.objekt, 
-            e.ort, e.ortsteil, e.strasse, e.hausnummer, e.besonderheiten,
-            e.wgs84_x, e.wgs84_y, e.geometry
+          SELECT 
+            e.id, 
+            e.uuid, 
+            e.els_einsatznummer einsatznummer,
+            e.zeitstempel, 
+            e.einsatzart, 
+            e.stichwort, 
+            e.sondersignal, 
+            e.objekt, 
+            e.objektteil,
+            e.ort, 
+            e.ortsteil, 
+            e.strasse, 
+            e.hausnummer,
+            e.einsatzdetails, 
+            e.besonderheiten,
+            e.wgs84_x, 
+            e.wgs84_y, 
+            e.geometry
           FROM waip_einsaetze e 
           WHERE e.uuid LIKE ?;
         `);

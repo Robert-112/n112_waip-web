@@ -1,98 +1,19 @@
-script(src='/js/vis-timeline.min.js')
-link(rel='stylesheet', href='/css/vis-timeline.css')
-style(type='text/css').
-  #visualization {
-  width: 100%;
-  height: 100%;
-  /*border: 1px solid lightgray;*/
-  }
-  .vis-item.ek {
-    background-color: #00bc8c;
-    border-color: #444;
-  }
-  .vis-item.gf {
-    background-color: #3498DB;
-    border-color: #444;
-  }
-  .vis-item.zf {
-    background-color: #adb5bd;
-    border-color: #444;
-  }
-  .vis-item.vf {
-    background-color: #E74C3C;
-    border-color: #444;
-  }
-  .vis-item.ek-agt {
-    background-color: #00bc8c;
-    border-color: #F39C12;
-    border-width: 2px;
-  }
-  .vis-item.gf-agt {
-    background-color: #3498DB;
-    border-color: #F39C12;
-    border-width: 2px;
-  }
-  .vis-item.zf-agt {
-    background-color: #adb5bd;
-    border-color: #F39C12;
-    border-width: 2px;
-  }
-  .vis-item.vf-agt {
-    background-color: #E74C3C;
-    border-color: #F39C12;
-    border-width: 2px;
-  }
-  .vis-inner, .vis-time-axis .vis-text {
-    color: #fff;
-  }
-  .vis-item {
-    color: #fff;
-    font-size: 0.875em;
-    font-weight: 400;
-  }
-  .vis-timeline {
-    /*border: 1px solid #444;*/
-    background: #303030;   
-  }
-  .vis-time-axis .vis-grid.vis-minor {
-    border-color: #444;
-  }
-  .vis-current-time {
-    background: #E74C3C;    
-  }
-  .vis-custom-time {
-    background: #3498DB;    
-  }
-  /*.vis-custom-time > .vis-custom-time-marker*/
-   .vis-custom-time-marker {  
-    right: 2px;
-  }
-  .vis-rolling-mode-btn:before {
-    content: "\2B8C";
-  }
-  .vis-inner, .vis-label .vis-group-level-0  {
-    width: 25px;
-    transform: rotate(90deg);
-    white-space: nowrap;
-  }
-
 .row
   .col-12.d-flex.justify-content-between.flex-wrap.pb-2
     .d-flex.justify-content-start
       .text-muted Alarmierung vom&nbsp;
       #einsatz_datum.text-muted.text-right &nbsp;-Datum-
     .d-flex.justify-content-end
-      #dbrd_id.text-secondary 2341234345453
-
+      #dbrd_id.ion-md-clipboard.text-secondary 2341234345453
 .row
-  .col-lg-5.col-12
+  .col-lg-4.col-12
     #einsatz_art.row.no-gutters.bg-secondary.rounded.p-3
       .col-10
         .align-items-center.font-weight-bold
-          #einsatz_stichwort.ion-md-apps  -Stichwort-
+          #einsatz_stichwort.font-weight-bold.ion-md-apps  -Stichwort-
       .col-2
         .align-items-center.justify-content-center.rounded.text-center
-          #sondersignal.ion-md-apps
+          #sondersignal.font-weight-bold.ion-md-apps
     div.border-top.m-3
     .row
       .col-lg-12.col-md-6.col-12
@@ -107,19 +28,21 @@ style(type='text/css').
           .card-body.p-0
             ul#einsatzort_list.list-group.list-group-flush
               li.list-group-item -Objekt-
+              li.list-group-item -Objektteil-
               li.list-group-item -Ort-
               li.list-group-item -Orststeil-
               li.list-group-item -Straße Hsnr-
+              li.list-group-item -Einsatzdetails-
               li.list-group-item.text-warning -Besonderheiten-
-    div.border-top.m-3
-    .row
+  .col-lg-8.col-12
+    .row.no-gutters
       .col-12
-        .card.mt-2
+        .card
           table#table_einsatzmittel.table.table-hover  
             thead.table-borderless 
               tr
                 th.col-4.text-info.pl-3 Wache
-                th.col.text-info.pl-3 Einsatzmittel
+                th.col.text-info.pl-3 alarmierte Einsatzmittel
             tbody
               tr
                 th(scope='row') 1. Wache
@@ -153,9 +76,7 @@ style(type='text/css').
                       div.d-flex.justify-content-between
                         div.pr-2 Einsatzmittel 6
                         div.p-2.badge.badge-warning 3 
-    div.border-top.mx-3.mt-3.mb-2.d-block.d-lg-none
-  .col-lg-7.col-12
-    .row.no-gutters
+        div.border-top.m-3
       .col-12
         div#rmld_container
           .card#rmld_container
@@ -218,11 +139,6 @@ style(type='text/css').
                   .progress.mt-1.border.border-warning
                     .progress-bar.progress-bar-striped.bg-danger(role='progressbar', style='width: 50%', aria-valuenow='50', aria-valuemin='0', aria-valuemax='100') 10min    
           div.border-top.m-3
-          div.px-2
-            input.btn.btn-info.btn-block(type="button", value="Zeitschiene auf alle Rückmeldungen anpassen", id="fit_timeline")  
-          .card-body.p-2
-            #visualization.border.rounded(style='background-color:white')
-  // TODO: zeitstrahl der den Ablauf anzeigt
 .d-none
   audio#audio(controls='')
       source(src='', type='audio/mpeg') 

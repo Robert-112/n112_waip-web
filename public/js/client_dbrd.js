@@ -309,41 +309,6 @@ function recount_rmld(p_uuid) {
 }
 
 /* ########################### */
-/* ####### Timeline ######## */
-/* ########################### */
-
-// DOM element where the Timeline will be attached
-var container = document.getElementById("visualization");
-var items = new vis.DataSet();
-var groups = new vis.DataSet();
-
-// Configuration for the Timeline
-var customDate = new Date();
-var alert_start = new Date(customDate.setMinutes(customDate.getMinutes() - 3));
-var timeline_end = new Date(customDate.setMinutes(customDate.getMinutes() + 15));
-var options = {
-  rollingMode: {
-    follow: true,
-    offset: 0.25,
-  },
-  type: "point",
-  locale: "de",
-  start: alert_start,
-  end: timeline_end,
-};
-
-// Create a Timeline
-var timeline = new vis.Timeline(container, items, options);
-timeline.setGroups(groups);
-
-// Button für Timeline-Ansicht auf alle Einträge
-document.getElementById("fit_timeline").onclick = function () {
-  timeline.toggleRollingMode();
-  timeline.setWindow(timeline.getItemRange().min, timeline.getItemRange().max, { animation: false });
-  timeline.fit();
-};
-
-/* ########################### */
 /* ######## SOCKET.IO ######## */
 /* ########################### */
 
@@ -408,7 +373,11 @@ socket.on("io.Einsatz", function (data) {
   // Einsatz-ID speichern
   waip_id = data.id;
   // DBRD-ID und Zeit setzten
-  $("#dbrd_id").html(data.uuid);
+  if (data.einsatznummer) {
+    $("#dbrd_id").html("&nbsp;" + data.einsatznummer);
+  } else {
+    $("#dbrd_id").html("&nbsp;" + data.uuid);
+  }
   $("#einsatz_datum").html(data.zeitstempel);
 
   // Hintergrund der Einsatzart zunächst entfernen
@@ -421,13 +390,11 @@ socket.on("io.Einsatz", function (data) {
   switch (data.einsatzart) {
     case "Brandeinsatz":
       $("#einsatz_art").addClass("bg-danger");
-      $("#einsatz_stichwort").addClass("ion-md-flame");
-      $("#rueckmeldung").removeClass("d-none");
+      $("#einsatz_stichwort").addClass("ion-md-flame");;
       break;
     case "Hilfeleistungseinsatz":
       $("#einsatz_art").addClass("bg-info");
       $("#einsatz_stichwort").addClass("ion-md-construct");
-      $("#rueckmeldung").removeClass("d-none");
       break;
     case "Rettungseinsatz":
       $("#einsatz_art").addClass("bg-warning");
@@ -453,20 +420,57 @@ socket.on("io.Einsatz", function (data) {
   }
   // Ortsdaten zusammenstellen und setzen
   $("#einsatzort_list").empty();
+  if (data.objektteil) {
+    $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_objektteil">');
+    $("#listitem_objektteil").append('<li class="d-flex w-100 justify-content-between" id="dflex_objektteil">');
+    $("#dflex_objektteil").append('<small class="text-muted">Teilobjekt</small>');
+    $("#dflex_objektteil").append('<p class="mb-1 px-2" id="data_objektteil">' + data.objektteil + "</p>");
+  }
   if (data.objekt) {
-    $("#einsatzort_list").append('<li class="list-group-item">' + data.objekt + "</li>");
+    $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_objekt">');
+    $("#listitem_objekt").append('<li class="d-flex w-100 justify-content-between" id="dflex_objekt">');
+    $("#dflex_objekt").append('<small class="text-muted">Objekt</small>');
+    $("#dflex_objekt").append('<p class="mb-1 px-2" id="data_objekt">' + data.objekt + "</p>");
+  }
+  if (data.einsatzdetails) {
+    $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_einsatzdetails">');
+    $("#listitem_einsatzdetails").append('<li class="d-flex w-100 justify-content-between" id="dflex_einsatzdetails">');
+    $("#dflex_einsatzdetails").append('<small class="text-muted">Ortdetails</small>');
+    $("#dflex_einsatzdetails").append('<p class="mb-1 px-2" id="data_einsatzdetails">' + data.einsatzdetails + "</p>");
   }
   if (data.ort) {
-    $("#einsatzort_list").append('<li class="list-group-item">' + data.ort + "</li>");
+    $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_ort">');
+    $("#listitem_ort").append('<li class="d-flex w-100 justify-content-between" id="dflex_ort">');
+    $("#dflex_ort").append('<small class="text-muted">Ort</small>');
+    $("#dflex_ort").append('<p class="mb-1 px-2" id="data_ort">' + data.ort + "</p>");
   }
   if (data.ortsteil) {
-    $("#einsatzort_list").append('<li class="list-group-item">' + data.ortsteil + "</li>");
+    // wenn Ortsteil gleich Ort, dann nicht anzeigen
+    if (data.ortsteil !== data.ort) {
+      $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_ortsteil">');
+      $("#listitem_ortsteil").append('<li class="d-flex w-100 justify-content-between" id="dflex_ortsteil">');
+      $("#dflex_orsteilt").append('<small class="text-muted">Ortsteil</small>');
+      $("#dflex_ortsteil").append('<p class="mb-1 px-2" id="data_ortsteil">' + data.ortsteil + "</p>");
+    }
   }
   if (data.strasse) {
-    $("#einsatzort_list").append('<li class="list-group-item">' + data.strasse + "</li>");
+    // Hausnummer an Strasse anfuegen, falls vorhanden
+    tmp_strasse = data.strasse;
+    if (data.hausnummer) {
+      tmp_strasse = data.strasse + "&nbsp;" + data.hausnummer;
+    } else {
+      tmp_strasse = data.strasse;
+    }
+    $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_strasse">');
+    $("#listitem_strasse").append('<li class="d-flex w-100 justify-content-between" id="dflex_strasse">');
+    $("#dflex_strasse").append('<small class="text-muted">Stra&szlig;e</small>');
+    $("#dflex_strasse").append('<p class="mb-1 px-2" id="data_strasse">' + tmp_strasse + "</p>");
   }
   if (data.besonderheiten) {
-    $("#einsatzort_list").append('<li class="list-group-item text-warning">' + data.besonderheiten + "</li>");
+    $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_besonderheiten">');
+    $("#listitem_besonderheiten").append('<li class="d-flex w-100 justify-content-between" id="dflex_besonderheiten">');
+    $("#dflex_besonderheiten").append('<small class="text-muted">Besonderheiten</small>');
+    $("#dflex_besonderheiten").append('<p class="mb-1 px-2 text-warning text-right  " id="data_besonderheiten">' + data.besonderheiten + "</p>");
   }
   // Alte Einsatzmittel loeschen
   var table_em = document.getElementById("table_einsatzmittel");
@@ -567,14 +571,6 @@ socket.on("io.Einsatz", function (data) {
     map.fitBounds(geojson.getBounds());
     map.setZoom(13);
   }
-  // Marker in Timeline setzen
-  var markerText = "Alarmierung";
-  var alarm_zeit = "alarm_zeit";
-  timeline.addCustomTime(data.zeitstempel, alarm_zeit);
-  timeline.customTimes[timeline.customTimes.length - 1].hammer.off("panstart panmove panend");
-  timeline.setCustomTimeMarker(markerText, alarm_zeit, false);
-
-  // TODO Ablaufzeit setzen
 });
 
 socket.on("io.new_rmld", function (data) {
@@ -650,14 +646,6 @@ socket.on("io.new_rmld", function (data) {
   var pg_rmld_uuid = data.rmld_uuid;
   var pg_start = new Date(data.time_decision);
   var pg_end = new Date(data.time_arrival);
-  var timeline_item = {
-    id: data.rmld_uuid,
-    group: data.wache_id,
-    className: item_classname,
-    start: new Date(data.time_decision),
-    /*end: new Date(data.time_arrival),*/
-    content: item_content,
-  };
   // Progressbar hinterlegen
   add_resp_progressbar(
     data.waip_uuid,
@@ -671,9 +659,6 @@ socket.on("io.new_rmld", function (data) {
     pg_start,
     pg_end
   );
-  // in Timeline hinterlegen
-  items.update(timeline_item);
-  groups.update({ id: data.wache_id, content: data.wache_name });
   // Anzahl der Rückmeldung zählen
   recount_rmld(pg_waip_uuid);
 

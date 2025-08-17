@@ -243,9 +243,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           const valid = await sql.db_user_check_permission_for_waip(socket, einsatzdaten.id);
           // Daten entfernen wenn kann authentifizierter Nutzer
           if (!valid) {
+            delete einsatzdaten.einsatznummer;
             delete einsatzdaten.objekt;
+            delete einsatzdaten.objektteil;
             delete einsatzdaten.besonderheiten;
             delete einsatzdaten.strasse;
+            delete einsatzdaten.hausnummer;
+            delete einsatzdaten.einsatzdetails;
             delete einsatzdaten.wgs84_x;
             delete einsatzdaten.wgs84_y;
           }
