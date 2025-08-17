@@ -467,7 +467,7 @@ module.exports = (db, app_cfg) => {
           // Einsatzmittel zum Einsatz finden
           const stmt1 = db.prepare(`
             SELECT 
-              e.em_funkrufname, e.em_fmsstatus, e.em_station_name 
+              e.em_station_id, e.em_funkrufname, e.em_fmsstatus, e.em_station_name 
             FROM waip_einsatzmittel e 
             WHERE e.em_waip_einsaetze_id = ?;
           `);

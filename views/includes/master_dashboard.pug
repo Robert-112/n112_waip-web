@@ -1,10 +1,11 @@
 .row
   .col-12.d-flex.justify-content-between.flex-wrap.pb-2
     .d-flex.justify-content-start
-      .text-muted Alarmierung vom&nbsp;
-      #einsatz_datum.text-muted.text-right &nbsp;-Datum-
+      .text-secondary Alarmierungszeit: &nbsp;
+      #einsatz_datum.text-muted &nbsp;-Datum-
     .d-flex.justify-content-end
-      #dbrd_id.ion-md-clipboard.text-secondary 2341234345453
+      .text-secondary Einsatznummer: &nbsp;
+      #dbrd_id.ion-md-clipboard.text-muted -Nummer-
 .row
   .col-lg-4.col-12
     #einsatz_art.row.no-gutters.bg-secondary.rounded.p-3
@@ -23,123 +24,76 @@
         div.border-top.m-3.d-md-none.d-lg-block
       .col-lg-12.col-md-6.col-12
         .card.mt-2
-          .card-header.bg-dark.px-3
-            .text-info.font-weight-bold Einsatzort
+          .card-header.bg-dark.px-3.py-2
+            .text-info.font-weight-bold.mb-0 Einsatzort
           .card-body.p-0
             ul#einsatzort_list.list-group.list-group-flush
-              li.list-group-item -Objekt-
-              li.list-group-item -Objektteil-
-              li.list-group-item -Ort-
-              li.list-group-item -Orststeil-
-              li.list-group-item -Straße Hsnr-
-              li.list-group-item -Einsatzdetails-
-              li.list-group-item.text-warning -Besonderheiten-
+    div.border-top.m-3.d-lg-none.d-xl-none.d-md-block
   .col-lg-8.col-12
     .row.no-gutters
       .col-12
         .card
-          table#table_einsatzmittel.table.table-hover  
-            thead.table-borderless 
+          table#table_einsatzmittel.table.table-hover.mb-0
+            thead.table-borderless.small
               tr
-                th.col-4.text-info.pl-3 Wache
-                th.col.text-info.pl-3 alarmierte Einsatzmittel
+                th.wache-col.text-info.pl-3 Wache
+                th.text-info.pl-3 alarmierte Einsatzmittel / Rückmeldungen
             tbody
-              tr
-                th(scope='row') 1. Wache
-                td
-                  div.d-flex.flex-wrap.justify-content-between.align-items-center
-                    div.flex-fill.rounded.bg-secondary.p-2.m-1
-                      div.d-flex.justify-content-between
-                        div.pr-2 Einsatzmittel 1
-                        div.p-2.badge.badge-success 2
-                    div.flex-fill.rounded.bg-secondary.p-2.m-1
-                      div.d-flex.justify-content-between
-                        div.pr-2 Einsatzmittel 2
-                        div.p-2.badge.badge-warning 3
-                    div.flex-fill.rounded.bg-secondary.p-2.m-1
-                      div.d-flex.justify-content-between
-                        div.pr-2 Einsatzmittel 3
-                        div.p-2.badge.badge-danger 4
-                    div.flex-fill.rounded.bg-secondary.p-2.m-1
-                      div.d-flex.justify-content-between
-                        div.pr-2 Einsatzmittel 4
-                        div.p-2.badge.badge-info 1
-              tr
-                th(scope='row') 2. Wache
-                td 
-                  div.d-flex.flex-wrap.justify-content-between.align-items-center
-                    div.flex-fill.rounded.bg-secondary.p-2.m-1
-                      div.d-flex.justify-content-between
-                        div.pr-2 Einsatzmittel 5
-                        div.p-2.badge.badge-success 2
-                    div.flex-fill.rounded.bg-secondary.p-2.m-1
-                      div.d-flex.justify-content-between
-                        div.pr-2 Einsatzmittel 6
-                        div.p-2.badge.badge-warning 3 
+              // Dynamische Zeilen werden per JS eingefügt
         div.border-top.m-3
       .col-12
         div#rmld_container
-          .card#rmld_container
-            .card-header.bg-dark.px-3
-              .text-light.font-weight-bold Rückmeldungen
-            .card-body.p-2
-              .row.no-gutters.p-1
-                .col-12.border.rounded.border-light.d-flex.align-items-center.justify-content-center.p-2
-                  h4.font-weight-bold Gesamt &nbsp;
-                    #gs-counter.badge.badge-primary.badge.font-weight-bold.p-1 0
-              .row.no-gutters.p-1
-                .col-3.border.rounded-left.border-light.text-success.d-flex.align-items-center.justify-content-center.p-2
-                  h5 EK&nbsp;
-                    #ek-counter.badge.badge-success.badge.p-1 0
-                .col-3.border.border-light.text-info.d-flex.align-items-center.justify-content-center.p-2
-                  h5 GF&nbsp;
-                    #gf-counter.badge.badge-info.badge.p-1 0
-                .col-3.border.border-light.text-light.d-flex.align-items-center.justify-content-center.p-2
-                  h5 ZF&nbsp;
-                    #zf-counter.badge.badge-light.badge.p-1 0
-                .col-3.border.rounded-right.border-light.text-danger.d-flex.align-items-center.justify-content-center.p-2
-                  h5 VF&nbsp;
-                    #vf-counter.badge.badge-danger.badge.p-1 0
-          div.border-top.m-3
-          .card
-            .card-header.bg-dark.px-3
-              .text-light.font-weight-bold Verfügbare Funktionen
-            .card-body.p-2
-              .row.no-gutters.p-1
-                .col-3.border.rounded-left.border-warning.d-flex.align-items-center.justify-content-center.p-2
-                  h5.text-warning AGT&nbsp;
-                    span#agt-counter.badge.badge-warning.badge.p-1 0
-                .col-3.border.border-light.d-flex.align-items-center.justify-content-center.p-2
-                  h5 MA&nbsp;
-                    span#ma-counter.badge.badge-primary.badge.p-1 0
-                .col-3.border.border-light.d-flex.align-items-center.justify-content-center.p-2
-                  h5 FZF&nbsp;
-                    span#fzf-counter.badge.badge-primary.badge.p-1 0
-                .col-3.border.border-light.d-flex.align-items-center.justify-content-center.p-2
-                  h5 MED&nbsp;
-                    span#med-counter.badge.badge-primary.badge.p-1 0
-          div.border-top.m-3
-          .card
-            .card-header.bg-dark.px-3
-              .text-light.font-weight-bold Detailierte Rückmeldungen
-            .card-body.p-0
-              .row.px-3#pg-container.p-2
-                //.col-4#pg-ek
-                  .progress.mt-1
-                    .progress-bar.progress-bar-striped.bg-success.ion-md-checkmark-circle(role='progressbar', style='width: 100%', aria-valuenow='100', aria-valuemin='0', aria-valuemax='100')
-                //.col-4#pg-gf
-                  .progress.mt-1
-                    .progress-bar.progress-bar-striped.bg-info(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 3min
-                  .progress.mt-1
-                    .progress-bar.progress-bar-striped.bg-info(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 1min     
-                //.col-4#pg-zf
-                  .progress.mt-1.border.border-warning
-                    .progress-bar.progress-bar-striped.bg-light(role='progressbar', style='width: 50%', aria-valuenow='50', aria-valuemin='0', aria-valuemax='100') 10min    
-                //.col-4#pg-vf
-                  .progress.mt-1.border.border-warning
-                    .progress-bar.progress-bar-striped.bg-danger(role='progressbar', style='width: 50%', aria-valuenow='50', aria-valuemin='0', aria-valuemax='100') 10min    
-          div.border-top.m-3
+          .card#rmld_container.mb-3
+            .card-header.bg-dark.px-3.py-2
+              span.text-light.font-weight-bold.small Rückmeldungen (Gesamt)
+            .card-body.py-2.px-3
+              .row.no-gutters.align-items-center.small
+                .col-12.d-flex.flex-wrap
+                  span.mr-3.text-muted.d-flex.align-items-center
+                    span.mr-1.font-weight-bold Gesamt
+                    #gs-counter.badge.badge-primary.px-2.py-1 0
+                  span.mr-3.text-success.d-flex.align-items-center
+                    span.mr-1 EK
+                    #ek-counter.badge.badge-success.px-2.py-1 0
+                  span.mr-3.text-info.d-flex.align-items-center
+                    span.mr-1 GF
+                    #gf-counter.badge.badge-info.px-2.py-1 0
+                  span.mr-3.text-light.d-flex.align-items-center
+                    span.mr-1 ZF
+                    #zf-counter.badge.badge-light.text-dark.px-2.py-1 0
+                  span.mr-3.text-danger.d-flex.align-items-center
+                    span.mr-1 VF
+                    #vf-counter.badge.badge-danger.px-2.py-1 0
+      .col-12
+        .card.mb-3
+          .card-header.bg-dark.px-3.py-2
+            span.text-light.font-weight-bold.small Verfügbare Funktionen (Gesamt)
+          .card-body.py-2.px-3
+            .row.no-gutters.small
+              .col-12.d-flex.flex-wrap
+                span.mr-3.text-warning.d-flex.align-items-center
+                  span.mr-1 AGT
+                  span#agt-counter.badge.badge-warning.px-2.py-1 0
+                span.mr-3.text-primary.d-flex.align-items-center
+                  span.mr-1 MA
+                  span#ma-counter.badge.badge-primary.px-2.py-1 0
+                span.mr-3.text-primary.d-flex.align-items-center
+                  span.mr-1 FZF
+                  span#fzf-counter.badge.badge-primary.px-2.py-1 0
+                span.mr-3.text-primary.d-flex.align-items-center
+                  span.mr-1 MED
+                  span#med-counter.badge.badge-primary.px-2.py-1 0
 .d-none
   audio#audio(controls='')
-      source(src='', type='audio/mpeg') 
+      source(src='', type='audio/mpeg')
+// Vollbild-Kartenmodal
+#mapModal.modal.fade(tabindex='-1' role='dialog')
+  .modal-dialog.modal-dialog-centered.modal-xl(role='document')
+    .modal-content.bg-dark
+      .modal-header.py-2.border-secondary
+        h5.modal-title.text-light.mb-0 Einsatzkarte
+        button.close.text-light(type='button' data-dismiss='modal' aria-label='Close')
+          span(aria-hidden='true') &times;
+      .modal-body.p-0
+        #map_fullscreen(style='height:80vh;')
 

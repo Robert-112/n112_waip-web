@@ -16,7 +16,7 @@ block content
       .row 
         if dataSet && dataSet.length > 0
           each val, index in dataSet
-            .col-12.col-xl-6.d-flex.align-self-stretch.p-3
+            .col-12.col-md-6.d-flex.align-self-stretch.p-3
               .card.w-100
                 .card-header
                   case val.einsatzart
@@ -54,33 +54,47 @@ block content
       });
 
       map_service=!{JSON.stringify(map_service)};
-      
-    if (map_service.type === "tile") {
-      L.tileLayer(map_service.tile_url, {
-        maxZoom: 18,
-      }).addTo(map);
-    } else if (map_service.type === "wms") {
-      var wmsLayer = L.tileLayer
-        .wms(map_service.wms_url, {
+
+      let maxMapZoom = 18; // Standard-Zoomstufe
+
+      // Layer der Karte basierend auf dem Typ des Kartendienstes hinzufuegen
+      if (map_service.type === "tile") {
+        // Tile-Map hinzufuegen
+        L.tileLayer(map_service.tile_url, {
+          maxZoom: maxMapZoom,
+        }).addTo(map);
+      } else if (map_service.type === "wms") {
+        // WMS-Map hinzufuegen
+        var wmsLayer = L.tileLayer.wms(map_service.wms_url, {
           layers: map_service.wms_layers,
           format: map_service.wms_format,
           transparent: map_service.wms_transparent,
           version: map_service.wms_version,
-        })
-        .addTo(map);
-    }
+        });
 
-      // Karte setzen
+        // Fehlerbehandlung: Wenn der WMS-Layer nicht geladen werden kann, dann versuche den Tile-Layer
+        wmsLayer.on("tileerror", function () {
+          console.warn("WMS-Layer konnte nicht geladen werden, versuche Tile-Layer:", map_service.tile_url);
+          // Tile-Map hinufuegen
+          L.tileLayer(map_service.tile_url, {
+            maxZoom: maxMapZoom,
+          }).addTo(map);
+        });
 
-      let geojson = L.geoJSON(JSON.parse(data[i].geometry)).addTo(map);
-      map.fitBounds(geojson.getBounds());
-      map.setZoom(13);
-      map.dragging.disable();
-      map.touchZoom.disable();
-      map.doubleClickZoom.disable();
-      map.scrollWheelZoom.disable();
-      map.boxZoom.disable();
-      map.keyboard.disable();
-      map.scrollWheelZoom.disable();
+        wmsLayer.addTo(map);
+      }
+
+    // Karte setzen
+
+    let geojson = L.geoJSON(JSON.parse(data[i].geometry)).addTo(map);
+    map.fitBounds(geojson.getBounds());
+    map.setZoom(13);
+    map.dragging.disable();
+    map.touchZoom.disable();
+    map.doubleClickZoom.disable();
+    map.scrollWheelZoom.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+    map.scrollWheelZoom.disable();
 
     };    

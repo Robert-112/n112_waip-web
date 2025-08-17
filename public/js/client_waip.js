@@ -710,7 +710,7 @@ socket.on("io.new_waip", function (data) {
   map.removeLayer(marker);
   map.removeLayer(geojson);
   // Zoomsstufe bei 4K anpassen
-  let initialZoom = window.innerWidth >= 3840 && window.innerHeight >= 2160 ? 17 : 15;
+  let initialZoom = window.innerWidth >= 3840 && window.innerHeight >= 2160 ? 16 : 14;
   // Karte setzen
   if (data.wgs84_x && data.wgs84_y) {
     marker = L.marker(new L.LatLng(data.wgs84_x, data.wgs84_y), {

@@ -1,0 +1,10 @@
+/* Dashboard Styles ausgelagert aus master_dashboard.pug */
+#table_einsatzmittel { table-layout: fixed; }
+#table_einsatzmittel th.wache-col { width:18%; }
+#table_einsatzmittel td { width:82%; }
+@media (max-width: 1199.98px) {
+  #table_einsatzmittel th.wache-col { width:25%; }
+  #table_einsatzmittel td { width:75%; }
+}
+.map-zoom-btn { background:#222; color:#fff; cursor:pointer; border:none; padding:4px 8px; font-size:16px; line-height:1; }
+.map-zoom-btn:hover { background:#444; }

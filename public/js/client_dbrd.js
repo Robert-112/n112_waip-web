@@ -14,27 +14,98 @@ $(document).ready(function () {
 /* ######### LEAFLET ######### */
 /* ########################### */
 
-// Karte definieren
-var map = L.map("map", {
-  zoomControl: false,
-  attributionControl: false,
-}).setView([51.733005, 14.338048], 13);
-
-// Layer der Karte basierend auf dem Typ des Kartendienstes
-if (map_service.type === "tile") {
-  L.tileLayer(map_service.tile_url, {
-    maxZoom: 18,
-  }).addTo(map);
-} else if (map_service.type === "wms") {
-  var wmsLayer = L.tileLayer
-    .wms(map_service.wms_url, {
+// Funktion zum Hinzufügen und Testen eines WMS-Layers
+function AddMapLayer(targetMap) {
+  let maxMapZoom = 18;
+  var tMap = targetMap || map;
+  // Layer der Karte basierend auf dem Typ des Kartendienstes hinzufuegen
+  if (map_service.type === "tile") {
+    // Tile-Map hinzufuegen
+    L.tileLayer(map_service.tile_url, {
+      maxZoom: maxMapZoom,
+    }).addTo(tMap);
+  } else if (map_service.type === "wms") {
+    // WMS-Map hinzufuegen
+    var wmsLayer = L.tileLayer.wms(map_service.wms_url, {
       layers: map_service.wms_layers,
       format: map_service.wms_format,
       transparent: map_service.wms_transparent,
       version: map_service.wms_version,
-    })
-    .addTo(map);
+    });
+
+    // Fehlerbehandlung: Wenn der WMS-Layer nicht geladen werden kann, dann versuche den Tile-Layer
+    wmsLayer.on("tileerror", function () {
+      console.warn("WMS-Layer konnte nicht geladen werden, versuche Tile-Layer:", map_service.tile_url);
+      // Tile-Map hinufuegen
+      L.tileLayer(map_service.tile_url, {
+        maxZoom: maxMapZoom,
+      }).addTo(tMap);
+    });
+
+    wmsLayer.addTo(tMap);
+  }
 }
+
+// Karte definieren
+var map = L.map("map", {
+  zoomControl: false,
+  attributionControl: false,
+  dragging: false,
+  scrollWheelZoom: false,
+  doubleClickZoom: false,
+  boxZoom: false,
+  keyboard: false,
+  tap: false,
+}).setView([51.733005, 14.338048], 13);
+// Custom Control für Vollbildanzeige
+var FullscreenControl = L.Control.extend({
+  options: { position: "bottomright" },
+  onAdd: function () {
+    var container = L.DomUtil.create('div', 'leaflet-bar');
+    var btn = L.DomUtil.create('button', 'btn btn-dark', container);
+    btn.type = 'button';
+    btn.innerHTML = '<span class="ion-md-expand"></span>';
+    btn.title = 'Karte vergrößern';
+    L.DomEvent.on(btn, 'click', function (e) {
+      L.DomEvent.stopPropagation(e);
+      $('#mapModal').modal('show');
+      setTimeout(initFullscreenMap, 300);
+    });
+    return container;
+  },
+});
+map.addControl(new FullscreenControl());
+var fullscreenMap = null;
+function initFullscreenMap() {
+  if (fullscreenMap) {
+    fullscreenMap.invalidateSize();
+    return;
+  }
+  fullscreenMap = L.map("map_fullscreen", { zoomControl: true, attributionControl: false });
+  AddMapLayer(fullscreenMap);
+  if (currentGeometry) {
+    if (currentGeometry.type === "point" && currentGeometry.coords) {
+      L.marker(currentGeometry.coords, { icon: redIcon }).addTo(fullscreenMap);
+      fullscreenMap.setView(currentGeometry.coords, 15);
+    } else if (currentGeometry.geojson) {
+      var gj = L.geoJSON(currentGeometry.geojson).addTo(fullscreenMap);
+      fullscreenMap.fitBounds(gj.getBounds());
+    }
+  }
+}
+$("#mapModal").on("shown.bs.modal", function () {
+  if (fullscreenMap) {
+    fullscreenMap.invalidateSize();
+  }
+});
+$("#mapModal").on("hidden.bs.modal", function () {
+  if (fullscreenMap) {
+    fullscreenMap.remove();
+    fullscreenMap = null;
+  }
+});
+
+AddMapLayer();
 
 // Icon der Karte zuordnen
 var redIcon = new L.Icon({
@@ -108,7 +179,8 @@ function reset_rmld(p_uuid) {
     });
 }
 
-function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_ma, p_med, p_start, p_end) {
+function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_ma, p_med, p_start, p_end, p_container) {
+  var target = p_container || "#pg-container";
   // Hintergrund der Progressbar festlegen
   var bar_background = "";
   var bar_border = "";
@@ -133,14 +205,12 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
       break;
   }
   var bar_uuid = "bar-" + p_uuid;
-  // pruefen ob div mit id 'pg-'+p_id schon vorhanden ist
   var pgbar = document.getElementById("pg-" + p_id);
   if (!pgbar) {
-    // col-4 hinzufügen mit id
-    $("#pg-container").append('<div class="col-xl-4 col-6 pg-' + p_type + '" id="pg-' + p_id + '"></div>');
-    // Progressbar hinzufügen mit id
+    var wrapperClasses = target === "#pg-container" ? "col-xl-4 col-6" : "col-12 col-md-6 col-lg-4 mb-2 px-1";
+    $(target).append('<div class="' + wrapperClasses + " pg-" + p_type + '" id="pg-' + p_id + '" data-rmld-wrapper="1"></div>');
     $("#pg-" + p_id).append(
-      '<div class="progress mt-1 position-relative ' +
+      '<div class="progress mx-1 mt-1 position-relative ' +
         bar_border +
         " " +
         bar_uuid +
@@ -150,24 +220,18 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
         p_id +
         '" style="height: 15px; font-size: 14px;"></div>'
     );
-    // wenn p_agt > 0 ist, dann als Klasse p_agt hinterlegen
     if (p_agt > 0) {
       $("#pg-" + p_id).addClass("p_agt");
     }
-    // wenn p_fzf > 0 ist, dann als Klasse p_fzf hinterlegen
     if (p_fzf > 0) {
       $("#pg-" + p_id).addClass("p_fzf");
     }
-    // wenn p_ma > 0 ist, dann als Klasse p_ma hinterlegen
     if (p_ma > 0) {
       $("#pg-" + p_id).addClass("p_ma");
     }
-    // wenn p_med > 0 ist, dann als Klasse p_med hinterlegen
     if (p_med > 0) {
       $("#pg-" + p_id).addClass("p_med");
     }
-    //$('#pg-' + p_type + '-' + p_id ).append('<div id="pg-bar-' + p_id + '" class="progress-bar progress-bar-striped ' + bar_background + '" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>');
-    //$('#pg-bar-' + p_id).append('<small id="pg-text-' + p_id + '" class="w-100"></small>');
     $("#pg-" + p_type + "-" + p_id).append(
       '<div id="pg-bar-' +
         p_id +
@@ -179,7 +243,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
       '<div id="pg-text-' + p_id + '" class="justify-content-center align-items-center d-flex position-absolute h-100 w-100"></div>'
     );
   } else {
-    // TODO PG-Bar ändern falls neue/angepasste Rückmeldung
+    // TODO Anpassung bei Update
   }
   // Zeitschiene Anpassen
   clearInterval(counter_rmld[p_id]);
@@ -189,6 +253,96 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
   }, 1000);
 }
 
+// Ergänzt: Station-Zeile und Rückmelde-Summary sicherstellen
+function ensure_station_row(stationId, stationName) {
+  if (document.getElementById("wache_id_" + stationId)) return; // existiert schon
+  var tableRef = document.getElementById("table_einsatzmittel").getElementsByTagName("tbody")[0];
+  var newRow = tableRef.insertRow();
+  var new_th = document.createElement("th");
+  new_th.className = "wache-col";
+  new_th.innerHTML = stationName;
+  new_th.id = "wache_id_" + stationId;
+  newRow.appendChild(new_th);
+  var flex_div_wa = document.createElement("div");
+  flex_div_wa.className = "d-flex flex-wrap justify-content-between align-items-center";
+  flex_div_wa.id = "station_em_" + stationId;
+  var new_td = document.createElement("td");
+  new_td.appendChild(flex_div_wa);
+  newRow.appendChild(new_td);
+}
+// Neu: Summary + Bars Container für Rückmeldungen je Wache
+function ensure_station_rmld_summary(stationId) {
+  if (document.getElementById("rmld-summary-" + stationId)) return;
+  var header = document.getElementById("wache_id_" + stationId);
+  if (!header) return;
+  var td = header.nextElementSibling;
+  if (!td) return;
+  var rmldSummary = document.createElement("div");
+  rmldSummary.className = "rmld-summary mt-2";
+  rmldSummary.id = "rmld-summary-" + stationId;
+  rmldSummary.innerHTML =
+    "" +
+    '<div class="d-flex flex-wrap align-items-start small" id="rmld-counters-' +
+    stationId +
+    '">' +
+    '<span class="mr-2 text-muted">Gesamt <span class="badge badge-primary" id="rmld-total-' +
+    stationId +
+    '">0</span></span>' +
+    '<span class="mr-2 text-muted">EK <span class="badge badge-success" id="rmld-ek-' +
+    stationId +
+    '">0</span></span>' +
+    '<span class="mr-2 text-muted">GF <span class="badge badge-info" id="rmld-gf-' +
+    stationId +
+    '">0</span></span>' +
+    '<span class="mr-2 text-muted">ZF <span class="badge badge-light text-dark" id="rmld-zf-' +
+    stationId +
+    '">0</span></span>' +
+    '<span class="mr-2 text-muted">VF <span class="badge badge-danger" id="rmld-vf-' +
+    stationId +
+    '">0</span></span>' +
+    '<span class="mr-2 text-muted">AGT <span class="badge badge-warning" id="rmld-agt-' +
+    stationId +
+    '">0</span></span>' +
+    '<span class="mr-2 text-muted">MA <span class="badge badge-primary" id="rmld-ma-' +
+    stationId +
+    '">0</span></span>' +
+    '<span class="mr-2 text-muted">FZF <span class="badge badge-primary" id="rmld-fzf-' +
+    stationId +
+    '">0</span></span>' +
+    '<span class="mr-2 text-muted">MED <span class="badge badge-primary" id="rmld-med-' +
+    stationId +
+    '">0</span></span>' +
+    "</div>" +
+    '<div class="row no-gutters mt-1" id="rmld-bars-' +
+    stationId +
+    '"></div>';
+  td.appendChild(rmldSummary);
+}
+function update_station_counts(stationId) {
+  ensure_station_rmld_summary(stationId);
+  var container = document.getElementById("rmld-bars-" + stationId);
+  if (!container) return;
+  // Nur Wrapper (nicht die inneren Progress-Divs) zählen
+  var wrappers = container.querySelectorAll('[data-rmld-wrapper="1"]');
+  var totalCount = wrappers.length;
+  var ek = container.querySelectorAll('[data-rmld-wrapper="1"].pg-ek').length;
+  var gf = container.querySelectorAll('[data-rmld-wrapper="1"].pg-gf').length;
+  var zf = container.querySelectorAll('[data-rmld-wrapper="1"].pg-zf').length;
+  var vf = container.querySelectorAll('[data-rmld-wrapper="1"].pg-vf').length;
+  var agt = container.querySelectorAll('[data-rmld-wrapper="1"].p_agt').length;
+  var ma = container.querySelectorAll('[data-rmld-wrapper="1"].p_ma').length;
+  var fzf = container.querySelectorAll('[data-rmld-wrapper="1"].p_fzf').length;
+  var med = container.querySelectorAll('[data-rmld-wrapper="1"].p_med').length;
+  $("#rmld-total-" + stationId).text(totalCount);
+  $("#rmld-ek-" + stationId).text(ek);
+  $("#rmld-gf-" + stationId).text(gf);
+  $("#rmld-zf-" + stationId).text(zf);
+  $("#rmld-vf-" + stationId).text(vf);
+  $("#rmld-agt-" + stationId).text(agt);
+  $("#rmld-ma-" + stationId).text(ma);
+  $("#rmld-fzf-" + stationId).text(fzf);
+  $("#rmld-med-" + stationId).text(med);
+}
 function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
   //console.log(p_id);
   today = new Date();
@@ -260,33 +414,6 @@ function recount_rmld(p_uuid) {
   $("#zf-counter").text($(".pg-zf").length);
   $("#vf-counter").text($(".pg-vf").length);
 
-  /*$('.pg-ek').children().each(function (i) {
-    if ($(this).hasClass(progress-bar)) {
-      const tmp_count = parseInt($('#ek-counter').text());
-      $('#ek-counter').text(tmp_count + 1);
-    };
-  });  
-  // GF zählen
-  $('#pg-gf').children().each(function (i) {
-    if ($(this).hasClass(bar_uuid)) {
-      const tmp_count = parseInt($('#gf-counter').text());
-      $('#gf-counter').text(tmp_count + 1);
-    };
-  });
-  // ZF zählen
-  $('#pg-zf').children().each(function (i) {
-    if ($(this).hasClass(bar_uuid)) {
-      const tmp_count = parseInt($('#zf-counter').text());
-      $('#zf-counter').text(tmp_count + 1);
-    };
-  });
-  // VF zählen
-  $('#pg-vf').children().each(function (i) {
-    if ($(this).hasClass(bar_uuid)) {
-      const tmp_count = parseInt($('#vf-counter').text());
-      $('#vf-counter').text(tmp_count + 1);
-    };
-  });*/
   // zähle all Elemente mit der class p_agt und dem wert 1
   console.log($(".p_agt").length);
 
@@ -296,12 +423,7 @@ function recount_rmld(p_uuid) {
   $("#med-counter").text($(".p_med").length);
 
   // Rückmeldecontainer anzeigen/ausblenden
-  if (
-    $("#ek-counter").text() == "0 EK" &&
-    $("#gf-counter").text() == "0 GF" &&
-    $("#zf-counter").text() == "0 ZF" &&
-    $("#vf-counter").text() == "0 VF"
-  ) {
+  if ($("#ek-counter").text() == "0" && $("#gf-counter").text() == "0" && $("#zf-counter").text() == "0" && $("#vf-counter").text() == "0") {
     $("#rmld_container").addClass("d-none");
   } else {
     $("#rmld_container").removeClass("d-none");
@@ -390,7 +512,7 @@ socket.on("io.Einsatz", function (data) {
   switch (data.einsatzart) {
     case "Brandeinsatz":
       $("#einsatz_art").addClass("bg-danger");
-      $("#einsatz_stichwort").addClass("ion-md-flame");;
+      $("#einsatz_stichwort").addClass("ion-md-flame");
       break;
     case "Hilfeleistungseinsatz":
       $("#einsatz_art").addClass("bg-info");
@@ -423,34 +545,34 @@ socket.on("io.Einsatz", function (data) {
   if (data.objektteil) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_objektteil">');
     $("#listitem_objektteil").append('<li class="d-flex w-100 justify-content-between" id="dflex_objektteil">');
-    $("#dflex_objektteil").append('<small class="text-muted">Teilobjekt</small>');
-    $("#dflex_objektteil").append('<p class="mb-1 px-2" id="data_objektteil">' + data.objektteil + "</p>");
+    $("#dflex_objektteil").append('<p class="mb-1" id="data_objektteil">' + data.objektteil + "</p>");
+    $("#dflex_objektteil").append('<small class="pl-1 text-muted text-right">Teilobjekt</small>');
   }
   if (data.objekt) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_objekt">');
     $("#listitem_objekt").append('<li class="d-flex w-100 justify-content-between" id="dflex_objekt">');
-    $("#dflex_objekt").append('<small class="text-muted">Objekt</small>');
-    $("#dflex_objekt").append('<p class="mb-1 px-2" id="data_objekt">' + data.objekt + "</p>");
+    $("#dflex_objekt").append('<p class="mb-1" id="data_objekt">' + data.objekt + "</p>");
+    $("#dflex_objekt").append('<small class="pl-1 text-muted text-right">Objekt</small>');
   }
   if (data.einsatzdetails) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_einsatzdetails">');
     $("#listitem_einsatzdetails").append('<li class="d-flex w-100 justify-content-between" id="dflex_einsatzdetails">');
-    $("#dflex_einsatzdetails").append('<small class="text-muted">Ortdetails</small>');
-    $("#dflex_einsatzdetails").append('<p class="mb-1 px-2" id="data_einsatzdetails">' + data.einsatzdetails + "</p>");
+    $("#dflex_einsatzdetails").append('<p class="mb-1" id="data_einsatzdetails">' + data.einsatzdetails + "</p>");
+    $("#dflex_einsatzdetails").append('<small class="pl-1 text-muted text-right">Ortdetails</small>');
   }
   if (data.ort) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_ort">');
     $("#listitem_ort").append('<li class="d-flex w-100 justify-content-between" id="dflex_ort">');
-    $("#dflex_ort").append('<small class="text-muted">Ort</small>');
-    $("#dflex_ort").append('<p class="mb-1 px-2" id="data_ort">' + data.ort + "</p>");
+    $("#dflex_ort").append('<p class="mb-1" id="data_ort">' + data.ort + "</p>");
+    $("#dflex_ort").append('<small class="pl-1 text-muted text-right">Ort</small>');
   }
   if (data.ortsteil) {
     // wenn Ortsteil gleich Ort, dann nicht anzeigen
     if (data.ortsteil !== data.ort) {
       $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_ortsteil">');
       $("#listitem_ortsteil").append('<li class="d-flex w-100 justify-content-between" id="dflex_ortsteil">');
-      $("#dflex_orsteilt").append('<small class="text-muted">Ortsteil</small>');
-      $("#dflex_ortsteil").append('<p class="mb-1 px-2" id="data_ortsteil">' + data.ortsteil + "</p>");
+      $("#dflex_ortsteil").append('<p class="mb-1" id="data_ortsteil">' + data.ortsteil + "</p>");
+      $("#dflex_ortsteil").append('<small class="pl-1 text-muted text-right">Ortsteil</small>');
     }
   }
   if (data.strasse) {
@@ -463,14 +585,14 @@ socket.on("io.Einsatz", function (data) {
     }
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_strasse">');
     $("#listitem_strasse").append('<li class="d-flex w-100 justify-content-between" id="dflex_strasse">');
-    $("#dflex_strasse").append('<small class="text-muted">Stra&szlig;e</small>');
-    $("#dflex_strasse").append('<p class="mb-1 px-2" id="data_strasse">' + tmp_strasse + "</p>");
+    $("#dflex_strasse").append('<p class="mb-1" id="data_strasse">' + tmp_strasse + "</p>");
+    $("#dflex_strasse").append('<small class="pl-1 text-muted text-right">Stra&szlig;e</small>');
   }
   if (data.besonderheiten) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_besonderheiten">');
     $("#listitem_besonderheiten").append('<li class="d-flex w-100 justify-content-between" id="dflex_besonderheiten">');
-    $("#dflex_besonderheiten").append('<small class="text-muted">Besonderheiten</small>');
-    $("#dflex_besonderheiten").append('<p class="mb-1 px-2 text-warning text-right  " id="data_besonderheiten">' + data.besonderheiten + "</p>");
+    $("#dflex_besonderheiten").append('<p class="mb-1 text-warning" id="data_besonderheiten">' + data.besonderheiten + "</p>");
+    $("#dflex_besonderheiten").append('<small class="pl-1 text-muted text-right">Besonderheiten</small>');
   }
   // Alte Einsatzmittel loeschen
   var table_em = document.getElementById("table_einsatzmittel");
@@ -495,7 +617,10 @@ socket.on("io.Einsatz", function (data) {
       //var newCell = newRow.insertCell(0);
       // Wachennamen hinterlegen
       var new_th = document.createElement("th");
+      new_th.className = "wache-col";
       new_th.innerHTML = data.einsatzmittel[i].em_station_name;
+      // data.einsatzmittel[i].em_station_id als ID hinzufügen
+      new_th.id = "wache_id_" + data.einsatzmittel[i].em_station_id;
       //var newText = document.createTextNode(data.einsatzmittel[i].wachenname);
       //newCell.outerHTML = "<th></th>";
       //newCell.appendChild(newText);
@@ -561,92 +686,52 @@ socket.on("io.Einsatz", function (data) {
   map.removeLayer(geojson);
   // Karte setzen
   if (data.wgs84_x && data.wgs84_y) {
-    marker = L.marker(new L.LatLng(data.wgs84_x, data.wgs84_y), {
-      icon: redIcon,
-    }).addTo(map);
+    marker = L.marker(new L.LatLng(data.wgs84_x, data.wgs84_y), { icon: redIcon }).addTo(map);
     map.setView(new L.LatLng(data.wgs84_x, data.wgs84_y), 15);
+    currentGeometry = { type: "point", coords: [data.wgs84_x, data.wgs84_y] };
   } else {
     geojson = L.geoJSON(JSON.parse(data.geometry));
     geojson.addTo(map);
     map.fitBounds(geojson.getBounds());
     map.setZoom(13);
+    currentGeometry = { type: "geojson", geojson: JSON.parse(data.geometry) };
   }
 });
 
 socket.on("io.new_rmld", function (data) {
   // DEBUG
   console.log("neue Rückmeldung:", data);
-  // FIXME  Änderung des Funktions-Typ berücksichtigen
-  // Neue Rueckmeldung hinterlegen
-
   // HTML festlegen
   var item_type = "";
   var item_content = "";
-  var item_classname = "";
-  // wenn Einsatzkraft dann:
+  // Rollenabbildung
   if (data.rmld_role == "team_member") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Einsatzkraft'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Einsatzkraft";
-    }
-    item_classname = "ek";
+    item_content = data.rmld_alias || "Einsatzkraft";
     item_type = "ek";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "crew_leader") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Gruppenführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Gruppenführer";
-    }
-    item_classname = "gf";
+  } else if (data.rmld_role == "crew_leader") {
+    item_content = data.rmld_alias || "Gruppenführer";
     item_type = "gf";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "division_chief") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Zugführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Zugführer";
-    }
-    item_classname = "zf";
+  } else if (data.rmld_role == "division_chief") {
+    item_content = data.rmld_alias || "Zugführer";
     item_type = "zf";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "group_commander") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Verbandsführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Verbandsführer";
-    }
-    item_classname = "vf";
+  } else if (data.rmld_role == "group_commander") {
+    item_content = data.rmld_alias || "Verbandsführer";
     item_type = "vf";
   }
-
-  if (data.rmld_capability_agt > 0) {
-    item_content += " AGT";
-  }
-  if (data.rmld_capability_fzf > 0) {
-    item_content += " FZF";
-  }
-  if (data.rmld_capability_ma > 0) {
-    item_content += " MA";
-  }
-  if (data.rmld_capability_med > 0) {
-    item_content += " MED";
-  }
-
-  // Variablen für Anzeige vorbereiten
-  var pg_waip_uuid = data.waip_uuid;
-  var pg_rmld_uuid = data.rmld_uuid;
+  if (data.rmld_capability_agt > 0) item_content += " AGT";
+  if (data.rmld_capability_fzf > 0) item_content += " FZF";
+  if (data.rmld_capability_ma > 0) item_content += " MA";
+  if (data.rmld_capability_med > 0) item_content += " MED";
   var pg_start = new Date(data.time_decision);
   var pg_end = new Date(data.time_arrival);
-  // Progressbar hinterlegen
+  // Station zuordnen, falls nicht vorhanden -> Sonstige
+  var stationId = typeof data.wache_id !== "undefined" && data.wache_id !== null ? data.wache_id : "misc";
+  var stationHeader = document.getElementById("wache_id_" + stationId);
+  if (!stationHeader) {
+    ensure_station_row(stationId, stationId === "misc" ? "Sonstige" : data.wache_name || "Wache " + stationId);
+  }
+  ensure_station_rmld_summary(stationId);
+  // Progressbar im Stations-Container
   add_resp_progressbar(
     data.waip_uuid,
     data.rmld_uuid,
@@ -657,21 +742,23 @@ socket.on("io.new_rmld", function (data) {
     data.rmld_capability_ma,
     data.rmld_capability_med,
     pg_start,
-    pg_end
+    pg_end,
+    "#rmld-bars-" + stationId
   );
-  // Anzahl der Rückmeldung zählen
-  recount_rmld(pg_waip_uuid);
-
+  // Stationszähler aktualisieren
+  update_station_counts(stationId);
+  // Gesamtzähler aktualisieren
+  recount_rmld(data.waip_uuid);
+  // Audio
   var audio = document.getElementById("audio");
   audio.src = "/media/bell_message.mp3";
-  // Audio-Blockade des Browsers erkennen
   var playPromise = document.querySelector("audio").play();
   if (playPromise !== undefined) {
     playPromise
       .then(function () {
         audio.play();
       })
-      .catch(function (error) {
+      .catch(function () {
         console.log("Notification playback failed");
       });
   }
