@@ -231,25 +231,22 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   });
 
   app.get("/login_cert", (req, res, next) => {
-    passport.authenticate(
-      "trusted-header",
-      (err, user, info) => {
-        if (err) {
-          req.flash("errorMessage", "Interner Fehler bei der Zertifikats-Authentifizierung.");
-          return res.redirect("/login");
-        }
-        if (!user) {
-          req.flash("errorMessage", "Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.");
-          return res.redirect("/login");
-        }
-        req.logIn(user, (err) => {
-           if (err) {
-             return next(err);
-           }
-          return res.redirect("/");
-        });
+    passport.authenticate("trusted-header", (err, user, info) => {
+      if (err) {
+        req.flash("errorMessage", "Interner Fehler bei der Zertifikats-Authentifizierung.");
+        return res.redirect("/login");
       }
-    )(req, res, next);
+      if (!user) {
+        req.flash("errorMessage", "Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.");
+        return res.redirect("/login");
+      }
+      req.logIn(user, (err) => {
+        if (err) {
+          return next(err);
+        }
+        return res.redirect("/");
+      });
+    })(req, res, next);
   });
 
   // Logout verarbeiten
@@ -321,6 +318,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.get("/waip/:wachen_id", async (req, res, next) => {
     try {
       const parameter_id = req.params.wachen_id;
+      const rmldOff = req.query.rmld === "off"; // optionaler Parameter zum Deaktivieren der Rückmeldungen
       const wache = await sql.db_wache_vorhanden(parameter_id);
       if (wache) {
         res.render("waip", {
@@ -331,6 +329,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           map_service: app_cfg.public.map_service,
           app_id: app_cfg.global.app_id,
           user: req.user,
+          rmld_off: rmldOff,
         });
       } else {
         const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);
@@ -486,6 +485,62 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       }
     } else {
       res.redirect("/adm_edit_users");
+    }
+  });
+
+  // Wachen-Administration anzeigen
+  app.get("/adm_edit_wachen", auth.ensureAdmin, async (req, res, next) => {
+    try {
+      const wachen = await sql.db_wachen_get_all_full();
+      res.render("admin/adm_edit_wachen", {
+        public: app_cfg.public,
+        title: "Wachen verwalten",
+        user: req.user,
+        wachen,
+        error: req.flash("errorMessage"),
+        success: req.flash("successMessage"),
+      });
+    } catch (error) {
+      const err = new Error("Fehler beim Laden der Seite /adm_edit_wachen. " + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
+    }
+  });
+
+  // Wache bearbeiten
+  app.post("/adm_edit_wachen/edit", auth.ensureAdmin, async (req, res) => {
+    try {
+      await sql.db_wache_update(req.body);
+      req.flash("successMessage", "Wache erfolgreich bearbeitet.");
+      res.redirect("/adm_edit_wachen");
+    } catch (error) {
+      req.flash("errorMessage", "Fehler beim Bearbeiten der Wache. " + error);
+      res.redirect("/adm_edit_wachen");
+    }
+  });
+
+  // Wache löschen
+  app.post("/adm_edit_wachen/delete", auth.ensureAdmin, async (req, res) => {
+    try {
+      await sql.db_wache_delete(req.body.id);
+      req.flash("successMessage", "Wache erfolgreich gelöscht.");
+      res.redirect("/adm_edit_wachen");
+    } catch (error) {
+      req.flash("errorMessage", "Fehler beim Löschen der Wache. " + error);
+      res.redirect("/adm_edit_wachen");
+    }
+  });
+
+  // Neue Wache anlegen
+  app.post("/adm_edit_wachen/create", auth.ensureAdmin, async (req, res) => {
+    try {
+      await sql.db_wache_create(req.body);
+      req.flash("successMessage", "Wache erfolgreich angelegt.");
+      res.redirect("/adm_edit_wachen");
+    } catch (error) {
+      req.flash("errorMessage", "Fehler beim Anlegen der Wache. " + error);
+      res.redirect("/adm_edit_wachen");
     }
   });
 

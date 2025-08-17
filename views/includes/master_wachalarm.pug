@@ -20,9 +20,9 @@
     .row.no-gutters.h-87-5_ls.h-93_p
       .col-12.col-5_ls.h-100_ls.h-40_p.pr-3_ls
         .h-2-5_ls.h-5_p.d-flex.align-items-end.justify-content-center.pb-2 
-          .progress.h-100.flex-fill
+          .progress.h-100.flex-fill.position-relative
             #standbytimer-bar.progress-bar.progress-bar-striped.progress-bar-animated(role='progressbar', aria-valuenow='0', aria-valuemin='0', aria-valuemax='100', style='width: 0%')
-            div#standbytimer-text.justify-content-center.align-items-center.d-flex.position-absolute.w-100.pt-1
+            div#standbytimer-text.d-flex.justify-content-center.align-items-center.position-absolute.w-100.h-100
         #map.h-97-5_ls.h-95_p.rounded
       .col-12.col-7_ls.h-100_ls.h-60_p
         .row.no-gutters.h-100
@@ -130,4 +130,4 @@
             // TODO: Besonderheiten bei neuer Alarmierung neu in der größe angpassen
             #besonderheiten.pr-2 -Besonderheiten-
   audio#audio(controls='')
-    source(src='', type='audio/mpeg')  
+    source(src='', type='audio/mpeg')

@@ -1,0 +1,161 @@
+extends ../layout
+
+block content
+  main(role='main')
+    .container-fluid
+      #info.row
+        .col-md-3
+        .col-md-6.col-xs-12
+          if error
+            .card.text-white.bg-danger.mb-3
+              .card-body
+                .row
+                  .col-9
+                    h5.card-title.ion-md-close-circle-outline  Fehler
+                    p.card-text=error
+                  .col-3.text-right
+                    button#close_info.btn.btn-info.ion-md-close
+          if success
+            .card.text-white.bg-success.mb-3
+              .card-body
+                .row
+                  .col-9
+                    h5.card-title.ion-md-checkmark-circle-outline  Erfolg
+                    p.card-text=success
+                  .col-3.text-right
+                    button#close_info.btn.btn-info.ion-md-close
+      .row
+        .col-12
+          h3 Wachen bearbeiten
+          p Hier können Wachen angelegt, bearbeitet und gelöscht werden.
+        .col-12
+          table.table.table-striped
+            thead
+              tr
+                th ID
+                th Nr Leitstelle 
+                th Name Leitstelle
+                th KFZ Leitstelle
+                th Nr Wache
+                th Name Wache
+                th Nr Kreis
+                th Name Kreis
+                th KFZ Kreis
+                th Nr Träger
+                th Name Träger
+                th Nr Standort 
+                th Nr Abteilung
+                th Name Beschreibung 
+                th X Longitude
+                th Y Latitude
+                th Aktion
+            tbody
+              each w in wachen
+                tr
+                  form(action="/adm_edit_wachen/edit" method="post")
+                    input(type="hidden" name="id" value=w.id)
+                    td= w.id
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="nr_leitstelle" value=w.nr_leitstelle)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="name_leitstelle" value=w.name_leitstelle)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="kfz_leitstelle" value=w.kfz_leitstelle)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="nr_wache" value=w.nr_wache)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="name_wache" value=w.name_wache)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="nr_kreis" value=w.nr_kreis)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="name_kreis" value=w.name_kreis)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="kfz_kreis" value=w.kfz_kreis)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="nr_traeger" value=w.nr_traeger)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="name_traeger" value=w.name_traeger)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="nr_standort" value=w.nr_standort)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="nr_abteilung" value=w.nr_abteilung)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="name_beschreibung" value=w.name_beschreibung)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="x_longitude" value=w.wgs84_x)
+                    td
+                      .input-group.input-group-sm
+                        input.form-control(type="text" name="y_latitude" value=w.wgs84_y)
+                    td
+                      .btn-group(role="group") 
+                        button.btn.btn-primary.btn-sm(type="submit") Speichern
+                        form(action="/adm_edit_wachen/delete" method="post" style="display:inline")
+                          input(type="hidden" name="id" value=w.id)
+                          button.btn.btn-danger.btn-sm(type="submit" onclick="return confirm('Wache wirklich löschen?')") Löschen
+        .col-12
+          .border-top.m-3
+        .col-12
+          h3 Neue Wache anlegen
+        .col-12
+          form(action="/adm_edit_wachen/create" method="post")
+            .form-row
+              .form-group.col-md-2
+                label Nr Leitstelle
+                input.form-control(type="text" name="nr_leitstelle" required)
+              .form-group.col-md-2
+                label Name Leitstelle
+                input.form-control(type="text" name="name_leitstelle" required)
+              .form-group.col-md-2
+                label KFZ Leitstelle
+                input.form-control(type="text" name="kfz_leitstelle")
+              .form-group.col-md-2
+                label Nr Wache
+                input.form-control(type="text" name="nr_wache" required)
+              .form-group.col-md-2
+                label Name Wache
+                input.form-control(type="text" name="name_wache" required)
+              .form-group.col-md-2
+                label Nr Kreis
+                input.form-control(type="text" name="nr_kreis")
+              .form-group.col-md-2
+                label Name Kreis
+                input.form-control(type="text" name="name_kreis")
+              .form-group.col-md-2
+                label KFZ Kreis
+                input.form-control(type="text" name="kfz_kreis")
+              .form-group.col-md-2
+                label Nr Träger
+                input.form-control(type="text" name="nr_traeger")
+              .form-group.col-md-2
+                label Name Träger
+                input.form-control(type="text" name="name_traeger")
+              .form-group.col-md-2
+                label Nr Standort
+                input.form-control(type="text" name="nr_standort")
+              .form-group.col-md-2
+                label Nr Abteilung
+                input.form-control(type="text" name="nr_abteilung")
+              .form-group.col-md-2
+                label Name Beschreibung
+                input.form-control(type="text" name="name_beschreibung")
+              .form-group.col-md-2
+                label X Longitude
+                input.form-control(type="text" name="x_longitude")
+              .form-group.col-md-2
+                label Y Latitude
+                input.form-control(type="text" name="y_latitude")
+            button.btn.btn-success(type="submit") Anlegen

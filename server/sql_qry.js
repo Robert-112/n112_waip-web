@@ -164,9 +164,16 @@ module.exports = (db, app_cfg) => {
   const db_einsatz_for_client_ermitteln = (socket, wachen_nr) => {
     return new Promise((resolve, reject) => {
       try {
+
+        let sql_filter = `(SELECT wa.nr_wache FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ${wachen_nr} || '%' `;
+
         // wenn Wachen-ID 0 ist, dann % für SQL-Abfrage setzen
         if (parseInt(wachen_nr) == 0) {
-          wachen_nr = "%";
+          sql_filter = `(SELECT wa.nr_wache FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE '%' `;
+        }
+        // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle    
+        if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+          sql_filter = `(SELECT wa.nr_leitstelle FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ${wachen_nr} `;
         }
 
         // neuesten Einsatz für die gewählte Wachen-ID abfragen
@@ -175,10 +182,10 @@ module.exports = (db, app_cfg) => {
           em.em_waip_einsaetze_id AS waip_id
           FROM waip_einsatzmittel em
           WHERE 
-          (SELECT wa.nr_wache FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ? || '%'
+          ${sql_filter}
           ORDER BY (SELECT zeitstempel FROM waip_einsaetze WHERE id = em.em_waip_einsaetze_id) DESC LIMIT 1
         `);
-        const row1 = stmt1.get(wachen_nr.toString());
+        const row1 = stmt1.get();
 
         if (row1 === undefined) {
           resolve(null);
@@ -259,11 +266,15 @@ module.exports = (db, app_cfg) => {
           strasse: einsatzdaten.strasse,
           besonderheiten: einsatzdaten.besonderheiten,
         };
+        
+        // Einsatzmittel-Namen extrahieren (Zeiten ignorieren) und sortieren für bessere Vergleichbarkeit
+        const emAlarmiertNames = (einsatzdaten.em_alarmiert || []).map(e => e && e.name ? e.name : '').filter(Boolean).sort();
+        const emWeitereNames = (einsatzdaten.em_weitere || []).map(e => e && e.name ? e.name : '').filter(Boolean).sort();
 
         // Einsatzdaten in kurze UUID-Strings umwandeln, diese UUIDs werden dann verglichen
         let uuid_einsatzdaten = uuidv5(JSON.stringify(relevantFields), uuidNamespace);
-        let uuid_em_alarmiert = uuidv5(JSON.stringify(einsatzdaten.em_alarmiert || []), uuidNamespace);
-        let uuid_em_weitere = uuidv5(JSON.stringify(einsatzdaten.em_weitere || []), uuidNamespace);
+        let uuid_em_alarmiert = uuidv5(JSON.stringify(emAlarmiertNames), uuidNamespace);
+        let uuid_em_weitere = uuidv5(JSON.stringify(emWeitereNames), uuidNamespace);
 
         // Abfrage ob zu Socket und Waip-ID bereits History-Daten hinterlegt sind
         const stmt = db.prepare(`
@@ -330,13 +341,8 @@ module.exports = (db, app_cfg) => {
           // TODO hier auch andere Wachennummern berücksichtigen (z.B. 521201b), siehe auch Rückmeldungen
           // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
           let len = wachen_nr.toString().length;
-          if (parseInt(wachen_nr) != 0 && len != 2 && len != 4 && len != 6 && len == null) {
-            throw `Wachennummer ${wachen_nr} hat keine valide Länge (0, 2, 4 oder 6)!`;
-          }
-
-          // wenn wachen_nr 0, dann % fuer Abfrage festlegen
-          if (parseInt(wachen_nr) == 0) {
-            wachen_nr = "%";
+          if (len != 1 && len != 2 && len != 4 && len != 6 && len == null) {
+            throw `Wachennummer ${wachen_nr} hat keine valide Länge (1, 2, 4 oder 6)!`;
           }
 
           // FIXME: zentrale Abfrage zur Ausgabe der Alarmdaten wurde erneuert, asynchrone Rückgabe, Verweise und Verwendung prüfen!
@@ -370,6 +376,24 @@ module.exports = (db, app_cfg) => {
           if (einsatzdaten === undefined) {
             resolve(null);
           } else {
+
+            // Filter für Einsatzmittel vorbereiten
+            let em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%') `;
+            let emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%') OR em_station_id IS NULL) `;
+
+            // wenn wachen_nr 0, dann % fuer Abfrage festlegen
+            if (parseInt(wachen_nr) == 0) {
+              wachen_nr = "%";
+              em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%') `;
+              emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%') OR em_station_id IS NULL) `;
+            }
+
+            // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle
+            if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+              em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) `;
+              emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) OR em_station_id IS NULL) `;
+            } 
+
             // Abfrage der alarmierten Einsatzmittel der Wache
             const stmt1 = db.prepare(`
                 SELECT 
@@ -378,10 +402,11 @@ module.exports = (db, app_cfg) => {
                 FROM waip_einsatzmittel
                 WHERE 
                   em_waip_einsaetze_id = ? 
-                  AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%');
+                  ${em_sql_filter}
+                ;
               `);
             // alarmierte Einsatzmittel den Einsatzdaten zuordnen
-            einsatzdaten.em_alarmiert = stmt1.all(waip_id.toString(), wachen_nr.toString());
+            einsatzdaten.em_alarmiert = stmt1.all(waip_id.toString());
 
             // Abfrage der weiteren Einsatzmittel zum Einsatz
             const stmt2 = db.prepare(`
@@ -391,10 +416,11 @@ module.exports = (db, app_cfg) => {
                 FROM waip_einsatzmittel
                 WHERE 
                   em_waip_einsaetze_id = ? 
-                  AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%') OR em_station_id IS NULL);
+                  ${emnot_sql_filter}
+                ;
               `);
             // weitere Einsatzmittel den Einsatzdaten zuordnen
-            einsatzdaten.em_weitere = stmt2.all(waip_id.toString(), wachen_nr.toString());
+            einsatzdaten.em_weitere = stmt2.all(waip_id.toString());
 
             // Einsatzdaten zurückgeben
             resolve(einsatzdaten);
@@ -411,9 +437,25 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT e.id, e.uuid, e.zeitstempel, e.einsatzart, e.stichwort, e.sondersignal, e.objekt, 
-            e.ort, e.ortsteil, e.strasse, e.hausnummer, e.besonderheiten,
-            e.wgs84_x, e.wgs84_y, e.geometry
+          SELECT 
+            e.id, 
+            e.uuid, 
+            e.els_einsatznummer einsatznummer,
+            e.zeitstempel, 
+            e.einsatzart, 
+            e.stichwort, 
+            e.sondersignal, 
+            e.objekt, 
+            e.objektteil,
+            e.ort, 
+            e.ortsteil, 
+            e.strasse, 
+            e.hausnummer,
+            e.einsatzdetails, 
+            e.besonderheiten,
+            e.wgs84_x, 
+            e.wgs84_y, 
+            e.geometry
           FROM waip_einsaetze e 
           WHERE e.uuid LIKE ?;
         `);
@@ -425,7 +467,7 @@ module.exports = (db, app_cfg) => {
           // Einsatzmittel zum Einsatz finden
           const stmt1 = db.prepare(`
             SELECT 
-              e.em_funkrufname, e.em_fmsstatus, e.em_station_name 
+              e.em_station_id, e.em_funkrufname, e.em_fmsstatus, e.em_station_name 
             FROM waip_einsatzmittel e 
             WHERE e.em_waip_einsaetze_id = ?;
           `);
@@ -649,18 +691,50 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT 'wache' typ, nr_wache nr, name_wache name 
+          -- Global
+          SELECT DISTINCT 
+            'global' AS typ,
+            CAST(nr_wache AS TEXT) AS nr,
+            name_wache AS name 
           FROM waip_wachen 
-          WHERE nr_wache is not '0'
+          WHERE nr_wache IS '0'
           UNION ALL
-          SELECT 'traeger' typ, nr_kreis || nr_traeger nr, name_traeger name 
+          -- Leitstellen
+          SELECT 
+            'leitstelle' AS typ,
+            CAST(nr_leitstelle AS TEXT) AS nr,
+            name_leitstelle AS name
           FROM waip_wachen 
-          WHERE nr_kreis is not '0' 
-          GROUP BY nr_traeger 
+          WHERE nr_wache IS NOT '0'
+          GROUP BY name_leitstelle 
           UNION ALL
-          SELECT 'kreis' typ, nr_kreis nr, name_kreis name 
+          -- Landkreise
+          SELECT 
+            'kreis' AS typ,
+            CAST(nr_kreis AS TEXT) AS nr,
+            name_kreis AS name 
           FROM waip_wachen 
-          GROUP BY name_kreis 
+          WHERE nr_wache IS NOT '0'
+          GROUP BY name_kreis
+          UNION ALL
+          -- Träger
+          SELECT DISTINCT 
+            'traeger' typ,
+            nr_kreis || nr_traeger AS nr, 
+            CASE 
+              WHEN name_erweiterung = '' THEN name_traeger
+              ELSE CONCAT(name_traeger, ' [', name_erweiterung , ']'  )
+            END AS name
+          FROM waip_wachen 
+          WHERE nr_wache IS NOT '0'
+          UNION ALL
+          -- Wachen
+          SELECT 
+            'wache' AS typ,
+            CAST(nr_wache AS TEXT) AS nr,
+            name_wache AS name 
+          FROM waip_wachen 
+          WHERE nr_wache IS NOT '0'
           ORDER BY typ, name;
         `);
         const rows = stmt.all();
@@ -686,18 +760,18 @@ module.exports = (db, app_cfg) => {
           // wenn wachen_nr eine Zahl ist, dann prüfen ob die Länge valide ist
           let len = wachen_nr.toString().length;
           // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
-          if (parseInt(wachen_nr) != 0 && len != 2 && len != 4 && len != 6) {
+          if (len != 1 && len != 2 && len != 4 && len != 6) {
             // Fehler: Wachennummer nicht plausibel.
-            throw `Wachennummer ${wachen_nr} ist nicht plausibel! 0, 2, 4 oder 6`;
+            throw `Wachennummer ${wachen_nr} ist nicht plausibel! Länge: 1, 2, 4 oder 6`;
           } else {
             // "Type" der wachen_nr in String umwandeln, damit SQL-Anweisungen wirklich funktionieren
             wachen_nr = wachen_nr + "";
             // wachen_nr plausibel, jetzt je nach Länge passende SQL-Anweisung ausführen
-            if (parseInt(wachen_nr) == 0) {
+            if (len == 1) {
               const stmt = db.prepare(`
-                SELECT '1' length, nr_wache nr, name_wache name 
+                SELECT DISTINCT '1' length, nr_leitstelle nr, name_leitstelle name 
                 FROM waip_wachen 
-                WHERE nr_wache LIKE ?;
+                WHERE nr_leitstelle LIKE ?;
               `);
               const row = stmt.get(wachen_nr);
               if (row === undefined) {
@@ -722,7 +796,11 @@ module.exports = (db, app_cfg) => {
             }
             if (len == 4) {
               const stmt = db.prepare(`
-                SELECT '4' length, nr_kreis || nr_traeger nr, name_traeger name 
+                SELECT '4' length, nr_kreis || nr_traeger nr,
+                  CASE 
+                    WHEN name_erweiterung = '' THEN name_traeger
+                    ELSE CONCAT(name_traeger, ' [', name_erweiterung , ']'  )
+                  END AS name
                 FROM waip_wachen 
                 WHERE nr_kreis LIKE SUBSTR(?,-4, 2) 
                   AND nr_traeger LIKE SUBSTR(?,-2, 2) 
@@ -1566,14 +1644,22 @@ module.exports = (db, app_cfg) => {
       try {
         // wachen_nr muss 2, 4 oder 6 Zeichen lang sein
         let len = wachen_nr.toString().length;
-        if (parseInt(wachen_nr) != 0 && len != 2 && len != 4 && len != 6 && len == null) {
-          throw `Wachennummer ${wachen_nr} hat keine valide Länge (0, 2, 4 oder 6)!`;
+        if (len != 1 && len != 2 && len != 4 && len != 6 && len == null) {
+          throw `Wachennummer ${wachen_nr} hat keine valide Länge (1, 2, 4 oder 6)!`;
         }
+
+        // Filter für Wachen-Nummer vorbereiten
+        let wache_sql_filter = `AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%') `;
 
         // wenn wachen_nr 0, dann % fuer Abfrage festlegen
         if (parseInt(wachen_nr) == 0) {
-          wachen_nr = "%";
+          wache_sql_filter = `AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%') `;
         }
+
+        // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle
+        if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+          wache_sql_filter = `AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) `;
+        } 
 
         // Abfrage für Rückmeldungen arr_rmld_uuid, in abhängigkeit ob arr_rmld_uuid gesetzt
         if (arr_rmld_uuid) {
@@ -1581,12 +1667,12 @@ module.exports = (db, app_cfg) => {
             SELECT * 
             FROM waip_rueckmeldungen 
             WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE ID = ?)
-            AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%')
+            ${wache_sql_filter}
             AND type_decision = ? 
             AND rmld_uuid IN (SELECT value FROM json_each(?));
           `);
 
-          const rows = stmt.all(waip_id, wachen_nr.toString(), "accept", JSON.stringify(arr_rmld_uuid));
+          const rows = stmt.all(waip_id, "accept", JSON.stringify(arr_rmld_uuid));
 
           if (rows.length === 0) {
             resolve(null);
@@ -1598,11 +1684,11 @@ module.exports = (db, app_cfg) => {
             SELECT * 
             FROM waip_rueckmeldungen 
             WHERE waip_uuid = (SELECT uuid FROM waip_einsaetze WHERE ID = ?)
-            AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ? || '%')
+            ${wache_sql_filter}
             AND type_decision = ? ;
           `);
 
-          const rows = stmt.all(waip_id, wachen_nr.toString(), "accept");
+          const rows = stmt.all(waip_id, "accept");
 
           if (rows.length === 0) {
             resolve(null);
@@ -1714,8 +1800,8 @@ module.exports = (db, app_cfg) => {
           const user_name = a_match[0];
 
           // User aus DB abfragen
-          const user_obj = await auth_localstrategy_userid(user_name)
-   
+          const user_obj = await auth_localstrategy_userid(user_name);
+
           if (user_obj !== null) {
             // User in DB gefunden, zurückgeben
             resolve(user_obj);
@@ -1888,51 +1974,178 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // Alle Wachen laden
+  const db_wachen_get_all_full = () => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`SELECT * FROM waip_wachen ORDER BY nr_wache ASC;`);
+        const rows = stmt.all();
+        resolve(rows);
+      } catch (error) {
+        reject(new Error("Fehler beim Laden aller Wachen. " + error));
+      }
+    });
+  };
+
+  // Wache bearbeiten
+  const db_wache_update = (wache) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`
+        UPDATE waip_wachen SET
+          nr_leitstelle = ?,
+          name_leitstelle = ?,
+          kfz_leitstelle = ?,
+          nr_wache = ?,
+          name_wache = ?,
+          nr_kreis = ?,
+          name_kreis = ?,
+          kfz_kreis = ?,
+          nr_traeger = ?,
+          name_traeger = ?,
+          nr_standort = ?,
+          nr_abteilung = ?,
+          name_beschreibung = ?,
+          wgs84_x = ?,
+          wgs84_y = ?
+        WHERE id = ?;
+      `);
+        const info = stmt.run(
+          wache.nr_leitstelle,
+          wache.name_leitstelle,
+          wache.kfz_leitstelle,
+          wache.nr_wache,
+          wache.name_wache,
+          wache.nr_kreis,
+          wache.name_kreis,
+          wache.kfz_kreis,
+          wache.nr_traeger,
+          wache.name_traeger,
+          wache.nr_standort,
+          wache.nr_abteilung,
+          wache.name_beschreibung,
+          wache.wgs84_x,
+          wache.wgs84_y,
+          wache.id
+        );
+        resolve(info.changes);
+      } catch (error) {
+        reject(new Error("Fehler beim Bearbeiten der Wache. " + error));
+      }
+    });
+  };
+
+  // Wache löschen
+  const db_wache_delete = (id) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`DELETE FROM waip_wachen WHERE id = ?;`);
+        const info = stmt.run(id);
+        resolve(info.changes);
+      } catch (error) {
+        reject(new Error("Fehler beim Löschen der Wache. " + error));
+      }
+    });
+  };
+
+  // Neue Wache anlegen
+  const db_wache_create = (wache) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`
+        INSERT INTO waip_wachen (
+          nr_leitstelle,
+          name_leitstelle,
+          kfz_leitstelle,
+          nr_wache,
+          name_wache,
+          nr_kreis,
+          name_kreis,
+          kfz_kreis,
+          nr_traeger,
+          name_traeger,
+          nr_standort,
+          nr_abteilung,
+          name_beschreibung,
+          wgs84_x,
+          wgs84_y
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        );
+      `);
+        const info = stmt.run(
+          wache.nr_leitstelle,
+          wache.name_leitstelle,
+          wache.kfz_leitstelle,
+          wache.nr_wache,
+          wache.name_wache,
+          wache.nr_kreis,
+          wache.name_kreis,
+          wache.kfz_kreis,
+          wache.nr_traeger,
+          wache.name_traeger,
+          wache.nr_standort,
+          wache.nr_abteilung,
+          wache.name_beschreibung,
+          wache.wgs84_x,
+          wache.wgs84_y
+        );
+        resolve(info.lastInsertRowid);
+      } catch (error) {
+        reject(new Error("Fehler beim Anlegen einer neuen Wache. " + error));
+      }
+    });
+  };
+
   return {
-    db_einsatz_speichern: db_einsatz_speichern,
-    db_einsatz_for_client_ermitteln: db_einsatz_for_client_ermitteln,
-    db_einsatz_check_uuid: db_einsatz_check_uuid,
-    db_einsatz_check_history: db_einsatz_check_history,
-    db_einsatz_get_for_wache: db_einsatz_get_for_wache,
-    db_einsatz_get_by_uuid: db_einsatz_get_by_uuid,
-    db_einsatz_get_uuid_by_enr: db_einsatz_get_uuid_by_enr,
-    db_einsatz_get_waipid_by_uuid: db_einsatz_get_waipid_by_uuid,
-    db_einsatz_get_active: db_einsatz_get_active,
-    db_einsatz_get_waip_rooms: db_einsatz_get_waip_rooms,
-    db_einsaetze_get_old: db_einsaetze_get_old,
-    db_einsatz_statusupdate: db_einsatz_statusupdate,
-    db_einsatz_loeschen: db_einsatz_loeschen,
-    db_wache_get_all: db_wache_get_all,
-    db_wache_vorhanden: db_wache_vorhanden,
-    db_einsatzmittel_update: db_einsatzmittel_update,
-    db_tts_einsatzmittel: db_tts_einsatzmittel,
-    db_client_update_status: db_client_update_status,
-    db_client_get_connected: db_client_get_connected,
-    db_client_delete: db_client_delete,
-    db_client_check_waip_id: db_client_check_waip_id,
-    db_log: db_log,
-    db_log_get_10000: db_log_get_10000,
-    db_socket_get_by_id: db_socket_get_by_id,
-    db_socket_get_all_to_standby: db_socket_get_all_to_standby,
-    db_user_set_config_time: db_user_set_config_time,
-    db_user_get_config: db_user_get_config,
-    db_user_get_all: db_user_get_all,
-    db_client_get_alarm_anzeigbar: db_client_get_alarm_anzeigbar,
-    db_user_check_permission_for_waip: db_user_check_permission_for_waip,
-    db_user_check_permission_for_rmld: db_user_check_permission_for_rmld,
-    db_rmld_check_einsatz: db_rmld_check_einsatz,
-    db_rmld_single_save: db_rmld_single_save,
-    db_rmlds_get_for_wache: db_rmlds_get_for_wache,
-    auth_deserializeUser: auth_deserializeUser,
-    auth_ipstrategy: auth_ipstrategy,
-    auth_localstrategy_cryptpassword: auth_localstrategy_cryptpassword,
-    auth_localstrategy_userid: auth_localstrategy_userid,
-    auth_certstrategy_userid: auth_certstrategy_userid,
-    auth_ensureApi: auth_ensureApi,
-    auth_ensureAdmin: auth_ensureAdmin,
-    auth_create_new_user: auth_create_new_user,
-    auth_deleteUser: auth_deleteUser,
-    auth_editUser: auth_editUser,
-    auth_getUser: auth_getUser,
+    db_einsatz_speichern,
+    db_einsatz_for_client_ermitteln,
+    db_einsatz_check_uuid,
+    db_einsatz_check_history,
+    db_einsatz_get_for_wache,
+    db_einsatz_get_by_uuid,
+    db_einsatz_get_uuid_by_enr,
+    db_einsatz_get_waipid_by_uuid,
+    db_einsatz_get_active,
+    db_einsatz_get_waip_rooms,
+    db_einsaetze_get_old,
+    db_einsatz_statusupdate,
+    db_einsatz_loeschen,
+    db_wache_get_all,
+    db_wache_vorhanden,
+    db_einsatzmittel_update,
+    db_tts_einsatzmittel,
+    db_client_update_status,
+    db_client_get_connected,
+    db_client_delete,
+    db_client_check_waip_id,
+    db_log,
+    db_log_get_10000,
+    db_socket_get_by_id,
+    db_socket_get_all_to_standby,
+    db_user_set_config_time,
+    db_user_get_config,
+    db_user_get_all,
+    db_client_get_alarm_anzeigbar,
+    db_user_check_permission_for_waip,
+    db_user_check_permission_for_rmld,
+    db_rmld_check_einsatz,
+    db_rmld_single_save,
+    db_rmlds_get_for_wache,
+    auth_deserializeUser,
+    auth_ipstrategy,
+    auth_localstrategy_cryptpassword,
+    auth_localstrategy_userid,
+    auth_certstrategy_userid,
+    auth_ensureApi,
+    auth_ensureAdmin,
+    auth_create_new_user,
+    auth_deleteUser,
+    auth_editUser,
+    auth_getUser,
+    db_wachen_get_all_full,
+    db_wache_update,
+    db_wache_delete,
+    db_wache_create,
   };
 };

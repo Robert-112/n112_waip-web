@@ -1,5 +1,4 @@
 // TODO: Remote-Reload per Socket
-// TODO: Modal bei Server-Verbindung, und Modal bei Reload
 
 $(document).ready(function () {
   set_clock();
@@ -50,53 +49,137 @@ function AddMapLayer() {
 /* ############################ */
 
 let waipAudio = document.getElementById("audio");
+// Flag für laufendes TTS
+let ttsActive = false;
+let lastTTSSrc = null;
+let audioBlockedAttribution = null;
 
-waipAudio.addEventListener("ended", function () {
-  console.log("ended");
+// Autoplay-Blockade anzeigen (Blinken des Volume-Off Icons)
+function indicateAudioBlocked() {
+  try {
+    let icon = document.querySelector(".ion-md-volume-off") || document.querySelector(".ion-md-volume-high");
+    if (!icon) return;
+    if (icon.classList.contains("ion-md-volume-high")) {
+      icon.classList.remove("ion-md-volume-high");
+      icon.classList.add("ion-md-volume-off");
+    }
+    if (!document.getElementById("audio-blocked-style")) {
+      const style = document.createElement("style");
+      style.id = "audio-blocked-style";
+      style.textContent = ".blink-audio{animation:blink-audio 1s linear infinite}@keyframes blink-audio{0%,50%{opacity:1}25%,75%{opacity:.2}}";
+      document.head.appendChild(style);
+    }
+    icon.classList.add("blink-audio");
+    // Attribution für blockierte Tonausgabe hinzufügen
+    if (!audioBlockedAttribution) {
+      audioBlockedAttribution = L.control.attribution({ position: "bottomleft", prefix: "" });
+      audioBlockedAttribution.addAttribution("Tonausgabe vom Browser blockiert");
+      audioBlockedAttribution.addTo(map);
+      console.log("Audio blocked, attribution added to map.");
+    }
+  } catch (e) {
+    console.log("indicateAudioBlocked error", e);
+  }
+}
 
+function resetAudioUi() {
   let tmp_element;
   // Pause-Symbol in Play-Symbol
   tmp_element = document.querySelector(".ion-md-pause");
-  if (tmp_element.classList.contains("ion-md-pause")) {
+  if (tmp_element && tmp_element.classList.contains("ion-md-pause")) {
     tmp_element.classList.remove("ion-md-pause");
     tmp_element.classList.add("ion-md-play-circle");
   }
   // Lautsprecher-Symbol in Leise-Symbol
   tmp_element = document.querySelector(".ion-md-volume-high");
-  if (tmp_element.classList.contains("ion-md-volume-high")) {
+  if (tmp_element && tmp_element.classList.contains("ion-md-volume-high")) {
     tmp_element.classList.remove("ion-md-volume-high");
     tmp_element.classList.add("ion-md-volume-off");
   }
   // Button Hintergrund entfernen, falls vorhanden
   tmp_element = document.querySelector("#volume");
-  if (tmp_element.classList.contains("btn-danger")) {
+  if (tmp_element && tmp_element.classList.contains("btn-danger")) {
     tmp_element.classList.remove("btn-danger");
+  }
+  // Attribution für blockierte Tonausgabe entfernen
+  if (audioBlockedAttribution) {
+    try {
+      audioBlockedAttribution.remove();
+    } catch (e) {}
+    audioBlockedAttribution = null;
+  }
+}
+
+waipAudio.addEventListener("ended", function () {
+  console.log("ended");
+  resetAudioUi();
+  // TTS-Flag zurücksetzen
+  if (lastTTSSrc && waipAudio.src.indexOf("bell_message.mp3") === -1) {
+    ttsActive = false;
+    lastTTSSrc = null;
+  }
+});
+
+// Neuer Pause-Handler (nutzerinitiiert)
+waipAudio.addEventListener("pause", function () {
+  // Wenn wirklich pausiert (nicht direkt nach play), UI anpassen
+  if (waipAudio.paused) {
+    resetAudioUi();
+    if (ttsActive) {
+      ttsActive = false;
+      lastTTSSrc = null;
+    }
   }
 });
 
 waipAudio.addEventListener("play", function () {
   let tmp_element;
+  // Beim erfolgreichen Start Blinken entfernen
+  const blinkIcon = document.querySelector(".blink-audio");
+  if (blinkIcon) blinkIcon.classList.remove("blink-audio");
   // Pause-Symbol in Play-Symbol
   tmp_element = document.querySelector(".ion-md-play-circle");
-  if (tmp_element.classList.contains("ion-md-play-circle")) {
+  if (tmp_element && tmp_element.classList.contains("ion-md-play-circle")) {
     tmp_element.classList.remove("ion-md-play-circle");
     tmp_element.classList.add("ion-md-pause");
   }
   // Lautsprecher-Symbol in Leise-Symbol
   tmp_element = document.querySelector(".ion-md-volume-off");
-  if (tmp_element.classList.contains("ion-md-volume-off")) {
+  if (tmp_element && tmp_element.classList.contains("ion-md-volume-off")) {
     tmp_element.classList.remove("ion-md-volume-off");
     tmp_element.classList.add("ion-md-volume-high");
   }
   // Button Hintergrund entfernen, falls vorhanden
   tmp_element = document.querySelector("#volume");
-  if (tmp_element.classList.contains("btn-danger")) {
+  if (tmp_element && tmp_element.classList.contains("btn-danger")) {
     tmp_element.classList.remove("btn-danger");
+  }
+  // Attribution für blockierte Tonausgabe entfernen
+  if (audioBlockedAttribution) {
+    try {
+      audioBlockedAttribution.remove();
+    } catch (e) {}
+    audioBlockedAttribution = null;
+  }
+});
+
+// Play/Pause Steuerung: Button mit ID #playpause oder direkt Icon mit Klasse .ion-md-pause
+$(document).on("click", "#playpause, .ion-md-pause", function (e) {
+  // Falls Audio läuft -> stoppen & zurücksetzen
+  if (!waipAudio.paused && !waipAudio.ended) {
+    waipAudio.pause();
+    waipAudio.currentTime = 0; // komplett abbrechen
+    // UI sofort aktualisieren (pause Event feuert auch, aber zur Sicherheit direkt)
+    resetAudioUi();
+  } else if (waipAudio.paused) {
+    // Erneut starten (falls erwünscht) -> hier optional, aktuell nicht automatisch Starten
+    // waipAudio.play();
   }
 });
 
 $("#replay").on("click", function (event) {
-  document.getElementById("audio").play();
+  waipAudio.currentTime = 0;
+  waipAudio.play();
 });
 
 /* ############################ */
@@ -141,9 +224,9 @@ function resize_text() {
 }
 
 // Text nach bestimmter Laenge, in Abhaengigkeit von Zeichen, umbrechen
-function break_text_20(text) {
+function break_text_25(text) {
   var new_text;
-  new_text = text.replace(/.{20}(\s+|\-+)+/g, "$&@");
+  new_text = text.replace(/.{25}(\s+|\-+)+/g, "$&@");
   new_text = new_text.split(/@/);
   new_text = new_text.join("<br />");
   //console.log(new_text);
@@ -282,14 +365,30 @@ let map = L.map("map", {
 
 AddMapLayer();
 
+// Attribution für deaktivierte Rückmeldungen anzeigen
+try {
+  if (typeof rmld_off !== "undefined" && rmld_off) {
+    const rmldAttr = L.control.attribution({ position: "bottomleft", prefix: "" });
+    rmldAttr.addAttribution("Rückmeldungen deaktivert");
+    rmldAttr.addTo(map);
+  }
+} catch (e) {
+  // nichts tun, falls rmld_off nicht definiert ist
+}
+
 // Icon der Karte zuordnen
+// Markergröße dynamisch für 4K anpassen (4K jetzt nochmals größer)
+let is4K = window.innerWidth >= 3840 && window.innerHeight >= 2160;
+let markerSize = is4K ? [50, 82] : [25, 41];
+let markerAnchor = is4K ? [25, 82] : [12, 41];
+let markerShadowSize = is4K ? [82, 82] : [41, 41];
 let redIcon = new L.Icon({
   iconUrl: "/media/marker-icon-2x-red.png",
   shadowUrl: "/media/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
+  iconSize: markerSize,
+  iconAnchor: markerAnchor,
   popupAnchor: [1, -34],
-  shadowSize: [41, 41],
+  shadowSize: markerShadowSize,
 });
 
 // Icon setzen
@@ -353,6 +452,8 @@ socket.on("io.stopaudio", function (data) {
 socket.on("io.playtts", function (data) {
   let audio = document.getElementById("audio");
   audio.src = data;
+  lastTTSSrc = audio.src;
+  ttsActive = true;
   console.log($("#audio"));
 
   // Audio-Blockade des Browsers erkennen
@@ -377,10 +478,11 @@ socket.on("io.playtts", function (data) {
         tmp_element.classList.add('btn-danger');
       };*/
         tmp_element = document.querySelector(".ion-md-volume-high");
-        if (tmp_element.classList.contains("ion-md-volume-high")) {
+        if (tmp_element && tmp_element.classList.contains("ion-md-volume-high")) {
           tmp_element.classList.remove("ion-md-volume-high");
           tmp_element.classList.add("ion-md-volume-off");
         }
+        indicateAudioBlocked();
       });
   }
 });
@@ -483,26 +585,26 @@ socket.on("io.new_waip", function (data) {
   small_ortsdaten = "";
   // Teilbjekt anfuegen
   if (data.objektteil) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.objektteil) + "<br />";
+    small_ortsdaten = small_ortsdaten + break_text_25(data.objektteil) + "<br />";
   }
   // Objekt anfuegen
   if (data.objekt) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.objekt);
+    small_ortsdaten = small_ortsdaten + break_text_25(data.objekt);    
     // ggf. weitere Einsatzdetails an Objekt anfügen, wenn Brand- oder Hilfeleistungseinsatz
     if (data.einsatzdetails && (data.einsatzart === "Brandeinsatz" || data.einsatzart === "Hilfeleistungseinsatz")) {
-      small_ortsdaten = small_ortsdaten + " (" + (data.einsatzdetails) + ") ";
+      small_ortsdaten = small_ortsdaten + " (" + data.einsatzdetails + ") ";
     }
     small_ortsdaten = small_ortsdaten + "<br />";
   }
   // Ort anfuegen
   if (data.ort) {
-    small_ortsdaten = small_ortsdaten + break_text_20(data.ort) + "<br />";
+    small_ortsdaten = small_ortsdaten + break_text_25(data.ort) + "<br />";
   }
   // Ortsteil anfuegen, aber nur wenn nicht gleich Ort
   if (data.ortsteil) {
     // wenn Ortsteil gleich Ort, dann nicht anzeigen
     if (data.ortsteil !== data.ort) {
-      small_ortsdaten = small_ortsdaten + break_text_20(data.ortsteil) + "<br />";
+      small_ortsdaten = small_ortsdaten + break_text_25(data.ortsteil) + "<br />";
     }
   }
   // Strasse und Hausnummer anfuegen
@@ -514,7 +616,7 @@ socket.on("io.new_waip", function (data) {
     } else {
       tmp_strasse = data.strasse;
     }
-    small_ortsdaten = small_ortsdaten + break_text_20(tmp_strasse) + "<br />";
+    small_ortsdaten = small_ortsdaten + break_text_25(tmp_strasse) + "<br />";
   }
   if (small_ortsdaten.substr(small_ortsdaten.length - 4) == "<br />") {
     small_ortsdaten = small_ortsdaten.slice(0, -4);
@@ -640,6 +742,15 @@ socket.on("io.new_waip", function (data) {
 });
 
 socket.on("io.new_rmld", function (data) {
+  // Rückmeldungen deaktiviert? (rmld_off wird serverseitig ins Template injiziert)
+  try {
+    if (typeof rmld_off !== "undefined" && rmld_off) {
+      console.log("Rückmeldungen sind deaktiviert (rmld=off), io.new_rmld ignoriert.");
+      return; // nichts tun
+    }
+  } catch (e) {
+    // falls Variable nicht existiert einfach normal fortfahren
+  }
   // DEBUG
   console.log("neue Rückmeldung:", data);
   // FIXME  Änderung des Funktions-Typ berücksichtigen
@@ -729,42 +840,36 @@ socket.on("io.new_rmld", function (data) {
   recount_rmld(pg_waip_uuid);
   // View anpassen
   reset_view();
-  //
-  resize_text();
   // Textgröße der Rückmeldungen anpassen
-  /*const progressBars = document.querySelectorAll('.progress .position-relative');
-let maxFontSize = 20; // Startwert für die maximale Schriftgröße
-let minFontSize = 4;  // Mindestwert für die Schriftgröße
+  resize_text();
 
-progressBars.forEach(bar => {
-  const textElement = bar.querySelector('.justify-content-center');
-  if (textElement) {
-    let fontSize = maxFontSize;
-
-    // Schriftgröße anpassen, bis der Text in die Progressbar passt
-    while (fontSize >= minFontSize) {
-      textElement.style.fontSize = `${fontSize}px`;
-      if (textElement.scrollWidth <= bar.clientWidth && textElement.scrollHeight <= bar.clientHeight) {
-        break;
-      }
-      fontSize--;
-    }
-  }
-});*/
-
-  // Bing abspielen
+  // Bing abspielen (nur wenn kein laufendes TTS überlagert wird)
   let audio = document.getElementById("audio");
-  audio.src = "/media/bell_message.mp3";
-  // Audio-Blockade des Browsers erkennen
-  let playPromise = document.querySelector("audio").play();
-  if (playPromise !== undefined) {
-    playPromise
-      .then(function () {
-        audio.play();
-      })
-      .catch(function (error) {
+  try {
+    // Wenn TTS aktiv und noch nicht beendet -> abbrechen
+    if (ttsActive && !audio.paused && !audio.ended && audio.src === lastTTSSrc && !/bell_message\.mp3/.test(audio.src)) {
+      console.log("Bell übersprungen: TTS aktiv (" + audio.src + ")");
+      return;
+    }
+    // Wenn anderes Audio (nicht Glocke) gerade spielt, überspringen
+    if (!ttsActive && !audio.paused && !audio.ended && !/bell_message\.mp3/.test(audio.src)) {
+      console.log("Bell übersprungen: anderes Audio läuft (" + audio.src + ")");
+      return;
+    }
+    // Glocke abspielen wenn nichts oder Glocke selbst
+    if (!/bell_message\.mp3/.test(audio.src)) {
+      audio.src = "/media/bell_message.mp3";
+    }
+    let playPromise = audio.play();
+    if (playPromise) {
+      playPromise.catch(function () {
         console.log("Notification playback failed");
+        indicateAudioBlocked();
       });
+    }
+  } catch (e) {
+    console.log("Bell playback error", e);
+    indicateAudioBlocked();
   }
 });
 
@@ -1029,7 +1134,7 @@ function reset_view() {
       alterClass("#container_ortsdaten", "col-*", "col-12");
       alterClass("#container_einsatzmittel", "h-*", "h-40");
       alterClass("#container_einsatzmittel", "col-*", "col-12");
-    };
+    }
     alterClass("#container_weitere", "h-*", "h-5");
     alterClass("#container_besonderheiten", "h-*", "h-15");
   }
@@ -1106,37 +1211,63 @@ setInterval(set_clock, 1000);
 /* ####### WACHENNAME ####### */
 /* ############################ */
 
+// Vereinfachte Animation: alle 5s Schritt nach rechts, am Rand Richtung umkehren
+let wachennameInterval;
+let wachennameDirection = 1; // 1 = rechts, -1 = links
+const WACHENNAME_STEP = 50; // Pixel pro Schritt
+const WACHENNAME_INTERVAL_MS = 10000; // 10 Sekunden
+
 function updateWachennameAnimation() {
   const wachenname = document.getElementById("wachenname_footer");
   if (!wachenname) return;
 
-  // Animation stoppen
+  // Vorherige CSS-Animation und evtl. Style-Tag entfernen
   wachenname.style.animation = "none";
-  wachenname.offsetHeight; // Trigger reflow
-
-  // Neue Animation berechnen
-  const containerWidth = window.innerWidth;
-  const elementWidth = wachenname.offsetWidth;
-  const maxTranslate = containerWidth - elementWidth - 30;
-
-  // Neue Keyframes erstellen
-  const style = document.createElement("style");
-  style.textContent = `
-    @keyframes moveLeftRight {
-      0% { transform: translateX(0); }
-      50% { transform: translateX(${maxTranslate}px); }
-      100% { transform: translateX(0); }
-    }
-  `;
-
-  // Alte Keyframes entfernen und neue hinzufügen
   const oldStyle = document.getElementById("wachenname-animation");
   if (oldStyle) oldStyle.remove();
-  style.id = "wachenname-animation";
-  document.head.appendChild(style);
 
-  // Animation neu starten
-  wachenname.style.animation = "moveLeftRight 400s ease-in-out infinite";
+  // Positionierungsbasis setzen
+  wachenname.style.position = "relative";
+  if (!wachenname.dataset.posX) {
+    wachenname.dataset.posX = "0";
+    wachenname.style.left = "0px";
+  }
+
+  // Begrenzungen neu berechnen (Fensterbreite als Container)
+  const containerWidth = window.innerWidth;
+  const elementWidth = wachenname.offsetWidth;
+  const maxTranslate = Math.max(0, containerWidth - elementWidth - 40); // etwas Rand
+
+  // Falls aktuelle Position außerhalb nach Resize
+  let currentX = parseInt(wachenname.dataset.posX, 10) || 0;
+  if (currentX > maxTranslate) {
+    currentX = maxTranslate;
+    wachenname.dataset.posX = String(currentX);
+    wachenname.style.left = currentX + "px";
+    wachennameDirection = -1;
+  }
+
+  // Intervall zurücksetzen
+  if (wachennameInterval) {
+    clearInterval(wachennameInterval);
+  }
+
+  wachennameInterval = setInterval(() => {
+    let x = parseInt(wachenname.dataset.posX, 10) || 0;
+    x += wachennameDirection * WACHENNAME_STEP;
+
+    // Randprüfung und Richtungswechsel
+    if (x >= maxTranslate) {
+      x = maxTranslate;
+      wachennameDirection = -1;
+    } else if (x <= 0) {
+      x = 0;
+      wachennameDirection = 1;
+    }
+
+    wachenname.dataset.posX = String(x);
+    wachenname.style.left = x + "px";
+  }, WACHENNAME_INTERVAL_MS);
 }
 
 /* ############################ */
