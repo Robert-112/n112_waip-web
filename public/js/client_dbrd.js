@@ -280,42 +280,25 @@ function ensure_station_rmld_summary(stationId) {
   var rmldSummary = document.createElement("div");
   rmldSummary.className = "rmld-summary mt-2";
   rmldSummary.id = "rmld-summary-" + stationId;
-  rmldSummary.innerHTML =
-    "" +
-    '<div class="d-flex flex-wrap align-items-start small" id="rmld-counters-' +
-    stationId +
-    '">' +
-    '<span class="mr-2 text-muted">Gesamt <span class="badge badge-primary" id="rmld-total-' +
-    stationId +
-    '">0</span></span>' +
-    '<span class="mr-2 text-muted">EK <span class="badge badge-success" id="rmld-ek-' +
-    stationId +
-    '">0</span></span>' +
-    '<span class="mr-2 text-muted">GF <span class="badge badge-info" id="rmld-gf-' +
-    stationId +
-    '">0</span></span>' +
-    '<span class="mr-2 text-muted">ZF <span class="badge badge-light text-dark" id="rmld-zf-' +
-    stationId +
-    '">0</span></span>' +
-    '<span class="mr-2 text-muted">VF <span class="badge badge-danger" id="rmld-vf-' +
-    stationId +
-    '">0</span></span>' +
-    '<span class="mr-2 text-muted">AGT <span class="badge badge-warning" id="rmld-agt-' +
-    stationId +
-    '">0</span></span>' +
-    '<span class="mr-2 text-muted">MA <span class="badge badge-primary" id="rmld-ma-' +
-    stationId +
-    '">0</span></span>' +
-    '<span class="mr-2 text-muted">FZF <span class="badge badge-primary" id="rmld-fzf-' +
-    stationId +
-    '">0</span></span>' +
-    '<span class="mr-2 text-muted">MED <span class="badge badge-primary" id="rmld-med-' +
-    stationId +
-    '">0</span></span>' +
-    "</div>" +
-    '<div class="row no-gutters mt-1" id="rmld-bars-' +
-    stationId +
-    '"></div>';
+  rmldSummary.innerHTML = '' +
+    '<div class="d-flex flex-wrap align-items-start small px-1" id="rmld-counters-' + stationId + '">' +
+      '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center">' +
+        '<span class="mr-1">Gesamt</span><span class="badge badge-primary" id="rmld-total-' + stationId + '">0</span>' +
+      '</div>' +
+      '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center flex-wrap">' +
+        '<span class="text-success mr-1">EK</span><span class="badge badge-success mr-2" id="rmld-ek-' + stationId + '">0</span>' +
+        '<span class="text-info mr-1">GF</span><span class="badge badge-info mr-2" id="rmld-gf-' + stationId + '">0</span>' +
+        '<span class="text-light mr-1">ZF</span><span class="badge badge-light text-dark mr-2" id="rmld-zf-' + stationId + '">0</span>' +
+        '<span class="text-danger mr-1">VF</span><span class="badge badge-danger" id="rmld-vf-' + stationId + '">0</span>' +
+      '</div>' +
+      '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center flex-wrap">' +
+        '<span class="text-warning mr-1">AGT</span><span class="badge badge-warning mr-2" id="rmld-agt-' + stationId + '">0</span>' +
+        '<span class="text-muted mr-1">MA</span><span class="badge badge-primary mr-2" id="rmld-ma-' + stationId + '">0</span>' +
+        '<span class="text-muted mr-1">FZF</span><span class="badge badge-primary mr-2" id="rmld-fzf-' + stationId + '">0</span>' +
+        '<span class="text-muted mr-1">MED</span><span class="badge badge-primary" id="rmld-med-' + stationId + '">0</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="row no-gutters mt-1" id="rmld-bars-' + stationId + '"></div>';
   td.appendChild(rmldSummary);
 }
 function update_station_counts(stationId) {

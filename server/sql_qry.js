@@ -1240,6 +1240,7 @@ module.exports = (db, app_cfg) => {
   };
 
   // Client-Eintrag per Socket-ID finden
+  // TODO Abfrage wird derzeit nicht gebraucht, ggf. loeschen
   const db_socket_get_by_id = (socket_id) => {
     return new Promise((resolve, reject) => {
       try {

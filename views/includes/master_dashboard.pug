@@ -45,44 +45,30 @@
         div#rmld_container
           .card#rmld_container.mb-3
             .card-header.bg-dark.px-3.py-2
-              span.text-light.font-weight-bold.small Rückmeldungen (Gesamt)
+              .text-info.font-weight-bold.mb-0 Anzahl aller Rückmeldungen
             .card-body.py-2.px-3
-              .row.no-gutters.align-items-center.small
-                .col-12.d-flex.flex-wrap
-                  span.mr-3.text-muted.d-flex.align-items-center
-                    span.mr-1.font-weight-bold Gesamt
-                    #gs-counter.badge.badge-primary.px-2.py-1 0
-                  span.mr-3.text-success.d-flex.align-items-center
-                    span.mr-1 EK
-                    #ek-counter.badge.badge-success.px-2.py-1 0
-                  span.mr-3.text-info.d-flex.align-items-center
-                    span.mr-1 GF
-                    #gf-counter.badge.badge-info.px-2.py-1 0
-                  span.mr-3.text-light.d-flex.align-items-center
-                    span.mr-1 ZF
-                    #zf-counter.badge.badge-light.text-dark.px-2.py-1 0
-                  span.mr-3.text-danger.d-flex.align-items-center
-                    span.mr-1 VF
-                    #vf-counter.badge.badge-danger.px-2.py-1 0
-      .col-12
-        .card.mb-3
-          .card-header.bg-dark.px-3.py-2
-            span.text-light.font-weight-bold.small Verfügbare Funktionen (Gesamt)
-          .card-body.py-2.px-3
-            .row.no-gutters.small
-              .col-12.d-flex.flex-wrap
-                span.mr-3.text-warning.d-flex.align-items-center
-                  span.mr-1 AGT
-                  span#agt-counter.badge.badge-warning.px-2.py-1 0
-                span.mr-3.text-primary.d-flex.align-items-center
-                  span.mr-1 MA
-                  span#ma-counter.badge.badge-primary.px-2.py-1 0
-                span.mr-3.text-primary.d-flex.align-items-center
-                  span.mr-1 FZF
-                  span#fzf-counter.badge.badge-primary.px-2.py-1 0
-                span.mr-3.text-primary.d-flex.align-items-center
-                  span.mr-1 MED
-                  span#med-counter.badge.badge-primary.px-2.py-1 0
+              .d-flex.flex-wrap.align-items-start
+                .d-flex.align-items-center.border.border-secondary.rounded-pill.px-1.py-2.mr-2.mb-1 
+                  span.mx-1 Gesamt
+                  span#gs-counter.mr-1.badge.badge-primary 0
+                .d-flex.align-items-center.flex-wrap.border.border-secondary.rounded-pill.px-1.py-2.mr-2.mb-1 
+                  span.mr-2.ml-1.text-success EK
+                  span#ek-counter.badge.badge-success.mr-3 0
+                  span.mr-2.text-info GF
+                  span#gf-counter.badge.badge-info.mr-3 0
+                  span.mr-2.text-light ZF
+                  span#zf-counter.badge.badge-light.text-dark.mr-3 0
+                  span.mr-2.text-danger VF
+                  span#vf-counter.mr-1.badge.badge-danger 0
+                .d-flex.align-items-center.flex-wrap.border.border-secondary.rounded-pill.px-1.py-2.mr-2.mb-1 
+                  span.mr-2.ml-1.text-warning AGT
+                  span#agt-counter.badge.badge-warning.mr-3 0
+                  span.mr-2.text-muted MA
+                  span#ma-counter.badge.badge-primary.mr-3 0
+                  span.mr-2.text-muted FZF
+                  span#fzf-counter.badge.badge-primary.mr-3 0
+                  span.mr-2.text-muted MED
+                  span#med-counter.badge.badge-primary.mr-1 0
 .d-none
   audio#audio(controls='')
       source(src='', type='audio/mpeg')
