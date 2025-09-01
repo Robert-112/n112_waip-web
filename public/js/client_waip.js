@@ -413,12 +413,17 @@ socket.on("connect", function () {
   socket.emit("WAIP", wachen_id);
   $("#waipModal").modal("hide");
   // TODO: bei Reconnect des Clients durch Verbindungsabbruch, erneut Daten anfordern
+  console.log("Socket-Verbindung hergestellt, WAIP:", wachen_id);
 });
 
 socket.on("connect_error", function (err) {
   $("#waipModalTitle").text("FEHLER");
   $("#waipModalBody").text("Verbindung zum Server getrennt!");
   $("#waipModal").modal("show");
+});
+
+socket.on("disconnect", function (reason) {
+  console.log("Socket-Verbindung geschlossen:", reason);
 });
 
 // ID von Server und Client vergleichen, falls ungleich -> Seite neu laden
@@ -535,10 +540,11 @@ socket.on("io.new_waip", function (data) {
   $("#alert_time").text("\xA0" + alarmzeit[1]);
   // Einsatznummer setzen, falls vorhanden
   if (data.einsatznummer) {
+    $("#einsatznummer").removeClass("d-none");
     $("#einsatznummer").text("\xA0" + data.einsatznummer);
   } else {
-    // div fuer Einsatznummer entfernen
-    $("#einsatznummer").remove();
+    // div fuer Einsatznummer ausblenden
+    $("#einsatznummer").addClass("d-none");
   }
   // Hintergrund der Einsatzart zunächst entfernen
   $("#einsatz_art").removeClass(function (index, className) {

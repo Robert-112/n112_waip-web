@@ -24,6 +24,16 @@
             #standbytimer-bar.progress-bar.progress-bar-striped.progress-bar-animated(role='progressbar', aria-valuenow='0', aria-valuemin='0', aria-valuemax='100', style='width: 0%')
             div#standbytimer-text.d-flex.justify-content-center.align-items-center.position-absolute.w-100.h-100
         #map.h-97-5_ls.h-95_p.rounded
+          // Vorausgelagerter Toast für blockierte Audioausgabe (initial versteckt)
+          #audio-toast-container.d-none
+            .toast.bg-danger.text-white.audio-blocked-toast(id='audio-blocked-toast' role='alert' aria-live='assertive' aria-atomic='true' data-autohide='false')
+              .toast-body.p-1.d-flex.align-items-start
+                span.mr-1.ion-md-volume-off
+                .flex-fill
+                  | Tonausgabe durch Browser blockiert
+                  br
+                  small.text-secondary zum aktivieren auf die Webseite klicken
+                button.close.text-secondary(type='button' aria-label='Schließen') &times;
       .col-12.col-7_ls.h-100_ls.h-60_p
         .row.no-gutters.h-100
           #container_rmld.w-100.h-35

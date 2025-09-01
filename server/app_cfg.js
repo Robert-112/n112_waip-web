@@ -82,6 +82,8 @@ app_cfg.public = {
   ext_privacy: false,
   // Link zur externen Datenschutzerklärung
   url_privacy: "https://www.nix.nix/datenschutz",
+  // Login-Seite aktivieren / deaktiven
+  show_login: true
 };
 
 // Standardwerte die beim ersten Start in die Datenbank geladen werden

@@ -47,7 +47,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           sql.db_client_update_status(socket, einsatzdaten.id);
 
           // Sound erstellen und an Client senden
-          const tts = await tts_erstellen(app_cfg, einsatzdaten);
+          const tts = await tts_erstellen(app_cfg, einsatzdaten, wachen_nr);
           if (tts) {
             // Sound-Link senden
             socket.emit("io.playtts", tts);
@@ -358,7 +358,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
     },
   };
 
-  const tts_erstellen = async (app_cfg, einsatzdaten) => {
+  const tts_erstellen = async (app_cfg, einsatzdaten, wachen_nr) => {
     try {
       let full_half = "";
       if (einsatzdaten.permissions) {
@@ -369,8 +369,8 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
         full_half = "half";
       }
 
-      // Einsatz-UUID inkl. Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
-      const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + full_half;
+      // Einsatz-UUID inkl. Wachennummer und Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
+      const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr +"_" + full_half;
       const soundPath = process.cwd() + app_cfg.global.soundpath;
       const mediaPath = app_cfg.global.mediapath;
 
@@ -392,9 +392,19 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
       // Sprachansage Text erstellen
       let tts_text = `${einsatzdaten.einsatzart}, ${einsatzdaten.stichwort}. `;
-      tts_text += einsatzdaten.objekt
-        ? `${einsatzdaten.objekt}, ${einsatzdaten.ort}, ${einsatzdaten.ortsteil}`
-        : `${einsatzdaten.ort}, ${einsatzdaten.ortsteil}`;
+      // Orts-/Objekt-Text zusammensetzen ohne 'null' oder leere Teile
+      const locParts = [];
+      if (einsatzdaten.objektteil) locParts.push(einsatzdaten.objektteil);
+      if (einsatzdaten.objekt) locParts.push(einsatzdaten.objekt);
+      if (einsatzdaten.ort) locParts.push(einsatzdaten.ort);
+      // Ortsteil nur anhängen, wenn vorhanden und nicht identisch zu Ort (case-insensitive)
+      if (
+        einsatzdaten.ortsteil &&
+        (!einsatzdaten.ort || einsatzdaten.ortsteil.toLowerCase() !== einsatzdaten.ort.toLowerCase())
+      ) {
+        locParts.push(einsatzdaten.ortsteil);
+      }
+      tts_text += locParts.join(", ");
 
       // Einsatzmittel TTS-Text verarbeiten
       await Promise.all(einsatzdaten.em_alarmiert.map((em) => sql.db_tts_einsatzmittel(em)));

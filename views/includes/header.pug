@@ -40,5 +40,7 @@ header
             form(action='/logout', method='POST')
               button.btn.btn-dark.text-nowrap.ion-md-log-out(type='submit')=' \''+user.user +'\' abmelden'         
         else 
-          li.nav-item(class=(title == 'Login') ? 'active' : null)
-            a.text-nowrap.nav-link.ion-md-log-in(href='/login')  Anmelden
+          // login nur anzeigen, wenn aktiviert
+          if public.show_login
+            li.nav-item(class=(title == 'Login') ? 'active' : null)
+              a.text-nowrap.nav-link.ion-md-log-in(href='/login')  Anmelden
