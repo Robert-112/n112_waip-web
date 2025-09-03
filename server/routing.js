@@ -41,6 +41,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       public: app_cfg.public,
       title: "Startseite",
       user: req.user,
+      session_max_age: app_cfg.global.session_cookie_max_age,
     });
   });
 
@@ -50,6 +51,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       public: app_cfg.public,
       title: "Über",
       user: req.user,
+      session_max_age: app_cfg.global.session_cookie_max_age,
     });
   });
 
@@ -62,6 +64,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Impressum",
         user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
       });
     }
   });
@@ -75,6 +78,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Datenschutzerklärung",
         user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
       });
     }
   });
@@ -203,7 +207,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       public: app_cfg.public,
       title: "Login",
       user: req.user,
-      error: req.flash("errorMessage"),
+      session_max_age: app_cfg.global.session_cookie_max_age,
+  error: req.query.error || null,
     });
   });
 
@@ -214,8 +219,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         return next(err);
       }
       if (!user) {
-        req.flash("errorMessage", "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.");
-        return res.redirect("/login");
+  const msg = encodeURIComponent("Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.");
+  return res.redirect("/login?error=" + msg);
       }
       req.logIn(user, (err) => {
         if (err) {
@@ -233,17 +238,22 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.get("/login_cert", (req, res, next) => {
     passport.authenticate("trusted-header", (err, user, info) => {
       if (err) {
-        req.flash("errorMessage", "Interner Fehler bei der Zertifikats-Authentifizierung.");
-        return res.redirect("/login");
+        return res.redirect("/login?error=" + encodeURIComponent("Interner Fehler bei der Zertifikats-Authentifizierung."));
       }
       if (!user) {
-        req.flash("errorMessage", "Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.");
-        return res.redirect("/login");
+        return res.redirect(
+          "/login?error=" +
+            encodeURIComponent(
+              "Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator."
+            )
+        );
       }
       req.logIn(user, (err) => {
         if (err) {
           return next(err);
         }
+        // der Benutzer muss sich fuer 1 Tag nicht anmelden
+        req.session.cookie.maxAge = 1 * 24 * 60 * 60 * 1000;
         return res.redirect("/");
       });
     })(req, res, next);
@@ -254,6 +264,26 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     req.session.destroy(function (err) {
       res.redirect("/");
     });
+  });
+
+  /* ######################### */
+  /* ##### Session Utils ##### */
+  /* ######################### */
+
+  // Keep-Alive für Session (wird vom Client periodisch aufgerufen)
+  app.get("/session/keepalive", (req, res) => {
+    try {
+      if (req.session) {
+        // Touch erneuert das Ablaufdatum im Store (bei entsprechendem Store) und rolling sendet neues Cookie
+        req.session.touch();
+        res.json({ status: "ok", expires: req.session.cookie.expires });
+      } else {
+        res.status(440).json({ status: "no-session" });
+      }
+    } catch (error) {
+      logger.log("error", "Fehler beim KeepAlive der Session: " + error);
+      res.status(500).json({ status: "error" });
+    }
   });
 
   /* ######################### */
@@ -269,8 +299,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         title: "Einstellungen",
         user: req.user,
         user_reset_counter: data.resetcounter,
-        error: req.flash("errorMessage"),
-        success: req.flash("successMessage"),
+        session_max_age: app_cfg.global.session_cookie_max_age,
+  error: req.query.error || null,
+  success: req.query.success || null,
       });
     } catch (error) {
       const err = new Error(`Fehler beim Laden der Seite für die Einstellungen. ` + error);
@@ -284,11 +315,14 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/einstellungen_zeit", auth.ensureAuthenticated, async (req, res) => {
     try {
       await sql.db_user_set_config_time(req.user.id, req.body.set_reset_counter);
-      req.flash("successMessage", "Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert");
-      res.redirect("/einstellungen");
+      res.redirect(
+        "/einstellungen?success=" + encodeURIComponent("Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert")
+      );
     } catch (error) {
-      req.flash("errorMessage", "Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error);
-      res.redirect("/einstellungen");
+      res.redirect(
+        "/einstellungen?error=" +
+          encodeURIComponent("Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error)
+      );
     }
   });
 
@@ -305,6 +339,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         title: "Alarmmonitor",
         list_wachen: data,
         user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
       });
     } catch (error) {
       const err = new Error(`Fehler beim Laden der Seite /waip. ` + error);
@@ -329,6 +364,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           map_service: app_cfg.public.map_service,
           app_id: app_cfg.global.app_id,
           user: req.user,
+          session_max_age: app_cfg.global.session_cookie_max_age,
           rmld_off: rmldOff,
         });
       } else {
@@ -357,6 +393,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         title: "Dashboard",
         map_service: app_cfg.public.map_service,
         user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
         dataSet: data,
       });
     } catch (error) {
@@ -380,6 +417,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           map_service: app_cfg.public.map_service,
           app_id: app_cfg.global.app_id,
           user: req.user,
+          session_max_age: app_cfg.global.session_cookie_max_age,
         });
       } else {
         throw `Dashboard oder Einsatz mit der UUID ${dbrd_uuid} nicht (mehr) vorhanden!`;
@@ -404,6 +442,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Verbundene PCs/Benutzer",
         user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
         dataSet: data,
       });
     } catch (error) {
@@ -422,6 +461,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Akutelle Einsätze",
         user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
         dataSet: data,
       });
     } catch (error) {
@@ -440,6 +480,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Log-Datei",
         user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
         dataSet: data,
       });
     } catch (error) {
@@ -459,8 +500,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         title: "Benutzer und Rechte verwalten",
         user: req.user,
         users: data,
-        error: req.flash("errorMessage"),
-        success: req.flash("successMessage"),
+        session_max_age: app_cfg.global.session_cookie_max_age,
+  error: req.query.error || null,
+  success: req.query.success || null,
       });
     } catch (error) {
       const err = new Error(`Fehler beim Laden der Seite /adm_edit_users. ` + error);
@@ -496,9 +538,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         public: app_cfg.public,
         title: "Wachen verwalten",
         user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
         wachen,
-        error: req.flash("errorMessage"),
-        success: req.flash("successMessage"),
+  error: req.query.error || null,
+  success: req.query.success || null,
       });
     } catch (error) {
       const err = new Error("Fehler beim Laden der Seite /adm_edit_wachen. " + error);
@@ -512,11 +555,11 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_wachen/edit", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_wache_update(req.body);
-      req.flash("successMessage", "Wache erfolgreich bearbeitet.");
-      res.redirect("/adm_edit_wachen");
+      res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich bearbeitet."));
     } catch (error) {
-      req.flash("errorMessage", "Fehler beim Bearbeiten der Wache. " + error);
-      res.redirect("/adm_edit_wachen");
+      res.redirect(
+        "/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Bearbeiten der Wache. " + error)
+      );
     }
   });
 
@@ -524,11 +567,11 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_wachen/delete", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_wache_delete(req.body.id);
-      req.flash("successMessage", "Wache erfolgreich gelöscht.");
-      res.redirect("/adm_edit_wachen");
+      res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich gelöscht."));
     } catch (error) {
-      req.flash("errorMessage", "Fehler beim Löschen der Wache. " + error);
-      res.redirect("/adm_edit_wachen");
+      res.redirect(
+        "/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Löschen der Wache. " + error)
+      );
     }
   });
 
@@ -536,11 +579,11 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_wachen/create", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_wache_create(req.body);
-      req.flash("successMessage", "Wache erfolgreich angelegt.");
-      res.redirect("/adm_edit_wachen");
+      res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich angelegt."));
     } catch (error) {
-      req.flash("errorMessage", "Fehler beim Anlegen der Wache. " + error);
-      res.redirect("/adm_edit_wachen");
+      res.redirect(
+        "/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Anlegen der Wache. " + error)
+      );
     }
   });
 
@@ -554,6 +597,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       public: app_cfg.public,
       title: "Test Datum/Uhrzeit",
       user: req.user,
+      session_max_age: app_cfg.global.session_cookie_max_age,
     });
   });
 
@@ -563,6 +607,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       public: app_cfg.public,
       title: "Test Wachalarm",
       user: req.user,
+      session_max_age: app_cfg.global.session_cookie_max_age,
     });
   });
 
@@ -572,6 +617,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       public: app_cfg.public,
       title: "Test Dashboard",
       user: req.user,
+      session_max_age: app_cfg.global.session_cookie_max_age,
     });
   });
 

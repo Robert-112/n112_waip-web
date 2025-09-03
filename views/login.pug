@@ -22,7 +22,7 @@ block content
                   .col-3.text-right
                     button#close_info.btn.btn-info.ion-md-close
       .row
-        .col-sm-9.col-md-7.col-lg-5.mx-auto
+        .col-xs-12.col-md-6.mx-auto
           .card.my-3
             .card-body
               h5.card-title.text-center Benutzeranmeldung
@@ -30,7 +30,7 @@ block content
                 .form-group
                   label(for='inputUser') Benutzername
                   input#login-user.form-control(type='text' name='user'  placeholder='Benutzername eingeben' required='' autofocus='')
-                  small.form-text.text-muted Der Benutzer wird Ihnen von der Administration mitgeteilt.
+                  small.form-text.text-muted Der Benutzer wird Ihnen von den Administratoren mitgeteilt.
                 .form-group
                   label(for='inputPassword') Passwort
                   input#login-password.form-control(type='password' name='password' placeholder='Passwort' required='')  
@@ -39,14 +39,14 @@ block content
                     input#rembemerme.custom-control-input(type='checkbox' name='rememberme' checked='')
                     label.custom-control-label.text-warning(for='rembemerme') Anmeldung dauerhaft speichern
                 button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') anmelden
-      .row
-        .col-sm-9.col-md-7.col-lg-5.mx-auto
+        .col-xs-12.col-md-6.mx-auto
           .card.my-3
             .card-body
-              h5.card-title.text-center Client-Zertifikat
+              h5.card-title.text-center Zertifikatsanmeldung
               form(action='/login_cert', method='GET')
                 .form-group
-                  small.form-text.text-muted Diese Anmeldung ist für Endgeräte gedacht, welche ein Client-Zertifikat besitzen. 
-                    | Sie erlaubt ein Login ohne Benutzername/Kennwort.
-                button.btn.btn-lg.btn-outline-primary.btn-block.text-uppercase(type='submit') anmelden
+                  small.form-text.text-muted Diese Anmeldung Sie erlaubt einen Login ohne Benutzername / Kennwort. 
+                    | Sie ist für Endgeräte gedacht, welche ein Client-Zertifikat besitzen (z.B. iPads).
+                  small.form-text.text-muted Die Berechtigung des Nutzers wird über das Zertifikat geprüft.
+                button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') anmelden
 

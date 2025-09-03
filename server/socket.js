@@ -5,12 +5,16 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
   const nsp_waip = io.of("/waip");
   nsp_waip.on("connection", (socket) => {
     // Benutzerinformationen im Socket speichern
-    if (socket.request.user) {
-      socket.data.user = socket.request.user;
-      logger.log("debug", "Socket.IO: Benutzerinformationen im Socket gespeichert:", socket.data.user);
-    } else {
-      socket.data.user = { id: null, user: "Gast", permissions: null }; // Gast-Benutzer speichern
-      logger.log("debug", "Socket.IO: Kein Benutzer angemeldet, Gast-Benutzer wird gespeichert.");
+    if (!socket.request.user) {
+      socket.request.session.user = { id: null, user: "Gast", permissions: null }; // Gast-Benutzer speichern
+      // Speichern erzwingen, damit der Gast im Session-Store landet
+      socket.request.session.save((err) => {
+        if (err) {
+          logger.log("error", "Socket.IO: Konnte Gast-Session nicht speichern: " + err.message);
+        } else {
+          logger.log("debug", "Socket.IO: Gast-Benutzer in Session gespeichert (Session-ID: " + socket.request.session.id + ").");
+        }
+      });
     }
 
     // Client-IP ermitteln
@@ -19,10 +23,16 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
     // Session-Reload
     const session_timer = setInterval(() => {
       socket.request.session.reload((err) => {
-        if (err) {
-          // forces the client to reconnect
+        if (!err) {
+          socket.request.session.count++;
+          socket.request.session.save();
+          console.log('Session-User',socket.request.user);
+          logger.log("debug", `Session für ${remote_ip} (${socket.id}) wurde per Reload erneuert.`);
+          socket.emit("io.info", `Session für (${socket.id}) per Reload erneuert.`);
+        } else {
+          logger.log("debug", `Fehler beim Erneuern der Session für ${remote_ip} (${socket.id} ${socket.request.user.user}): ${err.message}`);
+          socket.emit("io.error", `Fehler beim Erneuern der Session für (${socket.id}), Verbindung wird zurückgesetzt!`);
           socket.conn.close();
-          logger.log("error", `Fehler beim Neuladen der Session für ${remote_ip} (${socket.id}): ${err.message}`);
         }
       });
     }, app_cfg.global.session_cookie_max_age / 2); // Reload alle 30 Sekunden (bei 1 Minute Session-Cookie)
@@ -100,11 +110,8 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
   const nsp_dbrd = io.of("/dbrd");
   nsp_dbrd.on("connection", (socket) => {
     // Benutzerinformationen im Socket speichern
-    if (socket.request.user) {
-      socket.data.user = socket.request.user;
-      logger.log("debug", "Socket.IO: Benutzerinformationen im Socket gespeichert:", socket.data.user);
-    } else {
-      socket.data.user = { id: null, user: "Gast", permissions: null }; // Gast-Benutzer speichern
+    if (!socket.request.user) {
+      socket.request.user = { id: null, user: "Gast", permissions: null }; // Gast-Benutzer speichern
       logger.log("debug", "Socket.IO: Kein Benutzer angemeldet, Gast-Benutzer wird gespeichert.");
     }
 

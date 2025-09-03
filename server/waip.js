@@ -1,9 +1,9 @@
-module.exports = (io, sql, fs, logger, app_cfg) => {
+const e = require("express");
 
+module.exports = (io, sql, fs, logger, app_cfg) => {
   const waip_verteilen_socket = (einsatzdaten, socket, wachen_nr, reset_timestamp) => {
     return new Promise(async (resolve, reject) => {
       try {
-
         // Berechtigungen für den Einsatz, anhand der Wachen-Berechtigung ueberpruefen
         const permissions = await sql.db_user_check_permission_for_waip(socket, einsatzdaten.id);
 
@@ -18,6 +18,11 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           einsatzdaten.einsatzdetails = "";
           einsatzdaten.wgs84_x = "";
           einsatzdaten.wgs84_y = "";
+          // Flag setzen, dass Berechtigungen nicht ok sind
+          einsatzdaten.permissions = false;
+        } else {
+          // Flag setzen, dass Berechtigungen ok sind
+          einsatzdaten.permissions = true;
         }
 
         // Ablaufzeit zum Einsatz hinzufuegen, damit diese auf der Seite ausgewertet werden kann
@@ -31,19 +36,18 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           logger.log("waip", `Einsatz ${einsatzdaten.id} für Wache ${wachen_nr} nicht an Socket ${socket.id} gesendet, Doppelalarmierung.`);
           resolve(false);
         } else {
-
           // Einsatz-ID dem Socket zuweisen, fuer spaetere Abgleiche
-          socket.data.waip_id = einsatzdaten.id; 
+          socket.data.waip_id = einsatzdaten.id;
 
           // Einsatzdaten an Client senden
           socket.emit("io.new_waip", einsatzdaten);
           logger.log("waip", `Einsatz ${einsatzdaten.id} für Wache ${wachen_nr} an ${socket.id} gesendet.`);
-          
+
           // Client-Status mit Wachennummer aktualisieren
           sql.db_client_update_status(socket, einsatzdaten.id);
 
           // Sound erstellen und an Client senden
-          const tts = await tts_erstellen(app_cfg, einsatzdaten);
+          const tts = await tts_erstellen(app_cfg, einsatzdaten, wachen_nr);
           if (tts) {
             // Sound-Link senden
             socket.emit("io.playtts", tts);
@@ -52,7 +56,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
           resolve(true);
         }
-
       } catch (error) {
         logger.log("error", `Fehler beim Verteilen der Waip-Einsatzdaten ${einsatzdaten.id} für einen Client ${socket.id}. ` + error);
         resolve(false);
@@ -68,14 +71,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
         // waip_rooms muss größer 1 sein, da sonst nur der Standard-Raum '0' vorhanden ist
         if (socket_rooms.length == 1 && socket_rooms[0].room == "0") {
-
           // wenn kein Raum (keine Wache) ausser '0' zurueckgeliefert wird, dann Einsatz direkt wieder loeschen weil keine Wachen dazu hinterlegt
           logger.log("warn", `Keine Wache für den Einsatz mit der ID ${waip_id} vorhanden! Einsatz wird gelöscht!`);
-          
+
           // FIXME db_einsatz_loeschen liefert die Anzahl der gelöschten Daten zurück, hier beachten
           sql.db_einsatz_loeschen(waip_id);
         } else {
-          // Einsatzdaten an alle beteiligten Wachen (Websocket-Raum) verteilen          
+          // Einsatzdaten an alle beteiligten Wachen (Websocket-Raum) verteilen
           for (const rooms of socket_rooms) {
             wachen_nr = rooms.room;
 
@@ -87,7 +89,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
             // an jeden Socket entsprechende Daten senden
             for (const socket of sockets) {
-
               // Prüfen ob für den Client die Anzeigezeit abgelaufen ist
               const reset_timestamp = await sql.db_client_get_alarm_anzeigbar(socket, einsatzdaten.id);
 
@@ -103,7 +104,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
                 resolve(true);
               }
             }
-          };
+          }
         }
       } catch (error) {
         reject(new Error(`Fehler beim Verteilen der Waip-Einsatzdaten ${waip_id} an Socket-Räume}. ` + error));
@@ -114,7 +115,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   const standby_verteilen_socket = (socket) => {
     return new Promise(async (resolve, reject) => {
       try {
-
         // die Einsatz-ID aus dem Websocket entfernen
         socket.data.waip_id = null;
 
@@ -132,16 +132,15 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   const rmld_verteilen_rooms = (obj_waip_uuid_with_rmld_uuid) => {
     return new Promise(async (resolve, reject) => {
       try {
-        // alle waip-uuids durchgehen und jeweils die Rückmeldungsdaten anhand der einzelnen UUIDs im Array ermitteln und senden        
+        // alle waip-uuids durchgehen und jeweils die Rückmeldungsdaten anhand der einzelnen UUIDs im Array ermitteln und senden
         for (const key in obj_waip_uuid_with_rmld_uuid) {
-
           waip_uuid = key;
-          
+
           // Einsatz-ID mittels Einsatz-UUID ermitteln
           const waip_id = await sql.db_einsatz_get_waipid_by_uuid(waip_uuid);
-          
+
           // anhand der waip_id die beteiligten Wachennummern / Socket-Räume in '/waip' zum Einsatz ermitteln
-          // BUG hier werden die Räume anhand der Waip-Id ermittelt, das ist nicht ganz passend, 
+          // BUG hier werden die Räume anhand der Waip-Id ermittelt, das ist nicht ganz passend,
           // einzelne Websockets können aber schon einen anderen Einsatz anzeigen
           const waip_rooms = await sql.db_einsatz_get_waip_rooms(waip_id);
 
@@ -154,7 +153,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
             // bestimmte Rückmeldungen passend pro Wache aus Datenbank laden
             const rmld_waip_arr = await sql.db_rmlds_get_for_wache(wachen_nr, waip_id, obj_waip_uuid_with_rmld_uuid[waip_uuid]);
-            
+
             // an jeden Socket entsprechende Daten senden
             for (const waip_socket of waip_sockets) {
               // wenn socket.data.waip_id dem aktuellen Einsatz entspricht
@@ -166,7 +165,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
                 logger.log("log", `Rückmeldungen an Socket ${waip_socket.id} nicht gesendet, weil dieser einen anderen oder keinen Einsatz anzeigt.`);
               }
             }
-          };
+          }
 
           // alle zum Einsatz zugehörigen Dashboard-Sockets ermitteln
           const dbrd_sockets = await io.of("/dbrd").in(waip_uuid.toString()).fetchSockets();
@@ -191,14 +190,12 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   const rmld_arr_verteilen_socket = (rmld_arr, socket) => {
     return new Promise(async (resolve, reject) => {
       try {
-
         // Prüfen ob Einsatz bei Socket noch angezeigt wird
         // TODO prüfen der ablaufzeit hinzufügen
         //const ablaufzeit = await sql.db_user_get_ablaufzeit(socket, einsatzdaten.id);
 
         // Rückmeldungen durchgehen und einzeln an Socket senden
         for (const rmld_data of rmld_arr) {
-
           // Berechtigungen für aufgerufenen Alarmmonitor überpruefen
           const permissions = await sql.db_user_check_permission_for_rmld(socket, rmld_data.wache_nr);
 
@@ -215,15 +212,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           logger.log("log", logMessage1);
           const logMessage2 = `Rückmeldung JSON: ${JSON.stringify(rmld_data)}`;
           logger.log("debug", logMessage2);
-
-        };
+        }
 
         resolve(true);
- 
       } catch (error) {
         logger.log("error", `Fehler beim Verteilen einer Rückmeldung für einen Client ${socket.id}. ` + error);
         resolve(false);
-      }      
+      }
     });
   };
 
@@ -240,9 +235,10 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           logger.log("log", logMessage);
           sql.db_client_update_status(socket, null);
         } else {
-          const valid = await sql.db_user_check_permission_for_waip(socket, einsatzdaten.id);
+          const permissions = await sql.db_user_check_permission_for_waip(socket, einsatzdaten.id);
+
           // Daten entfernen wenn kann authentifizierter Nutzer
-          if (!valid) {
+          if (!permissions) {
             delete einsatzdaten.einsatznummer;
             delete einsatzdaten.objekt;
             delete einsatzdaten.objektteil;
@@ -252,7 +248,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
             delete einsatzdaten.einsatzdetails;
             delete einsatzdaten.wgs84_x;
             delete einsatzdaten.wgs84_y;
+            // Flag setzen, dass Berechtigungen nicht ok sind
+            einsatzdaten.permissions = false;
+          } else {
+            // Flag setzen, dass Berechtigungen ok sind
+            einsatzdaten.permissions = true;
           }
+
           // Einsatz-ID dem Websocket zuweisen
           socket.data.waip_id = einsatzdaten.id;
           // Einsatzdaten senden
@@ -279,13 +281,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
     audio: {
       sampleRate: 44100,
       channels: 2,
-      bitrate: '128k'
+      bitrate: "128k",
     },
     fileExtensions: {
-      wav: '.wav',
-      mp3: '.mp3',
-      tmp: '_tmp.mp3'
-    }
+      wav: ".wav",
+      mp3: ".mp3",
+      tmp: "_tmp.mp3",
+    },
   };
 
   // Plattform-spezifische TTS-Implementierungen
@@ -303,17 +305,17 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           ffmpeg -nostats -hide_banner -loglevel 0 -y -i "concat:${mp3_bell}|${mp3_tmp}" -acodec copy ${mp3_tts};
           rm ${wav_tts};
           rm ${mp3_tmp};
-          `
+          `,
         ];
-        
+
         return new Promise((resolve, reject) => {
           const proc = require("child_process");
           const pwshell_childD = proc.spawn("powershell", pwshell_commands, { shell: true });
-          
+
           pwshell_childD.stderr.on("data", (data) => {
             reject(new Error(`Fehler beim Erstellen der TTS-Datei (win32): ${data}`));
           });
-          
+
           pwshell_childD.on("exit", (code) => {
             if (code === 0) {
               resolve();
@@ -321,10 +323,10 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
               reject(new Error(`Powershell-Prozess beendet mit Code ${code}`));
             }
           });
-          
+
           pwshell_childD.stdin.end();
         });
-      }
+      },
     },
     linux: {
       createTTS: async (tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell) => {
@@ -335,13 +337,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           ffmpeg -nostats -hide_banner -loglevel 0 -y -i ${wav_tts} -vn -ar ${TTS_CONFIG.audio.sampleRate} -ac ${TTS_CONFIG.audio.channels} -ab ${TTS_CONFIG.audio.bitrate} -f mp3 ${mp3_tmp}
           ffmpeg -nostats -hide_banner -loglevel 0 -y -i "concat:${mp3_bell}|${mp3_tmp}" -acodec copy ${mp3_tts}
           rm ${wav_tts}
-          rm ${mp3_tmp}`
+          rm ${mp3_tmp}`,
         ];
-        
+
         return new Promise((resolve, reject) => {
           const proc = require("child_process");
           const lxshell_childD = proc.spawn("/bin/sh", lxshell_commands, { shell: true });
-          
+
           lxshell_childD.on("exit", (code) => {
             if (code === 0) {
               resolve();
@@ -349,17 +351,26 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
               reject(new Error(`Linux TTS-Prozess beendet mit Code ${code}`));
             }
           });
-          
+
           lxshell_childD.stdin.end();
         });
-      }
-    }
+      },
+    },
   };
 
-  const tts_erstellen = async (app_cfg, einsatzdaten) => {
+  const tts_erstellen = async (app_cfg, einsatzdaten, wachen_nr) => {
     try {
-      // Einsatz-UUID als Dateinamen verwenden und unnötige Zeichen entfernen
-      const id = einsatzdaten.uuid.replace(/\W/g, "");
+      let full_half = "";
+      if (einsatzdaten.permissions) {
+        // Berechtigungen vorhanden, volle Einsatzdaten verwenden
+        full_half = "full";
+      } else {
+        // Berechtigungen nicht vorhanden, reduzierte Einsatzdaten verwenden
+        full_half = "half";
+      }
+
+      // Einsatz-UUID inkl. Wachennummer und Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
+      const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr +"_" + full_half;
       const soundPath = process.cwd() + app_cfg.global.soundpath;
       const mediaPath = app_cfg.global.mediapath;
 
@@ -375,19 +386,29 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       }
 
       // Alarmgong basierend auf Einsatzart wählen
-      const mp3_bell = soundPath + (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" 
-        ? "bell_long.mp3" 
-        : "bell_short.mp3");
+      const mp3_bell =
+        soundPath +
+        (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" ? "bell_long.mp3" : "bell_short.mp3");
 
       // Sprachansage Text erstellen
       let tts_text = `${einsatzdaten.einsatzart}, ${einsatzdaten.stichwort}. `;
-      tts_text += einsatzdaten.objekt 
-        ? `${einsatzdaten.objekt}, ${einsatzdaten.ort}, ${einsatzdaten.ortsteil}`
-        : `${einsatzdaten.ort}, ${einsatzdaten.ortsteil}`;
+      // Orts-/Objekt-Text zusammensetzen ohne 'null' oder leere Teile
+      const locParts = [];
+      if (einsatzdaten.objektteil) locParts.push(einsatzdaten.objektteil);
+      if (einsatzdaten.objekt) locParts.push(einsatzdaten.objekt);
+      if (einsatzdaten.ort) locParts.push(einsatzdaten.ort);
+      // Ortsteil nur anhängen, wenn vorhanden und nicht identisch zu Ort (case-insensitive)
+      if (
+        einsatzdaten.ortsteil &&
+        (!einsatzdaten.ort || einsatzdaten.ortsteil.toLowerCase() !== einsatzdaten.ort.toLowerCase())
+      ) {
+        locParts.push(einsatzdaten.ortsteil);
+      }
+      tts_text += locParts.join(", ");
 
       // Einsatzmittel TTS-Text verarbeiten
-      await Promise.all(einsatzdaten.em_alarmiert.map(em => sql.db_tts_einsatzmittel(em)));
-      const tts_text_em_alarmiert = einsatzdaten.em_alarmiert.map(em => em.tts_text).join(", ");
+      await Promise.all(einsatzdaten.em_alarmiert.map((em) => sql.db_tts_einsatzmittel(em)));
+      const tts_text_em_alarmiert = einsatzdaten.em_alarmiert.map((em) => em.tts_text).join(", ");
       tts_text += `. Für ${tts_text_em_alarmiert}`;
 
       // Sondersignal hinzufügen
@@ -405,7 +426,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
       await ttsImplementations[platform].createTTS(tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell);
       return mp3_url;
-
     } catch (error) {
       logger.log("error", `Fehler beim Erstellen der TTS-Datei: ${error.message}`);
       throw error;
@@ -420,62 +440,49 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
     // wenn alte Einsäzte vorhanden sind, dann aufräumen
     if (alte_einsaetze) {
       alte_einsaetze.forEach(async (waip) => {
-        
         // Aufräumen der alten Einsätze
         logger.log("log", `Einsatz mit der ID ${waip.id} ist veraltet. Datenbank wird aufgeräumt.`);
 
         // Alarmmonitore ermitteln an die ein Standby gesendet werden muss
         const rooms_to_standby = await sql.db_einsatz_get_waip_rooms(waip.id);
-        
+
         // Standby an die ermittelten Alarmmonitore senden
         if (rooms_to_standby) {
           rooms_to_standby.forEach(async (room_to_standby) => {
-
             // für jede Wache (room_to_standby.room) die verbundenen Sockets(Clients) ermitteln und Standby senden
             const room_sockets = await io.of("/waip").in(room_to_standby.room.toString()).fetchSockets();
-            
+
             // TODO hier wäre es besser, das standby an den Raum zu senden, nicht an jeden Socket
 
             for (const socket of room_sockets) {
               // Standby senden
               const same_id = await sql.db_client_check_waip_id(socket.id, waip.id);
-                if (same_id) {
-                  // Einsatz-ID aus dem Websocket entfernen
-                  socket.data.waip_id = null;
-                  // Standby senden
-                  standby_verteilen_socket(socket);
-                  // Audio stoppen
-                  socket.emit("io.stopaudio", null);
-                  logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet.`);
-                  sql.db_client_update_status(socket, null);
-                }
+              if (same_id) {
+                // Einsatz-ID aus dem Websocket entfernen
+                socket.data.waip_id = null;
+                // Standby senden
+                standby_verteilen_socket(socket);
+                // Audio stoppen
+                socket.emit("io.stopaudio", null);
+                logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet.`);
+                sql.db_client_update_status(socket, null);
+              }
             }
           });
         }
 
         // Dashboards trennen
-        //const dashboard_ids = sql.db_socket_get_dbrd(waip.id);
-
-        // TODO TEST: Dashboard-Trennen-Funktion testen
-        // if dashboard_ids is not {null} then do the
-        //if (dashboard_ids) {
-          //console.warn("dashboard_ids", dashboard_ids);
-          /*
-          dashboard_ids.forEach((row) => {
-            let socket = io.of("/dbrd").connected[row.socket_id];
-            if (typeof socket !== "undefined") {
-              socket.emit("io.deleted", null);
-              logger.log("log", `Dashboard mit dem Socket ${socket.id} wurde getrennt, Einsatz gelöscht.`);
-              sql.db_client_update_status(socket, null);
-            }
-          });*/
-        //}
+        // io.deletet an alle Socket senden die im Namespace /dbrd im Raum der alte_einsaetze.uuid sind
+        const dbrd_sockets = await io.of("/dbrd").in(waip.uuid.toString()).fetchSockets();
+        // io.deletet an dbrd_sockets senden
+        dbrd_sockets.forEach((socket) => {
+          socket.emit("io.deleted", null);
+          logger.log("log", `Dashboard mit dem Socket ${socket.id} wurde getrennt, Einsatz gelöscht.`);
+        });
 
         // Einsatz mit allen zugehörigen Daten löschen
         sql.db_einsatz_loeschen(waip.id);
         logger.log("log", `Einsatz-Daten zu Einsatz ${waip.id} gelöscht.`);
-
-
       });
     }
 
@@ -497,25 +504,23 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       }
     }
 
-    // loeschen alter Sounddaten nach alter (15min) und Socket-ID (nicht mehr verbunden)
-    fs.readdirSync(process.cwd() + app_cfg.global.soundpath).forEach(async (file) => {
-      // nur die mp3s von alten Clients loeschen, die nicht mehr verbunden sind
-      if (file.substring(0, 4) != "bell" && file.substring(file.length - 3) == "mp3" && file.substring(file.length - 8) != "_tmp.mp3") {
-        
-        // Socket-ID aus Datei-Namen extrahieren
-        socket_name = file.substring(0, file.length - 4);
-
-        // Socket-ID anpassen, damit die SQL-Abfrage ein Ergebnis liefert
-        const socketid = await sql.db_socket_get_by_id(socket_name);
-        if (!socketid) {
-          try {
-            // Datei loeschen
-            fs.unlinkSync(process.cwd() + app_cfg.global.soundpath + file);
-            logger.log("log", `Veraltete Sound-Datei ${file} wurde gelöscht.`);
-          } catch (error) {
-            logger.log("error", `Fehler beim löschen der Sound-Datei ${file} , Fehlermeldung: ${error}`);
+    // loeschen alter Sounddaten nach Alter
+    const retentionMinutes = app_cfg.global.time_to_delete_waip;
+    const retentionMs = retentionMinutes * 60 * 1000;
+    const nowTs = Date.now();
+    fs.readdirSync(process.cwd() + app_cfg.global.soundpath).forEach((file) => {
+      try {
+        if (file.endsWith(".mp3") && !file.endsWith("_tmp.mp3") && !file.startsWith("bell")) {
+          const fullPath = process.cwd() + app_cfg.global.soundpath + file;
+          const stats = fs.statSync(fullPath);
+          const age = nowTs - stats.mtimeMs;
+          if (age > retentionMs) {
+            fs.unlinkSync(fullPath);
+            logger.log("log", `Veraltete Sound-Datei ${file} (> ${retentionMinutes}min) wurde gelöscht.`);
           }
         }
+      } catch (error) {
+        logger.log("error", `Fehler beim Löschen einer Sound-Datei ${file}: ${error}`);
       }
     });
   };

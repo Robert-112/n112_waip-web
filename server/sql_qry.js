@@ -191,7 +191,7 @@ module.exports = (db, app_cfg) => {
           resolve(null);
         } else {
           // User-ID ermitteln
-          const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
+          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt2 = db.prepare(`
@@ -541,6 +541,7 @@ module.exports = (db, app_cfg) => {
         const stmt = db.prepare(`
           SELECT 
             we.uuid, we.einsatzart, we.stichwort, we.ort, we.ortsteil, we.geometry,
+            GROUP_CONCAT(DISTINCT wa.nr_leitstelle) l,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 3 )) a,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 5 )) b,
             GROUP_CONCAT(DISTINCT wa.nr_wache) c
@@ -570,6 +571,10 @@ module.exports = (db, app_cfg) => {
           SELECT CAST(w.nr_wache AS decimal) room FROM waip_wachen w
           WHERE w.nr_wache = 0
           UNION ALL
+          SELECT CAST(w.nr_leitstelle AS decimal) room FROM waip_wachen w
+          LEFT JOIN waip_einsatzmittel em ON em.em_station_name = w.name_wache
+          WHERE em.em_waip_einsaetze_id = ? GROUP BY w.nr_leitstelle
+          UNION ALL
           SELECT CAST(w.nr_kreis AS decimal) room FROM waip_wachen w
           LEFT JOIN waip_einsatzmittel em ON em.em_station_name = w.name_wache
           WHERE em.em_waip_einsaetze_id = ? GROUP BY w.nr_kreis
@@ -582,7 +587,7 @@ module.exports = (db, app_cfg) => {
           LEFT JOIN waip_einsatzmittel em ON em.em_station_name = w.name_wache
           WHERE em.em_waip_einsaetze_id = ? GROUP BY w.nr_wache;
         `);
-        const rows = stmt.all(waip_id, waip_id, waip_id);
+        const rows = stmt.all(waip_id, waip_id, waip_id, waip_id);
         if (rows.length === 0) {
           throw `Kein Socket-Room für Einsatz ${waip_id} gefunden!`;
         } else {
@@ -1025,27 +1030,35 @@ module.exports = (db, app_cfg) => {
           client_status = "Standby";
         }
 
+        // wenn socket.request.user undefined ist, dann erzeugen
+        if (socket.request.user === undefined) {
+          socket.request.user = {};
+        } 
+
         // Nutzername, falls bekannt
-        let user_name = socket.data.user.user;
+        let user_name = socket.request.user.user;
         if (user_name === undefined) {
           user_name = "Gast";
         }
 
         // Berechtigungen, falls bekannt
-        let user_permissions = socket.data.user.permissions;
+        let user_permissions = socket.request.user.permissions;
         if (user_permissions === undefined) {
           user_permissions = "keine";
         }
 
         // User-Agent
         let user_agent = socket.request.headers["user-agent"];
+        if (user_agent === undefined) {
+          user_agent = "unbekannt";
+        }
 
         // Reset-Zeitstempel in Abhängigkeit der Einstellungen ermitteln
         let reset_timestamp = null;
 
         if (client_status !== "Standby") {
           // User-ID ermitteln
-          const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
+          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt1 = db.prepare(`
@@ -1240,6 +1253,7 @@ module.exports = (db, app_cfg) => {
   };
 
   // Client-Eintrag per Socket-ID finden
+  // TODO Abfrage wird derzeit nicht gebraucht, ggf. loeschen
   const db_socket_get_by_id = (socket_id) => {
     return new Promise((resolve, reject) => {
       try {
@@ -1334,7 +1348,7 @@ module.exports = (db, app_cfg) => {
         // Anzeigezeit für einen Alarmmonitor ermitteln
         if (client_nsp === "/waip") {
           // User-ID aus Socket ermitteln
-          const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
+          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt1 = db.prepare(`
@@ -1399,8 +1413,9 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         // User-ID und Berechtigung aus Socket ermitteln
-        const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
-        const permissions = socket.data.user && socket.data.user.permissions ? socket.data.user.permissions : null;
+        console.warn(socket.request.user);
+        const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+        const permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
 
         // wenn keine user_id oder permissions übergeben wurden, dann false
         if (!user_id || !permissions) {
@@ -1412,9 +1427,9 @@ module.exports = (db, app_cfg) => {
         if (permissions == "admin") {
           resolve(true);
         } else {
-          // Berechtigungen aus DB abfragen -> 52,62,6690,....
+          // Berechtigungen aus DB abfragen -> 4,52,62,6690,....
           const stmt = db.prepare(`
-            SELECT GROUP_CONCAT(DISTINCT wa.nr_wache) wache FROM waip_einsatzmittel em
+            SELECT GROUP_CONCAT(DISTINCT wa.nr_wache) || ',' || GROUP_CONCAT(DISTINCT wa.nr_leitstelle) wache FROM waip_einsatzmittel em
             LEFT JOIN waip_wachen wa ON wa.id = em.em_station_id
             WHERE em_waip_einsaetze_id = ?;
           `);
@@ -1434,7 +1449,7 @@ module.exports = (db, app_cfg) => {
           }
         }
       } catch (error) {
-        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + socket.data.user + waip_id + error));
+        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + socket.request.user + waip_id + error));
       }
     });
   };
@@ -1444,8 +1459,8 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         // User-ID und Berechtigung aus Socket ermitteln
-        const user_id = socket.data.user && socket.data.user.id ? socket.data.user.id : null;
-        const permissions = socket.data.user && socket.data.user.permissions ? socket.data.user.permissions : null;
+        const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+        const permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
 
         // wenn keine user_id oder permissions übergeben wurden, dann false
         if (!user_id || !permissions) {
@@ -1460,6 +1475,23 @@ module.exports = (db, app_cfg) => {
           if (wache_nr === undefined) {
             resolve(false);
           } else {
+
+            // wenn in den Berechtigungen eine Leitstellen-nummer vorhanden ist (1-5) dann muss user.permission um die Nummern der Landkreise ergänzt werden
+            if (permissions.match(/^[1-5]$/)) {
+              // permission.match in variable speichern
+              const matched_permission = permissions.match(/^[1-5]$/)[0];
+
+              // Nummern der Kreise für Leitstelle aus DB laden, entsprechend der matched_permission
+              const stmt = db.prepare(`
+                SELECT GROUP_CONCAT(DISTINCT ww.nr_kreis) AS permission FROM waip_wachen ww
+                WHERE ww.nr_leitstelle = ?;
+              `);
+              const row = stmt.get(matched_permission);
+              if (row) {
+                permissions += "," + row.permission;
+              }
+            }
+
             // Berechtigungen mit Wache vergleichen, wenn gefunden, dann true, sonst false
             let permission_arr = permissions.split(",");
             const found = permission_arr.some((r) => wache_nr.toString().search(RegExp("," + r + "|\\b" + r)) >= 0);
@@ -1471,7 +1503,7 @@ module.exports = (db, app_cfg) => {
           }
         }
       } catch (error) {
-        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.data.user + wache_nr + error));
+        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.request.user + wache_nr + error));
       }
     });
   };
@@ -1923,14 +1955,25 @@ module.exports = (db, app_cfg) => {
   const auth_deleteUser = (user_id) => {
     return new Promise((resolve, reject) => {
       try {
-        const stmt = db.prepare(`
+        // Credentials loeschen
+        const stmt1 = db.prepare(`
+          DELETE FROM waip_user_credentials WHERE user_id = ?;
+        `);
+        stmt1.run(user_id);
+        // Config loeschen
+        const stmt2 = db.prepare(`
+          DELETE FROM waip_user_config WHERE user_id = ?;
+        `);
+        stmt2.run(user_id);
+        // Nutzer loeschen
+        const stmt3 = db.prepare(`
           DELETE FROM waip_user WHERE id = ?;
         `);
-        const row = stmt.run(user_id);
-        if (row === undefined) {
+        const info = stmt3.run(user_id);
+        if (info === undefined) {
           resolve(null);
         } else {
-          resolve(row);
+          resolve(info.changes);
         }
       } catch (error) {
         reject(new Error("Fehler bei auth_deleteUser. " + user_id + error));
@@ -2006,6 +2049,7 @@ module.exports = (db, app_cfg) => {
           nr_standort = ?,
           nr_abteilung = ?,
           name_beschreibung = ?,
+          name_erweiterung = ?,
           wgs84_x = ?,
           wgs84_y = ?
         WHERE id = ?;
@@ -2024,6 +2068,7 @@ module.exports = (db, app_cfg) => {
           wache.nr_standort,
           wache.nr_abteilung,
           wache.name_beschreibung,
+          wache.name_erweiterung,
           wache.wgs84_x,
           wache.wgs84_y,
           wache.id

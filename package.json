@@ -1,6 +1,6 @@
 {
   "name": "n112_waip-web",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Wachalarm-IP-Web",
   "repository": {
     "type": "git",
@@ -25,7 +25,6 @@
     "passport-local": "^1.0.0",
     "passport-trusted-header": "^1.1.0",
     "pug": "^3.0.3",
-    "req-flash": "0.0.3",
     "serve-favicon": "^2.5.1",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0"

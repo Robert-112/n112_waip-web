@@ -1,6 +1,5 @@
 module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   const session = require("express-session");
-  const flash = require("req-flash");
   const SQLiteStore = require("connect-sqlite3")(session);
   const LocalStrategy = require("passport-local").Strategy;
   const CertStrategy = require("passport-trusted-header").Strategy;
@@ -20,15 +19,17 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     store: sessionStore,
     key: "connect.sid",
     secret: app_cfg.global.sessionsecret,
-    resave: false,
+    //resave: true,
     saveUninitialized: true,
+    // rolling: true sorgt dafür, dass bei jeder Antwort das Ablaufdatum des Cookies erneuert wird,
+    // solange der Client aktiv bleibt.
+    rolling: true,
     cookie: {
       maxAge: app_cfg.global.session_cookie_max_age,
     },
   });
 
   app.use(sessionMiddleware);
-  app.use(flash());
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -54,7 +55,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         //res.end();
         next();
       }
-    }),
+    })
   );
 
   // Benutzerauthentifizierung per Login
@@ -73,7 +74,6 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
           if (!res) return done(null, false);
           // Benutzerdaten zurückgeben
           const userRow = await sql.auth_localstrategy_userid(user);
-          console.warn("Debug: User ID from local strategy:", userRow);
           return done(null, userRow);
         } catch (error) {
           logger.log("error", "Fehler bei der Benutzer-Authentifizierung: " + error);
@@ -97,11 +97,10 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
 
         // User anhand des CN (Common Name) aus der Datenbank holen
         let user_id = await sql.auth_certstrategy_userid(cn);
-        console.warn("Debug: User ID from cert strategy: ", user_id);
         if (user_id) {
           logger.log("debug", "Benutzer gefunden für CN: " + cn);
           return done(null, user_id);
-        } 
+        }
         logger.log("debug", "Kein Benutzer gefunden für CN: " + cn);
         // Kein Benutzer gefunden, Authentifizierung fehlgeschlagen
         return done(null, false);
@@ -198,77 +197,94 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
       const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
       const result = await sql.auth_create_new_user(req.body.username, hash, "", req.body.permissions, req.body.ip);
       if (result) {
-        req.flash("successMessage", "Neuer Benutzer wurde angelegt.");
-        res.redirect("/adm_edit_users");
+        return res.redirect(
+          "/adm_edit_users?success=" + encodeURIComponent("Neuer Benutzer wurde angelegt.")
+        );
       } else {
         throw new Error("Fehler beim Erstellen eines neuen Benutzers. " + req.body.username);
       }
     } catch (error) {
       logger.log("error", "Fehler beim Erstellen eines neuen Benutzers: " + error);
-      req.flash("errorMessage", "Fehler beim Erstellen eines neuen Benutzers. Bitte Log-Datei prüfen.");
-      res.redirect("/adm_edit_users");
+      return res.redirect(
+        "/adm_edit_users?error=" +
+          encodeURIComponent("Fehler beim Erstellen eines neuen Benutzers. Bitte Log-Datei prüfen.")
+      );
     }
   };
 
   const deleteUser = async (req, res) => {
     try {
       if (req.user.id == req.body.id) {
-        req.flash("errorMessage", "Sie können sich nicht selbst löschen!");
-        res.redirect("/adm_edit_users");
+        return res.redirect(
+          "/adm_edit_users?error=" + encodeURIComponent("Sie können sich nicht selbst löschen!")
+        );
       } else {
         const result = await sql.auth_deleteUser(req.body.id);
         if (result) {
-          req.flash("successMessage", "Benutzer '" + req.body.username + "' wurde gelöscht!");
-          res.redirect("/adm_edit_users");
+          return res.redirect(
+            "/adm_edit_users?success=" +
+              encodeURIComponent("Benutzer '" + req.body.username + "' wurde gelöscht!")
+          );
         } else {
           throw new Error("Fehler beim Löschen eines Benutzers. " + req.body.username);
         }
       }
     } catch (error) {
       logger.log("error", "Fehler beim Löschen eines Benutzers: " + error);
-      req.flash("errorMessage", "Fehler beim Löschen eines Benutzers. Bitte Log-Datei prüfen.");
-      res.redirect("/adm_edit_users");
+      return res.redirect(
+        "/adm_edit_users?error=" +
+          encodeURIComponent("Fehler beim Löschen eines Benutzers. Bitte Log-Datei prüfen.")
+      );
     }
   };
 
   const editUser = async (req, res) => {
     try {
-      req.runquery = false;
-      req.query = "UPDATE waip_user SET ";
+      let runquery = false;
+      let query = "UPDATE waip_user SET ";
+      let messages = [];
 
-      if (req.body.password.length == 0) {
-        req.flash("successMessage", "Passwort wurde nicht geändert.");
-      } else {
+      if (req.body.password && req.body.password.length > 0) {
         const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
-        req.flash("successMessage", "Passwort geändert.");
-        req.query += "password = '" + hash + "', ";
-        req.runquery = true;
+        messages.push("Passwort geändert.");
+        query += "password = '" + hash + "', ";
+        runquery = true;
       }
 
       if (req.user.id == req.body.modal_id && req.body.permissions != "admin") {
-        req.flash("errorMessage", "Sie können Ihr Recht als Administrator nicht selbst ändern!");
+        return res.redirect(
+          "/adm_edit_users?error=" +
+            encodeURIComponent("Sie können Ihr Recht als Administrator nicht selbst ändern!")
+        );
       } else {
-        req.query += "permissions = '" + req.body.permissions + "', ip_address ='" + req.body.ip + "'";
-        req.runquery = true;
+        query += "permissions = '" + req.body.permissions + "', ip_address ='" + req.body.ip + "'";
+        runquery = true;
       }
 
-      if (req.runquery == true) {
-        req.query += " WHERE id = " + req.body.modal_id;
-        logger.log("debug", "Edit User Query: " + req.query);
-        const result = await sql.auth_editUser(req.query);
+      if (runquery) {
+        query += " WHERE id = " + req.body.modal_id;
+        logger.log("debug", "Edit User Query: " + query);
+        const result = await sql.auth_editUser(query);
         if (result) {
-          req.flash("successMessage", "Benutzer aktualisiert.");
-          res.redirect("/adm_edit_users");
+          const successMsg = messages.concat(["Benutzer aktualisiert."]).join(" ");
+          return res.redirect(
+            "/adm_edit_users?success=" + encodeURIComponent(successMsg)
+          );
         } else {
           throw new Error("Fehler beim Ändern eines Benutzers.");
         }
       } else {
-        throw new Error("Fehler beim Ändern eines Benutzers.");
+        return res.redirect(
+          "/adm_edit_users?error=" +
+            encodeURIComponent("Fehler beim Ändern eines Benutzers.")
+        );
       }
     } catch (error) {
       logger.log("error", "Fehler beim Ändern eines Benutzers: " + error);
-      req.flash("errorMessage", "Fehler beim Ändern eines Benutzers. Bitte Log-Datei prüfen.");
-      res.redirect("/adm_edit_users");
+      return res.redirect(
+        "/adm_edit_users?error=" +
+          encodeURIComponent("Fehler beim Ändern eines Benutzers. Bitte Log-Datei prüfen.")
+      );
     }
   };
 
