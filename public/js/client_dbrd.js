@@ -61,14 +61,14 @@ var map = L.map("map", {
 var FullscreenControl = L.Control.extend({
   options: { position: "bottomright" },
   onAdd: function () {
-    var container = L.DomUtil.create('div', 'leaflet-bar');
-    var btn = L.DomUtil.create('button', 'btn btn-dark', container);
-    btn.type = 'button';
+    var container = L.DomUtil.create("div", "leaflet-bar");
+    var btn = L.DomUtil.create("button", "btn btn-dark", container);
+    btn.type = "button";
     btn.innerHTML = '<span class="ion-md-expand"></span>';
-    btn.title = 'Karte vergrößern';
-    L.DomEvent.on(btn, 'click', function (e) {
+    btn.title = "Karte vergrößern";
+    L.DomEvent.on(btn, "click", function (e) {
       L.DomEvent.stopPropagation(e);
-      $('#mapModal').modal('show');
+      $("#mapModal").modal("show");
       setTimeout(initFullscreenMap, 300);
     });
     return container;
@@ -280,25 +280,48 @@ function ensure_station_rmld_summary(stationId) {
   var rmldSummary = document.createElement("div");
   rmldSummary.className = "rmld-summary mt-2";
   rmldSummary.id = "rmld-summary-" + stationId;
-  rmldSummary.innerHTML = '' +
-    '<div class="d-flex flex-wrap align-items-start small px-1" id="rmld-counters-' + stationId + '">' +
-      '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center">' +
-        '<span class="mr-1">Gesamt</span><span class="badge badge-primary" id="rmld-total-' + stationId + '">0</span>' +
-      '</div>' +
-      '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center flex-wrap">' +
-        '<span class="text-success mr-1">EK</span><span class="badge badge-success mr-2" id="rmld-ek-' + stationId + '">0</span>' +
-        '<span class="text-info mr-1">GF</span><span class="badge badge-info mr-2" id="rmld-gf-' + stationId + '">0</span>' +
-        '<span class="text-light mr-1">ZF</span><span class="badge badge-light text-dark mr-2" id="rmld-zf-' + stationId + '">0</span>' +
-        '<span class="text-danger mr-1">VF</span><span class="badge badge-danger" id="rmld-vf-' + stationId + '">0</span>' +
-      '</div>' +
-      '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center flex-wrap">' +
-        '<span class="text-warning mr-1">AGT</span><span class="badge badge-warning mr-2" id="rmld-agt-' + stationId + '">0</span>' +
-        '<span class="text-muted mr-1">MA</span><span class="badge badge-primary mr-2" id="rmld-ma-' + stationId + '">0</span>' +
-        '<span class="text-muted mr-1">FZF</span><span class="badge badge-primary mr-2" id="rmld-fzf-' + stationId + '">0</span>' +
-        '<span class="text-muted mr-1">MED</span><span class="badge badge-primary" id="rmld-med-' + stationId + '">0</span>' +
-      '</div>' +
-    '</div>' +
-    '<div class="row no-gutters mt-1" id="rmld-bars-' + stationId + '"></div>';
+  rmldSummary.innerHTML =
+    "" +
+    '<div class="d-flex flex-wrap align-items-start small px-1" id="rmld-counters-' +
+    stationId +
+    '">' +
+    '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center">' +
+    '<span class="mr-1">Gesamt</span><span class="badge badge-primary" id="rmld-total-' +
+    stationId +
+    '">0</span>' +
+    "</div>" +
+    '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center flex-wrap">' +
+    '<span class="text-success mr-1">EK</span><span class="badge badge-success mr-2" id="rmld-ek-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-info mr-1">GF</span><span class="badge badge-info mr-2" id="rmld-gf-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-light mr-1">ZF</span><span class="badge badge-light text-dark mr-2" id="rmld-zf-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-danger mr-1">VF</span><span class="badge badge-danger" id="rmld-vf-' +
+    stationId +
+    '">0</span>' +
+    "</div>" +
+    '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center flex-wrap">' +
+    '<span class="text-warning mr-1">AGT</span><span class="badge badge-warning mr-2" id="rmld-agt-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-muted mr-1">MA</span><span class="badge badge-primary mr-2" id="rmld-ma-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-muted mr-1">FZF</span><span class="badge badge-primary mr-2" id="rmld-fzf-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-muted mr-1">MED</span><span class="badge badge-primary" id="rmld-med-' +
+    stationId +
+    '">0</span>' +
+    "</div>" +
+    "</div>" +
+    '<div class="row no-gutters mt-1" id="rmld-bars-' +
+    stationId +
+    '"></div>';
   td.appendChild(rmldSummary);
 }
 function update_station_counts(stationId) {
@@ -431,17 +454,19 @@ socket.on("connect", function () {
 
 socket.on("connect_error", function (err) {
   $("#waipModalTitle").text("FEHLER");
-  $("#waipModalBody").tex("Verbindung zum Server getrennt!");
+  $("#waipModalBody").text("Verbindung zum Server getrennt!");
   $("#waipModal").modal("show");
 });
 
 // ID von Server und Client vergleichen, falls ungleich -> Seite neu laden
 socket.on("io.version", function (server_id) {
+  console.log("Version", server_id);
+  console.log("Client", client_id);
   if (client_id != server_id) {
     $("#waipModal").modal("hide");
     setTimeout(function () {
       $("#waipModalTitle").html("ACHTUNG");
-      $("#waipModalBody").html("Neue Server-Version. Seite wird in 10 Sekunden neu geladen!");
+      $("#waipModalBody").html("Neue Server-Version. Seite wird gleich automatisch neu geladen!");
       $("#waipModal").modal("show");
       setTimeout(function () {
         location.reload();
@@ -456,18 +481,18 @@ socket.on("io.error", function (data) {
 });
 
 // Daten löschen, Uhr anzeigen
-socket.on("io.deleted", function (data) {
+socket.on("io.deleted", function () {
   console.log("del");
   // Einsatz nicht mehr vorhanden
   $("#waipModal").modal("hide");
   setTimeout(function () {
     $("#waipModalTitle").html("ACHTUNG");
-    $("#waipModalBody").html(`Der aufgerufene Einsatz wurde gel&ouml;scht und ist in diesem System nicht mehr verfügbar.<br>
-    Sie werden in einer Minute auf die Startseite zurückgeleitet.`);
+    $("#waipModalBody").html(`Der aufgerufene Einsatz wurde gel&ouml;scht und ist nicht mehr verfügbar.<br>
+    Sie werden in gleich zur Startseite zurückgeleitet.`);
     $("#waipModal").modal("show");
     setTimeout(function () {
       window.location.href = window.location.origin;
-    }, 60000);
+    }, Math.floor(Math.random() * (15000 - 1000 + 1)) + 1000);
   }, 1000);
 });
 

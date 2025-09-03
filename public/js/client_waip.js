@@ -52,7 +52,10 @@ let waipAudio = document.getElementById("audio");
 // Flag für laufendes TTS
 let ttsActive = false;
 let lastTTSSrc = null;
-let audioBlockedAttribution = null;
+// Toast-Referenz für blockierte Audio-Wiedergabe
+let audioBlockedToast = null;
+// Flag ob Browser (noch) Autoplay blockiert
+let audioBlocked = false;
 
 // Autoplay-Blockade anzeigen (Blinken des Volume-Off Icons)
 function indicateAudioBlocked() {
@@ -63,20 +66,10 @@ function indicateAudioBlocked() {
       icon.classList.remove("ion-md-volume-high");
       icon.classList.add("ion-md-volume-off");
     }
-    if (!document.getElementById("audio-blocked-style")) {
-      const style = document.createElement("style");
-      style.id = "audio-blocked-style";
-      style.textContent = ".blink-audio{animation:blink-audio 1s linear infinite}@keyframes blink-audio{0%,50%{opacity:1}25%,75%{opacity:.2}}";
-      document.head.appendChild(style);
-    }
+    // Blinken hinzufuegen und anzeigen
     icon.classList.add("blink-audio");
-    // Attribution für blockierte Tonausgabe hinzufügen
-    if (!audioBlockedAttribution) {
-      audioBlockedAttribution = L.control.attribution({ position: "bottomleft", prefix: "" });
-      audioBlockedAttribution.addAttribution("Tonausgabe vom Browser blockiert");
-      audioBlockedAttribution.addTo(map);
-      console.log("Audio blocked, attribution added to map.");
-    }
+  audioBlocked = true; // Blockade markieren
+    showAudioBlockedToast();
   } catch (e) {
     console.log("indicateAudioBlocked error", e);
   }
@@ -101,12 +94,74 @@ function resetAudioUi() {
   if (tmp_element && tmp_element.classList.contains("btn-danger")) {
     tmp_element.classList.remove("btn-danger");
   }
-  // Attribution für blockierte Tonausgabe entfernen
-  if (audioBlockedAttribution) {
-    try {
-      audioBlockedAttribution.remove();
-    } catch (e) {}
-    audioBlockedAttribution = null;
+  // Toast nur entfernen, wenn Autoplay NICHT mehr blockiert ist
+  if (!audioBlocked) {
+    removeAudioBlockedToast();
+  }
+}
+
+// Toast erstellen – erscheint oben links über der Karte
+function tryActivate(evt) {
+  try {
+    if (evt) evt.stopPropagation();
+    // Falls Audio schon läuft einfach Toast schließen
+    if (!waipAudio.paused) {
+      removeAudioBlockedToast();
+      return;
+    }
+    const p = waipAudio.play();
+    if (p && typeof p.then === 'function') {
+      p.then(() => {
+        audioBlocked = false; // Erfolg -> Blockade aufgehoben
+        removeAudioBlockedToast();
+      }).catch(err => {
+        console.log('tryActivate play blocked', err);
+        audioBlocked = true;
+      });
+    } else {
+      // Ältere Browser ohne Promise
+      audioBlocked = false; // wird als Erfolg gewertet
+      removeAudioBlockedToast();
+    }
+  } catch (e) {
+    console.log('tryActivate error', e);
+    audioBlocked = true;
+  }
+}
+
+function showAudioBlockedToast() {
+  try {
+    const container = document.getElementById('audio-toast-container');
+    const toast = document.getElementById('audio-blocked-toast');
+    if (!container || !toast) return;
+    if (!audioBlockedToast) {
+      toast.addEventListener('click', tryActivate);
+      const closeBtn = toast.querySelector('.close');
+      if (closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeAudioBlockedToast(); });
+      document.addEventListener('keydown', tryActivate, { once: true });
+  // Globaler einmaliger Klick irgendwo auf die Seite startet ebenfalls Audio
+  document.addEventListener('click', tryActivate, { once: true });
+    }
+    // Sichtbar machen
+    container.classList.remove('d-none');
+    toast.classList.add('show');
+    // Icon blinken lassen
+    const iconInToast = toast.querySelector('.ion-md-volume-off');
+    if (iconInToast) iconInToast.classList.add('blink-audio');
+    audioBlockedToast = toast;
+  } catch (e) {
+    console.log('showAudioBlockedToast error', e);
+  }
+}
+
+// Toast entfernen
+function removeAudioBlockedToast() {
+  if (audioBlockedToast) {
+  const container = document.getElementById('audio-toast-container');
+  if (container) container.classList.add('d-none');
+  audioBlockedToast.classList.remove('show');
+  audioBlockedToast = null;
+  audioBlocked = false; // Beim expliziten Entfernen Flag zurücksetzen
   }
 }
 
@@ -116,7 +171,7 @@ waipAudio.addEventListener("ended", function () {
   // TTS-Flag zurücksetzen
   if (lastTTSSrc && waipAudio.src.indexOf("bell_message.mp3") === -1) {
     ttsActive = false;
-    lastTTSSrc = null;
+    //lastTTSSrc = null;
   }
 });
 
@@ -127,7 +182,7 @@ waipAudio.addEventListener("pause", function () {
     resetAudioUi();
     if (ttsActive) {
       ttsActive = false;
-      lastTTSSrc = null;
+      //lastTTSSrc = null;
     }
   }
 });
@@ -137,6 +192,7 @@ waipAudio.addEventListener("play", function () {
   // Beim erfolgreichen Start Blinken entfernen
   const blinkIcon = document.querySelector(".blink-audio");
   if (blinkIcon) blinkIcon.classList.remove("blink-audio");
+  audioBlocked = false; // Wiedergabe läuft
   // Pause-Symbol in Play-Symbol
   tmp_element = document.querySelector(".ion-md-play-circle");
   if (tmp_element && tmp_element.classList.contains("ion-md-play-circle")) {
@@ -154,13 +210,8 @@ waipAudio.addEventListener("play", function () {
   if (tmp_element && tmp_element.classList.contains("btn-danger")) {
     tmp_element.classList.remove("btn-danger");
   }
-  // Attribution für blockierte Tonausgabe entfernen
-  if (audioBlockedAttribution) {
-    try {
-      audioBlockedAttribution.remove();
-    } catch (e) {}
-    audioBlockedAttribution = null;
-  }
+  // Toast für blockierte Tonausgabe entfernen
+  removeAudioBlockedToast();
 });
 
 // Play/Pause Steuerung: Button mit ID #playpause oder direkt Icon mit Klasse .ion-md-pause
@@ -179,6 +230,7 @@ $(document).on("click", "#playpause, .ion-md-pause", function (e) {
 
 $("#replay").on("click", function (event) {
   waipAudio.currentTime = 0;
+  audio.src = lastTTSSrc; // letztes TTS erneut setzen
   waipAudio.play();
 });
 
@@ -717,17 +769,42 @@ socket.on("io.new_waip", function (data) {
   map.removeLayer(geojson);
   // Zoomsstufe bei 4K anpassen
   let initialZoom = window.innerWidth >= 3840 && window.innerHeight >= 2160 ? 16 : 14;
-  // Karte setzen
+  // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
   if (data.wgs84_x && data.wgs84_y) {
-    marker = L.marker(new L.LatLng(data.wgs84_x, data.wgs84_y), {
-      icon: redIcon,
-    }).addTo(map);
-    map.setView(new L.LatLng(data.wgs84_x, data.wgs84_y), initialZoom);
+    const lat = data.wgs84_x; // Quellcode nutzt wgs84_x als Breitengrad (?) – falls vertauscht ggf. anpassen
+    const lng = data.wgs84_y;
+    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(map);
+    try {
+      // Erzeuge Bounds um den Einzelpunkt und erweitere ihn um Faktor (Leaflet pad) für Kontext
+      let ptBounds = L.latLngBounds([lat, lng], [lat, lng]);
+      // 15% Puffer in alle Richtungen
+      ptBounds = ptBounds.pad(0.15);
+      const basePad = Math.min(window.innerWidth, window.innerHeight);
+      const pad = Math.max(30, Math.min(120, Math.round(basePad * 0.05)));
+      map.fitBounds(ptBounds, { padding: [pad, pad], maxZoom: initialZoom });
+    } catch (e) {
+      console.warn('fitBounds für Einzelpunkt fehlgeschlagen, fallback setView', e);
+      map.setView(new L.LatLng(lat, lng), initialZoom);
+    }
   } else {
-    geojson = L.geoJSON(JSON.parse(data.geometry));
-    geojson.addTo(map);
-    map.fitBounds(geojson.getBounds());
-    map.setZoom(initialZoom);
+    try {
+      const gjData = JSON.parse(data.geometry);
+      geojson = L.geoJSON(gjData).addTo(map);
+      const gjBounds = geojson.getBounds();
+      if (gjBounds.isValid()) {
+        // Dynamisches Padding (5% der kleineren Fensterkante, minimum 30px, maximum 120px)
+        const basePad = Math.min(window.innerWidth, window.innerHeight);
+        const pad = Math.max(30, Math.min(120, Math.round(basePad * 0.05)));
+        // fitBounds mit zusätzlichem Rand und Begrenzung der maximalen Vergrößerung
+        map.fitBounds(gjBounds, { padding: [pad, pad], maxZoom: initialZoom });
+      } else {
+        // Fallback: Nur Mittelpunkt setzen
+        const center = gjBounds.getCenter();
+        map.setView(center, initialZoom);
+      }
+    } catch (e) {
+      console.error('GeoJSON Parsing/Rendering Fehler', e);
+    }
   }
 
   // Ablaufzeit setzen

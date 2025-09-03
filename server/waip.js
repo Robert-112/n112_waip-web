@@ -472,22 +472,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
         }
 
         // Dashboards trennen
-        //const dashboard_ids = sql.db_socket_get_dbrd(waip.id);
-
-        // TODO TEST: Dashboard-Trennen-Funktion testen
-        // if dashboard_ids is not {null} then do the
-        //if (dashboard_ids) {
-        //console.warn("dashboard_ids", dashboard_ids);
-        /*
-          dashboard_ids.forEach((row) => {
-            let socket = io.of("/dbrd").connected[row.socket_id];
-            if (typeof socket !== "undefined") {
-              socket.emit("io.deleted", null);
-              logger.log("log", `Dashboard mit dem Socket ${socket.id} wurde getrennt, Einsatz gelöscht.`);
-              sql.db_client_update_status(socket, null);
-            }
-          });*/
-        //}
+        // io.deletet an alle Socket senden die im Namespace /dbrd im Raum der alte_einsaetze.uuid sind
+        const dbrd_sockets = await io.of("/dbrd").in(waip.uuid.toString()).fetchSockets();
+        // io.deletet an dbrd_sockets senden
+        dbrd_sockets.forEach((socket) => {
+          socket.emit("io.deleted", null);
+          logger.log("log", `Dashboard mit dem Socket ${socket.id} wurde getrennt, Einsatz gelöscht.`);
+        });
 
         // Einsatz mit allen zugehörigen Daten löschen
         sql.db_einsatz_loeschen(waip.id);

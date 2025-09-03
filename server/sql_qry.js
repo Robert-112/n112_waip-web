@@ -541,6 +541,7 @@ module.exports = (db, app_cfg) => {
         const stmt = db.prepare(`
           SELECT 
             we.uuid, we.einsatzart, we.stichwort, we.ort, we.ortsteil, we.geometry,
+            GROUP_CONCAT(DISTINCT wa.nr_leitstelle) l,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 3 )) a,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 5 )) b,
             GROUP_CONCAT(DISTINCT wa.nr_wache) c
@@ -1474,6 +1475,23 @@ module.exports = (db, app_cfg) => {
           if (wache_nr === undefined) {
             resolve(false);
           } else {
+
+            // wenn in den Berechtigungen eine Leitstellen-nummer vorhanden ist (1-5) dann muss user.permission um die Nummern der Landkreise ergänzt werden
+            if (permissions.match(/^[1-5]$/)) {
+              // permission.match in variable speichern
+              const matched_permission = permissions.match(/^[1-5]$/)[0];
+
+              // Nummern der Kreise für Leitstelle aus DB laden, entsprechend der matched_permission
+              const stmt = db.prepare(`
+                SELECT GROUP_CONCAT(DISTINCT ww.nr_kreis) AS permission FROM waip_wachen ww
+                WHERE ww.nr_leitstelle = ?;
+              `);
+              const row = stmt.get(matched_permission);
+              if (row) {
+                permissions += "," + row.permission;
+              }
+            }
+
             // Berechtigungen mit Wache vergleichen, wenn gefunden, dann true, sonst false
             let permission_arr = permissions.split(",");
             const found = permission_arr.some((r) => wache_nr.toString().search(RegExp("," + r + "|\\b" + r)) >= 0);
