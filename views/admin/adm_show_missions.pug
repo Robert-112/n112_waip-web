@@ -11,19 +11,23 @@ block content
             if dataSet && dataSet.length > 0
               each val in dataSet
                 li= val.einsatzart + ', ' + val.stichwort + ', ' + val.ort + ' ' + val.ortsteil 
-                a(href="/dbrd/" + val.uuid)= val.uuid
+                a(href="/dbrd/" + val.uuid)= "Dashboard: " + val.uuid
                   ul
                     if val.a
-                      each val_a in (val.a).split(",")
+                      each val_l in (val.l).split(",")
                         li
-                          a(href="/waip/" + val_a)= val_a
+                          a(href="/waip/" + val_l)= "Leitstelle: " + val_l
                           ul
-                            each val_b in (val.b).split(",")
-                              if val_b.includes(val_a)
-                                li
-                                  a(href="/waip/" + val_b)= val_b
-                                  ul
-                                    each val_c in (val.c).split(",")
-                                      if val_c.includes(val_b)
-                                        li
-                                          a(href="/waip/" + val_c)= val_c
+                            each val_a in (val.a).split(",")
+                              li
+                                a(href="/waip/" + val_a)= "Landkreis: " + val_a
+                                ul
+                                  each val_b in (val.b).split(",")
+                                    if val_b.includes(val_a)
+                                      li
+                                        a(href="/waip/" + val_b)= "Traeger: " + val_b
+                                        ul
+                                          each val_c in (val.c).split(",")
+                                            if val_c.includes(val_b)
+                                              li
+                                                a(href="/waip/" + val_c)= "Wache: " + val_c

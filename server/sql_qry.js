@@ -2049,6 +2049,7 @@ module.exports = (db, app_cfg) => {
           nr_standort = ?,
           nr_abteilung = ?,
           name_beschreibung = ?,
+          name_erweiterung = ?,
           wgs84_x = ?,
           wgs84_y = ?
         WHERE id = ?;
@@ -2067,6 +2068,7 @@ module.exports = (db, app_cfg) => {
           wache.nr_standort,
           wache.nr_abteilung,
           wache.name_beschreibung,
+          wache.name_erweiterung,
           wache.wgs84_x,
           wache.wgs84_y,
           wache.id
