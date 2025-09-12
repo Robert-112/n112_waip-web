@@ -568,26 +568,36 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
+          -- Global
           SELECT CAST(w.nr_wache AS decimal) room FROM waip_wachen w
           WHERE w.nr_wache = 0
           UNION ALL
+          -- Leitstellen
           SELECT CAST(w.nr_leitstelle AS decimal) room FROM waip_wachen w
           LEFT JOIN waip_einsatzmittel em ON em.em_station_name = w.name_wache
           WHERE em.em_waip_einsaetze_id = ? GROUP BY w.nr_leitstelle
           UNION ALL
+          -- Kreise
           SELECT CAST(w.nr_kreis AS decimal) room FROM waip_wachen w
           LEFT JOIN waip_einsatzmittel em ON em.em_station_name = w.name_wache
           WHERE em.em_waip_einsaetze_id = ? GROUP BY w.nr_kreis
           UNION ALL
+          -- Traeger
           SELECT CAST(w.nr_kreis || w.nr_traeger AS decimal) room FROM waip_wachen w
           LEFT JOIN waip_einsatzmittel em ON em.em_station_name = w.name_wache
           WHERE em.em_waip_einsaetze_id = ? GROUP BY w.nr_kreis || w.nr_traeger
           UNION ALL
+          -- Wachen
           SELECT CAST(w.nr_wache AS decimal) room FROM waip_wachen w
           LEFT JOIN waip_einsatzmittel em ON em.em_station_name = w.name_wache
-          WHERE em.em_waip_einsaetze_id = ? GROUP BY w.nr_wache;
+          WHERE em.em_waip_einsaetze_id = ? GROUP BY w.nr_wache
+          UNION ALL
+          -- Wachen-Alias-Nummern
+          SELECT CAST(rp_output AS decimal) room FROM waip_replace
+          LEFT JOIN waip_einsatzmittel em ON em.em_station_name = rp_input
+          WHERE em.em_waip_einsaetze_id = ? AND rp_typ = 'station_alias' GROUP BY rp_output;
         `);
-        const rows = stmt.all(waip_id, waip_id, waip_id, waip_id);
+        const rows = stmt.all(waip_id, waip_id, waip_id, waip_id, waip_id);
         if (rows.length === 0) {
           throw `Kein Socket-Room für Einsatz ${waip_id} gefunden!`;
         } else {
