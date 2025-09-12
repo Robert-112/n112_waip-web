@@ -352,7 +352,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       if (wache) {
         res.render("waip", {
           public: app_cfg.public,
-          title: "Alarmmonitor",
+          title: "Alarmmonitor - " + wache.name,
           wachen_id: parameter_id,
           data_wache: wache.name,
           map_service: app_cfg.public.map_service,
