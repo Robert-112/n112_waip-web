@@ -60,6 +60,10 @@ let audioBlocked = false;
 // Autoplay-Blockade anzeigen (Blinken des Volume-Off Icons)
 function indicateAudioBlocked() {
   try {
+    // Wenn Sound explizit deaktiviert wurde (Query-Parameter ?sound=off -> sound_off=true), dann keine Prüfung / UI-Anzeige
+    if (typeof sound_off !== "undefined" && sound_off === true) {
+      return; // still bleiben
+    }
     let icon = document.querySelector(".ion-md-volume-off") || document.querySelector(".ion-md-volume-high");
     if (!icon) return;
     if (icon.classList.contains("ion-md-volume-high")) {
@@ -68,7 +72,7 @@ function indicateAudioBlocked() {
     }
     // Blinken hinzufuegen und anzeigen
     icon.classList.add("blink-audio");
-  audioBlocked = true; // Blockade markieren
+    audioBlocked = true; // Blockade markieren
     showAudioBlockedToast();
   } catch (e) {
     console.log("indicateAudioBlocked error", e);
@@ -110,12 +114,12 @@ function tryActivate(evt) {
       return;
     }
     const p = waipAudio.play();
-    if (p && typeof p.then === 'function') {
+    if (p && typeof p.then === "function") {
       p.then(() => {
         audioBlocked = false; // Erfolg -> Blockade aufgehoben
         removeAudioBlockedToast();
-      }).catch(err => {
-        console.log('tryActivate play blocked', err);
+      }).catch((err) => {
+        console.log("tryActivate play blocked", err);
         audioBlocked = true;
       });
     } else {
@@ -124,44 +128,48 @@ function tryActivate(evt) {
       removeAudioBlockedToast();
     }
   } catch (e) {
-    console.log('tryActivate error', e);
+    console.log("tryActivate error", e);
     audioBlocked = true;
   }
 }
 
 function showAudioBlockedToast() {
   try {
-    const container = document.getElementById('audio-toast-container');
-    const toast = document.getElementById('audio-blocked-toast');
+    const container = document.getElementById("audio-toast-container");
+    const toast = document.getElementById("audio-blocked-toast");
     if (!container || !toast) return;
     if (!audioBlockedToast) {
-      toast.addEventListener('click', tryActivate);
-      const closeBtn = toast.querySelector('.close');
-      if (closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeAudioBlockedToast(); });
-      document.addEventListener('keydown', tryActivate, { once: true });
-  // Globaler einmaliger Klick irgendwo auf die Seite startet ebenfalls Audio
-  document.addEventListener('click', tryActivate, { once: true });
+      toast.addEventListener("click", tryActivate);
+      const closeBtn = toast.querySelector(".close");
+      if (closeBtn)
+        closeBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          removeAudioBlockedToast();
+        });
+      document.addEventListener("keydown", tryActivate, { once: true });
+      // Globaler einmaliger Klick irgendwo auf die Seite startet ebenfalls Audio
+      document.addEventListener("click", tryActivate, { once: true });
     }
     // Sichtbar machen
-    container.classList.remove('d-none');
-    toast.classList.add('show');
+    container.classList.remove("d-none");
+    toast.classList.add("show");
     // Icon blinken lassen
-    const iconInToast = toast.querySelector('.ion-md-volume-off');
-    if (iconInToast) iconInToast.classList.add('blink-audio');
+    const iconInToast = toast.querySelector(".ion-md-volume-off");
+    if (iconInToast) iconInToast.classList.add("blink-audio");
     audioBlockedToast = toast;
   } catch (e) {
-    console.log('showAudioBlockedToast error', e);
+    console.log("showAudioBlockedToast error", e);
   }
 }
 
 // Toast entfernen
 function removeAudioBlockedToast() {
   if (audioBlockedToast) {
-  const container = document.getElementById('audio-toast-container');
-  if (container) container.classList.add('d-none');
-  audioBlockedToast.classList.remove('show');
-  audioBlockedToast = null;
-  audioBlocked = false; // Beim expliziten Entfernen Flag zurücksetzen
+    const container = document.getElementById("audio-toast-container");
+    if (container) container.classList.add("d-none");
+    audioBlockedToast.classList.remove("show");
+    audioBlockedToast = null;
+    audioBlocked = false; // Beim expliziten Entfernen Flag zurücksetzen
   }
 }
 
@@ -647,7 +655,7 @@ socket.on("io.new_waip", function (data) {
   }
   // Objekt anfuegen
   if (data.objekt) {
-    small_ortsdaten = small_ortsdaten + break_text_25(data.objekt);    
+    small_ortsdaten = small_ortsdaten + break_text_25(data.objekt);
     // ggf. weitere Einsatzdetails an Objekt anfügen, wenn Brand- oder Hilfeleistungseinsatz
     if (data.einsatzdetails && (data.einsatzart === "Brandeinsatz" || data.einsatzart === "Hilfeleistungseinsatz")) {
       small_ortsdaten = small_ortsdaten + " (" + data.einsatzdetails + ") ";
@@ -783,7 +791,7 @@ socket.on("io.new_waip", function (data) {
       const pad = Math.max(30, Math.min(120, Math.round(basePad * 0.05)));
       map.fitBounds(ptBounds, { padding: [pad, pad], maxZoom: initialZoom });
     } catch (e) {
-      console.warn('fitBounds für Einzelpunkt fehlgeschlagen, fallback setView', e);
+      console.warn("fitBounds für Einzelpunkt fehlgeschlagen, fallback setView", e);
       map.setView(new L.LatLng(lat, lng), initialZoom);
     }
   } else {
@@ -803,7 +811,7 @@ socket.on("io.new_waip", function (data) {
         map.setView(center, initialZoom);
       }
     } catch (e) {
-      console.error('GeoJSON Parsing/Rendering Fehler', e);
+      console.error("GeoJSON Parsing/Rendering Fehler", e);
     }
   }
 

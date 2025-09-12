@@ -90,13 +90,17 @@ block content
         .col-12.p-3
           .card.w-100.h-100
             .card-body
-              .text-muted Sie können die Anzeige von Rückmeldungen (inkl. Ton) deaktivieren, wenn Sie nur den Wachalarm sehen möchten.
-              .text-muted Aktivieren Sie dazu die nachfolgende Checkbox und wählen Sie dann den gewünschten Alarmmonitor aus.
+              .text-muted Im Alarmmonitor können Sie optional die Anzeige von Rückmeldungen und die Hinweise zur Audioausgabe deaktivieren.
+              .text-muted Markieren Sie dazu die jeweilige Option und wählen Sie anschließend den gewünschten Alarmmonitor aus.
             .card-footer.text-center 
               // Checkbox zum Deaktivieren von Rückmeldungen
               .form-check
                 input#rmldOff.form-check-input(type='checkbox')
-                label.form-check-label.text-muted(for='rmldOff') Rückmeldungen im Alarmmonitor ausblenden
+                label.form-check-label(for='rmldOff') Rückmeldungen im Alarmmonitor ausblenden
+              // Checkbox zum Deaktivieren der Soundausgabe
+              .form-check.mt-2
+                input#soundOff.form-check-input(type='checkbox')
+                label.form-check-label(for='soundOff') Hinweise zur Audioausgabe deaktivieren (z.B. wenn kein Lautsprecher angeschlossen ist)
     // Client-seitige Suchlogik + rmld=off Handling
     script.
       (function(){
@@ -104,13 +108,15 @@ block content
         var input = document.getElementById('searchWache');
         var list = document.getElementById('searchResults');
         var rmldToggle = document.getElementById('rmldOff');
+        var soundToggle = document.getElementById('soundOff');
         if(!input || !list) return;
         function sanitize(str){return String(str).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]);});}
         function buildUrl(base){
-          if(rmldToggle && rmldToggle.checked){
-            return base + (base.indexOf('?')===-1?'?':'&') + 'rmld=off';
-          }
-            return base;
+          var params = [];
+          if(rmldToggle && rmldToggle.checked){ params.push('rmld=off'); }
+          if(soundToggle && soundToggle.checked){ params.push('sound=off'); }
+          if(!params.length) return base;
+          return base + (base.indexOf('?')===-1?'?':'&') + params.join('&');
         }
         function render(results){
           list.innerHTML='';
@@ -141,7 +147,7 @@ block content
         // Links der Karten / Dropdowns dynamisch anreichern
         document.querySelectorAll('a[href^="/waip/"]').forEach(function(a){
           a.addEventListener('click', function(ev){
-            if(rmldToggle && rmldToggle.checked){
+            if((rmldToggle && rmldToggle.checked) || (soundToggle && soundToggle.checked)){
               ev.preventDefault();
               var url = buildUrl(a.getAttribute('href'));
               window.location.href = url;
