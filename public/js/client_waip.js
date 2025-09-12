@@ -425,15 +425,22 @@ let map = L.map("map", {
 
 AddMapLayer();
 
-// Attribution für deaktivierte Rückmeldungen anzeigen
+// Attribution für Optionen anzeigen (nebeneinander)
 try {
+  const attrTexts = [];
   if (typeof rmld_off !== "undefined" && rmld_off) {
-    const rmldAttr = L.control.attribution({ position: "bottomleft", prefix: "" });
-    rmldAttr.addAttribution("Rückmeldungen deaktivert");
-    rmldAttr.addTo(map);
+    attrTexts.push("Rückmeldungen deaktiviert");
+  }
+  if (typeof sound_off !== "undefined" && sound_off) {
+    attrTexts.push("Soundprüfung deaktiviert");
+  }
+  if (attrTexts.length) {
+    const optAttr = L.control.attribution({ position: "bottomleft", prefix: "" });
+    optAttr.addAttribution(attrTexts.join(" | "));
+    optAttr.addTo(map);
   }
 } catch (e) {
-  // nichts tun, falls rmld_off nicht definiert ist
+  // ignorieren
 }
 
 // Icon der Karte zuordnen
