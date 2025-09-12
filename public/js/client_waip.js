@@ -1115,7 +1115,8 @@ function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
   if (current_progress >= 100) {
     $("#pg-bar-" + p_id)
       .css("width", "100%")
-      .attr("aria-valuenow", 100);
+      .attr("aria-valuenow", 100)
+      .text("");
     $("#pg-text-" + p_id)
       .text(pg_text_done)
       .addClass("ion-md-checkmark-circle");
