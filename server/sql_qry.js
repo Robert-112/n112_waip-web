@@ -1460,7 +1460,7 @@ module.exports = (db, app_cfg) => {
       try {
         // User-ID und Berechtigung aus Socket ermitteln
         const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
-        const permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
+        let permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
 
         // wenn keine user_id oder permissions übergeben wurden, dann false
         if (!user_id || !permissions) {
