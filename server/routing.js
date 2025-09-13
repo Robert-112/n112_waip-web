@@ -208,7 +208,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       title: "Login",
       user: req.user,
       session_max_age: app_cfg.global.session_cookie_max_age,
-  error: req.query.error || null,
+      error: req.query.error || null,
     });
   });
 
@@ -219,8 +219,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         return next(err);
       }
       if (!user) {
-  const msg = encodeURIComponent("Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.");
-  return res.redirect("/login?error=" + msg);
+        const msg = encodeURIComponent("Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.");
+        return res.redirect("/login?error=" + msg);
       }
       req.logIn(user, (err) => {
         if (err) {
@@ -243,9 +243,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       if (!user) {
         return res.redirect(
           "/login?error=" +
-            encodeURIComponent(
-              "Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator."
-            )
+            encodeURIComponent("Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.")
         );
       }
       req.logIn(user, (err) => {
@@ -300,8 +298,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         user: req.user,
         user_reset_counter: data.resetcounter,
         session_max_age: app_cfg.global.session_cookie_max_age,
-  error: req.query.error || null,
-  success: req.query.success || null,
+        error: req.query.error || null,
+        success: req.query.success || null,
       });
     } catch (error) {
       const err = new Error(`Fehler beim Laden der Seite für die Einstellungen. ` + error);
@@ -315,14 +313,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/einstellungen_zeit", auth.ensureAuthenticated, async (req, res) => {
     try {
       await sql.db_user_set_config_time(req.user.id, req.body.set_reset_counter);
-      res.redirect(
-        "/einstellungen?success=" + encodeURIComponent("Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert")
-      );
+      res.redirect("/einstellungen?success=" + encodeURIComponent("Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert"));
     } catch (error) {
-      res.redirect(
-        "/einstellungen?error=" +
-          encodeURIComponent("Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error)
-      );
+      res.redirect("/einstellungen?error=" + encodeURIComponent("Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error));
     }
   });
 
@@ -354,11 +347,12 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     try {
       const parameter_id = req.params.wachen_id;
       const rmldOff = req.query.rmld === "off"; // optionaler Parameter zum Deaktivieren der Rückmeldungen
+      const soundOff = req.query.sound === "off"; // optionaler Parameter zum Deaktivieren der Audio-Blockadeprüfung
       const wache = await sql.db_wache_vorhanden(parameter_id);
       if (wache) {
         res.render("waip", {
           public: app_cfg.public,
-          title: "Alarmmonitor",
+          title: "Alarmmonitor - " + wache.name,
           wachen_id: parameter_id,
           data_wache: wache.name,
           map_service: app_cfg.public.map_service,
@@ -366,6 +360,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           user: req.user,
           session_max_age: app_cfg.global.session_cookie_max_age,
           rmld_off: rmldOff,
+          sound_off: soundOff,
         });
       } else {
         const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);
@@ -501,8 +496,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         user: req.user,
         users: data,
         session_max_age: app_cfg.global.session_cookie_max_age,
-  error: req.query.error || null,
-  success: req.query.success || null,
+        error: req.query.error || null,
+        success: req.query.success || null,
       });
     } catch (error) {
       const err = new Error(`Fehler beim Laden der Seite /adm_edit_users. ` + error);
@@ -540,8 +535,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         user: req.user,
         session_max_age: app_cfg.global.session_cookie_max_age,
         wachen,
-  error: req.query.error || null,
-  success: req.query.success || null,
+        error: req.query.error || null,
+        success: req.query.success || null,
       });
     } catch (error) {
       const err = new Error("Fehler beim Laden der Seite /adm_edit_wachen. " + error);
@@ -557,9 +552,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       await sql.db_wache_update(req.body);
       res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich bearbeitet."));
     } catch (error) {
-      res.redirect(
-        "/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Bearbeiten der Wache. " + error)
-      );
+      res.redirect("/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Bearbeiten der Wache. " + error));
     }
   });
 
@@ -569,9 +562,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       await sql.db_wache_delete(req.body.id);
       res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich gelöscht."));
     } catch (error) {
-      res.redirect(
-        "/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Löschen der Wache. " + error)
-      );
+      res.redirect("/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Löschen der Wache. " + error));
     }
   });
 
@@ -581,9 +572,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       await sql.db_wache_create(req.body);
       res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich angelegt."));
     } catch (error) {
-      res.redirect(
-        "/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Anlegen der Wache. " + error)
-      );
+      res.redirect("/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Anlegen der Wache. " + error));
     }
   });
 

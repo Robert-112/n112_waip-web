@@ -260,7 +260,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           // Einsatzdaten senden
           socket.emit("io.Einsatz", einsatzdaten);
           // Rueckmeldungen verteilen
-          rmld_arr_verteilen_socket(einsatzdaten.id, socket, 0);
+          rmld_arr_verteilen_socket(einsatzdaten.id, socket);
           const logMessage = `Einsatzdaten für Dashboard ${dbrd_uuid} an Socket ${socket.id} gesendet`;
           logger.log("log", logMessage);
           sql.db_client_update_status(socket, einsatzdaten.id);
