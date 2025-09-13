@@ -52,7 +52,7 @@ block content
               .dropdown
                 button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
                   | bitte ausw&auml;hlen
-                .dropdown-menu
+                .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen
                     if item.typ == 'wache'
                       a.dropdown-item(href='/waip/'+ item.nr)= item.name
@@ -66,7 +66,7 @@ block content
               .dropdown
                 button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
                   | bitte ausw&auml;hlen
-                .dropdown-menu
+                .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen
                     if item.typ == 'traeger'
                       a.dropdown-item(href='/waip/'+ item.nr)= item.name
@@ -80,7 +80,7 @@ block content
               .dropdown
                 button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
                   | bitte ausw&auml;hlen
-                .dropdown-menu
+                .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen
                     if item.typ == 'kreis'
                       a.dropdown-item(href='/waip/'+ item.nr)= item.name
@@ -90,7 +90,7 @@ block content
         .col-12.p-3
           .card.w-100.h-100
             .card-body
-              .text-muted Im Alarmmonitor können Sie optional die Anzeige von Rückmeldungen und die Hinweise zur Audioausgabe deaktivieren.
+              .text-muted Beim Alarmmonitor können Sie optional die Anzeige von Rückmeldungen und Hinweise zur Audioausgabe deaktivieren.
               .text-muted Markieren Sie dazu die jeweilige Option und wählen Sie anschließend den gewünschten Alarmmonitor aus.
             .card-footer.text-center 
               // Checkbox zum Deaktivieren von Rückmeldungen
