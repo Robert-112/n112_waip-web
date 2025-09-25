@@ -405,8 +405,10 @@ module.exports = (db, app_cfg) => {
                   ${em_sql_filter}
                 ;
               `);
-            // alarmierte Einsatzmittel den Einsatzdaten zuordnen
-            einsatzdaten.em_alarmiert = stmt1.all(waip_id.toString());
+            // Alle Einsatzmittel der Wache abfragen
+            const em_alarmiert_all = stmt1.all(waip_id.toString());
+            // nur Einsatzmittel als alarmiert zuordnen, wenn eine Alarmierungszeit gesetzt ist, das es sich sonst nicht um eine Alarmierung handelt
+            einsatzdaten.em_alarmiert = em_alarmiert_all.filter(e => e.zeit !== null && e.zeit !== undefined && e.zeit !== "");
 
             // Abfrage der weiteren Einsatzmittel zum Einsatz
             const stmt2 = db.prepare(`
@@ -420,7 +422,9 @@ module.exports = (db, app_cfg) => {
                 ;
               `);
             // weitere Einsatzmittel den Einsatzdaten zuordnen
-            einsatzdaten.em_weitere = stmt2.all(waip_id.toString());
+            const em_weitere = stmt2.all(waip_id.toString());
+            // weitere Einsatzmittel inkl. der alarmierten Einsatzmittel ohne Alarmierungszeit hinzufügen
+            einsatzdaten.em_weitere = em_weitere.concat(em_alarmiert_all.filter(e => e.zeit === null || e.zeit === undefined || e.zeit === ""));
 
             // Einsatzdaten zurückgeben
             resolve(einsatzdaten);
@@ -988,6 +992,34 @@ module.exports = (db, app_cfg) => {
         }
       } catch (error) {
         reject(new Error(`Fehler beim Übersetzen des Funkrufnamens ${funkrufname} für Text-to-Speech.` + error));
+      }
+    });
+  };
+
+  // Textersetzsungen für Ortsdaten
+  const db_tts_ortsdaten = (text) => {
+    return new Promise((resolve, reject) => {
+      try {
+        // hinterlegte Ersetzungen aus DB laden
+        const stmt = db.prepare(`
+          SELECT rp_input, rp_output
+          FROM waip_replace
+          WHERE rp_typ = 'orte_tts';
+        `);
+        const row = stmt.all();
+
+        if (row === undefined) {
+          // row durchgehen und prüfen ob rp_input in text enthalten, dann 1:1 durch rp_output ersetzen
+          for (const replacement of row) {
+            const regex = new RegExp(`\\b${replacement.rp_input}\\b`, 'gi');
+            text = text.replace(regex, replacement.rp_output);
+          }
+          resolve(text);
+        } else {
+          resolve(text);
+        }
+      } catch (error) {
+        reject(new Error(`Fehler beim Laden der Textersetzungen für Ortsdaten: ${error.message}`));
       }
     });
   };
@@ -2170,6 +2202,7 @@ module.exports = (db, app_cfg) => {
     db_wache_vorhanden,
     db_einsatzmittel_update,
     db_tts_einsatzmittel,
+    db_tts_ortsdaten,
     db_client_update_status,
     db_client_get_connected,
     db_client_delete,

@@ -370,7 +370,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       }
 
       // Einsatz-UUID inkl. Wachennummer und Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
-      const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr +"_" + full_half;
+      const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr + "_" + full_half;
       const soundPath = process.cwd() + app_cfg.global.soundpath;
       const mediaPath = app_cfg.global.mediapath;
 
@@ -398,13 +398,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       if (einsatzdaten.objekt) locParts.push(einsatzdaten.objekt);
       if (einsatzdaten.ort) locParts.push(einsatzdaten.ort);
       // Ortsteil nur anhängen, wenn vorhanden und nicht identisch zu Ort (case-insensitive)
-      if (
-        einsatzdaten.ortsteil &&
-        (!einsatzdaten.ort || einsatzdaten.ortsteil.toLowerCase() !== einsatzdaten.ort.toLowerCase())
-      ) {
+      if (einsatzdaten.ortsteil && (!einsatzdaten.ort || einsatzdaten.ortsteil.toLowerCase() !== einsatzdaten.ort.toLowerCase())) {
         locParts.push(einsatzdaten.ortsteil);
       }
       tts_text += locParts.join(", ");
+
+      // Textersetzungen aus Datenbank laden in TTS-Text durchführen
+      tts_text = await sql.db_tts_ortsdaten(tts_text);
 
       // Einsatzmittel TTS-Text verarbeiten
       await Promise.all(einsatzdaten.em_alarmiert.map((em) => sql.db_tts_einsatzmittel(em)));
@@ -427,8 +427,12 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       await ttsImplementations[platform].createTTS(tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell);
       return mp3_url;
     } catch (error) {
-      logger.log("error", `Fehler beim Erstellen der TTS-Datei: ${error.message}`);
-      throw error;
+      // Fallback: Standard-Gong zurückgeben, wenn TTS-Erstellung fehlschlägt
+      const bkp_mp3_bell =
+        app_cfg.global.mediapath +
+        (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" ? "bell_long.mp3" : "bell_short.mp3");
+      logger.log("warn", `TTS-Erstellung fehlgeschlagen, sende nur Gong. Fehler: ${error.message}`);
+      return bkp_mp3_bell;
     }
   };
 

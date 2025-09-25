@@ -67,8 +67,8 @@ app_cfg.public = {
   // Base-URL für Kartendaten
   map_service: {
     type: "wms", // "tile" für Tile-Server, "wms" für WMS-Server (Backup: Tile-Server)
-    tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    wms_url: "http://ows.mundialis.de/services/service?",
+    tile_url: "https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png",
+    wms_url: "", //"http://ows.mundialis.de/services/service?",
     wms_layers: "OSM-WMS",
     wms_format: "image/png", // Format des Bildes
     wms_transparent: true, // Transparenz aktivieren
