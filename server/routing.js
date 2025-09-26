@@ -36,13 +36,29 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   /* ########################### */
 
   // Startseite
-  app.get("/", (req, res) => {
-    res.render("page_home", {
-      public: app_cfg.public,
-      title: "Startseite",
-      user: req.user,
-      session_max_age: app_cfg.global.session_cookie_max_age,
-    });
+  app.get("/", async (req, res, next) => {
+    try {
+      let user_waips = null;
+      let user_dbrds = null;
+      if (req.user) {
+        // Alarmmonitore und aktuelle Dashboards fuer den User laden
+        user_waips = await sql.db_get_user_waips(req.user.id);
+        user_dbrds = await sql.db_get_user_dbrds(req.user.id);
+      }
+      res.render("page_home", {
+        public: app_cfg.public,
+        title: "Startseite",
+        user: req.user,
+        user_waips: user_waips,
+        user_dbrds: user_dbrds,
+        session_max_age: app_cfg.global.session_cookie_max_age,
+      });
+    } catch (error) {
+      const err = new Error(`Fehler beim Laden der Startseite. ` + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
+    }
   });
 
   // Ueber die Anwendung
