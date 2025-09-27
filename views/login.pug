@@ -2,12 +2,6 @@ extends layout
 
 block content
   main(role='main')
-    // TODO: - Login verbessern:
-    // Login-Seite benötigt Fehlerrückmeldung (wie Nutzerverwaltung): falsches Kennwort, Nutzer nicht vorhanden etc.
-    // - Login/Logout protokollieren
-    // - fehlerhafte/doppelte Logins protokollieren 
-    // - prüfen ob es sinnvoll ist, bereits eingeloggte User nicht mehr zulassen (Session prüfen)
-    // - bei fehlendem Login zur Login-Seite weiterleiten und nach dem Login die zuvor besuchte Seite anzeigen
     .container
       #info.row
         .col-md-3
@@ -42,11 +36,15 @@ block content
         .col-xs-12.col-md-6.mx-auto
           .card.my-3
             .card-body
-              h5.card-title.text-center Zertifikatsanmeldung
+              h5.card-title.text-center Geräteanmeldung
               form(action='/login_cert', method='GET')
                 .form-group
-                  small.form-text.text-muted Diese Anmeldung Sie erlaubt einen Login ohne Benutzername / Kennwort. 
-                    | Sie ist für Endgeräte gedacht, welche ein Client-Zertifikat besitzen (z.B. iPads).
+                  small.form-text.text-muted Diese Anmeldung erlaubt Ihnen ein Login ohne Benutzername / Kennwort. 
+                    | Sie ist für Endgeräte gedacht, welche zentral über ein MDM (Mobile-Device-Management-System) verwaltet werden.
                   small.form-text.text-muted Die Berechtigung des Nutzers wird über das Zertifikat geprüft.
                 button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') anmelden
 
+  script.
+    $('#close_info').on('click', function(event) {
+      $('#info').addClass( 'd-none' )
+    });

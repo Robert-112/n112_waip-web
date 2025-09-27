@@ -52,5 +52,8 @@ block content
                                 option(selected)= i+1
                               else
                                 option= i+1              
-                    // TODO: anpassen der Durchsage je Benutzer, durch eigene Ersetzung und Reihenfolge
-                    // TODO: Ausnahmen festlegen können, wann keine Musik abgespielt wird  
+
+  script.
+    $('#close_info').on('click', function(event) {
+      $('#info').addClass( 'd-none' )
+    });
