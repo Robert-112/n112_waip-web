@@ -2,12 +2,6 @@ extends layout
 
 block content
   main(role='main')
-    // TODO: - Login verbessern:
-    // Login-Seite benötigt Fehlerrückmeldung (wie Nutzerverwaltung): falsches Kennwort, Nutzer nicht vorhanden etc.
-    // - Login/Logout protokollieren
-    // - fehlerhafte/doppelte Logins protokollieren 
-    // - prüfen ob es sinnvoll ist, bereits eingeloggte User nicht mehr zulassen (Session prüfen)
-    // - bei fehlendem Login zur Login-Seite weiterleiten und nach dem Login die zuvor besuchte Seite anzeigen
     .container
       #info.row
         .col-md-3
@@ -50,3 +44,7 @@ block content
                   small.form-text.text-muted Die Berechtigung des Nutzers wird über das Zertifikat geprüft.
                 button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') anmelden
 
+  script.
+    $('#close_info').on('click', function(event) {
+      $('#info').addClass( 'd-none' )
+    });

@@ -166,4 +166,8 @@ block content
                         button.btn.btn-primary.btn-sm(type="submit") Speichern
                         // Lösch-Button nutzt dasselbe Formularfeld 'id', aber eigenes Ziel via formaction
                         button.btn.btn-danger.btn-sm(type="submit" formaction="/adm_edit_wachen/delete" formmethod="post" onclick="return confirm('Wache wirklich löschen?')") Löschen
-        
+
+  script.
+    $('#close_info').on('click', function(event) {
+      $('#info').addClass( 'd-none' )
+    });
