@@ -171,7 +171,7 @@ module.exports = (db, app_cfg) => {
           sql_filter = `(SELECT wa.nr_wache FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE '%' `;
         }
         // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle
-        if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+        if (wachen_nr.toString().length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
           sql_filter = `(SELECT wa.nr_leitstelle FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ${wachen_nr} `;
         }
 
@@ -393,7 +393,7 @@ module.exports = (db, app_cfg) => {
             }
 
             // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle
-            if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+            if (wachen_nr.toString().length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
               em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) `;
               emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) OR em_station_id IS NULL) `;
             }
@@ -1735,7 +1735,7 @@ module.exports = (db, app_cfg) => {
         }
 
         // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle
-        if (wachen_nr.length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
+        if (wachen_nr.toString().length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
           wache_sql_filter = `AND wache_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) `;
         }
 
