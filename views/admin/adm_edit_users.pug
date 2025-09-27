@@ -36,7 +36,7 @@ block content
               .card-header= val.user
               .card-body.text
                 p='Benutzerrechte: ' + val.permissions
-                p='IP-Adresse: ' + val.ip_address
+                //p='IP-Adresse: ' + val.ip_address
               .card-footer.text-right
                 button.btn.btn-primary.mx-2.ion-md-create(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-ip_address=val.ip_address)  Bearbeiten
                 form(action='/adm_edit_users', method='POST', style='display:inline-block;')
@@ -80,7 +80,7 @@ block content
               input#UserPassword.form-control(type='password', name='password', placeholder='...')
               label Passwort erneut eingeben
               input#UserPassword2.form-control(type='password', name='password2', placeholder='...')
-            .form-group
+            //.form-group
               label IP-Adresse
               input#ip.form-control(type='text', name='ip', placeholder='0.0.0.0 ...', pattern='^([0-9]{1,3}\.){3}[0-9]{1,3}$')
               small.form-text.text-muted Die IP-Adresse dient zur automatischen Authentifizierung von Benuztern und ist optional
