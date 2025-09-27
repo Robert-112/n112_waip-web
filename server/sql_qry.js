@@ -475,7 +475,7 @@ module.exports = (db, app_cfg) => {
           // Einsatzmittel zum Einsatz finden
           const stmt1 = db.prepare(`
             SELECT 
-              e.em_station_id, e.em_funkrufname, e.em_fmsstatus, e.em_station_name 
+              e.em_station_id, e.em_funkrufname, e.em_zeitstempel_alarmierung, e.em_station_name 
             FROM waip_einsatzmittel e 
             WHERE e.em_waip_einsaetze_id = ?;
           `);
@@ -1013,13 +1013,13 @@ module.exports = (db, app_cfg) => {
         const row = stmt.all();
 
         if (row === undefined) {
-          // row durchgehen und prüfen ob rp_input in text enthalten, dann 1:1 durch rp_output ersetzen
-          for (const replacement of row) {
-            const regex = new RegExp(`\\b${replacement.rp_input}\\b`, "gi");
-            text = text.replace(regex, replacement.rp_output);
-          }
           resolve(text);
         } else {
+          // row durchgehen und prüfen ob rp_input in text enthalten, dann 1:1 durch rp_output ersetzen
+          for (const replacement of row) {
+            const regex = new RegExp(`${replacement.rp_input}`, "gi");
+            text = text.replace(regex, replacement.rp_output);
+          }
           resolve(text);
         }
       } catch (error) {

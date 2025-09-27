@@ -659,32 +659,17 @@ socket.on("io.Einsatz", function (data) {
     em_div.className = "pr-2";
     em_div.innerHTML = data.einsatzmittel[i].em_funkrufname;
 
-    //Status-Div erzeugen
-    var status_div = document.createElement("div");
-    switch (data.einsatzmittel[i].em_fmsstatus) {
-      case "1":
-        status_div.className = "p-2 badge badge-info";
-        break;
-      case "2":
-        status_div.className = "p-2 badge badge-success";
-        break;
-      case "3":
-        status_div.className = "p-2 badge badge-warning";
-        break;
-      case "4":
-        status_div.className = "p-2 badge badge-danger";
-        break;
-      default:
-        status_div.className = "p-2 badge badge-dark";
-        break;
+    //Info-Div erzeugen, wenn keine Alarmzeit
+    var info_div = document.createElement("div");
+    if (!data.einsatzmittel[i].em_zeitstempel_alarmierung) {  
+      info_div.className = "p-2 badge badge-pill badge-info";
+      info_div.innerHTML = "!";
     }
-
-    status_div.innerHTML = data.einsatzmittel[i].em_fmsstatus;
 
     //Erzeugte Div zusammensetzen
     flex_div_em.appendChild(justify_div);
     justify_div.appendChild(em_div);
-    justify_div.appendChild(status_div);
+    justify_div.appendChild(info_div);
 
     // Einsatzmittel hinzuefuegen
     document.getElementById(wachen_idstr).appendChild(flex_div_em);
