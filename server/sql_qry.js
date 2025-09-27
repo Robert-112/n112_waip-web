@@ -2144,29 +2144,33 @@ module.exports = (db, app_cfg) => {
             // alle vorhanden Einsätze laden
             const alle_einsaetze = await db_einsatz_get_active();
 
-            // alle Einsaetze entfernen die nicht zur Berechtigung des Users passen
-            const einsatz_l = alle_einsaetze.filter((einsatz) => {
-              return arr_user_waips.some((r) => {
-                return einsatz.l === r;
+            if (alle_einsaetze) {
+              // alle Einsaetze entfernen die nicht zur Berechtigung des Users passen
+              const einsatz_l = alle_einsaetze.filter((einsatz) => {
+                return arr_user_waips.some((r) => {
+                  return einsatz.l === r;
+                });
               });
-            });
-            const einsatz_a = alle_einsaetze.filter((einsatz) => {
-              return arr_user_waips.some((r) => {
-                return einsatz.a === r;
+              const einsatz_a = alle_einsaetze.filter((einsatz) => {
+                return arr_user_waips.some((r) => {
+                  return einsatz.a === r;
+                });
               });
-            });
-            const einsatz_b = alle_einsaetze.filter((einsatz) => {
-              return arr_user_waips.some((r) => {
-                return einsatz.b === r;
+              const einsatz_b = alle_einsaetze.filter((einsatz) => {
+                return arr_user_waips.some((r) => {
+                  return einsatz.b === r;
+                });
               });
-            });
-            const einsatz_c = alle_einsaetze.filter((einsatz) => {
-              return arr_user_waips.some((r) => {
-                return einsatz.c === r;
+              const einsatz_c = alle_einsaetze.filter((einsatz) => {
+                return arr_user_waips.some((r) => {
+                  return einsatz.c === r;
+                });
               });
-            });
-            // übergebe alle einsätze die rausgefiltert wurden
-            resolve([...new Set([...einsatz_l, ...einsatz_a, ...einsatz_b, ...einsatz_c])]);
+              // übergebe alle einsätze die rausgefiltert wurden
+              resolve([...new Set([...einsatz_l, ...einsatz_a, ...einsatz_b, ...einsatz_c])]);
+            } else {
+              resolve(null);
+            }
           } else {
             // null zurückgeben wenn kein Wachenrecht gefunden
             resolve(null);
