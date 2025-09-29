@@ -402,7 +402,8 @@ module.exports = (db, app_cfg) => {
             const stmt1 = db.prepare(`
                 SELECT 
                   em_funkrufname AS 'name',
-                  em_zeitstempel_alarmierung AS 'zeit'
+                  em_zeitstempel_alarmierung AS 'zeit',
+                  em_station_name AS 'wache'
                 FROM waip_einsatzmittel
                 WHERE 
                   em_waip_einsaetze_id = ? 
@@ -418,7 +419,8 @@ module.exports = (db, app_cfg) => {
             const stmt2 = db.prepare(`
                 SELECT 
                   em_funkrufname AS 'name',
-                  em_zeitstempel_alarmierung AS 'zeit'
+                  em_zeitstempel_alarmierung AS 'zeit',
+                  em_station_name AS 'wache'
                 FROM waip_einsatzmittel
                 WHERE 
                   em_waip_einsaetze_id = ? 
