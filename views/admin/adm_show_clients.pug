@@ -32,7 +32,6 @@ block content
 
   script.
     let datasets = !{JSON.stringify(dataSet).replace(/<\//g, '<\\/')}
-    console.log(datasets)
     $(document).ready(function() {
       $('#table_active_user').DataTable( {
         "data": datasets,
