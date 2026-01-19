@@ -340,20 +340,51 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           rm ${mp3_tmp}`,
         ];
 
-        return new Promise((resolve, reject) => {
-          const proc = require("child_process");
-          const lxshell_childD = proc.spawn("/bin/sh", lxshell_commands, { shell: true });
+        const proc = require("child_process");
 
-          lxshell_childD.on("exit", (code) => {
-            if (code === 0) {
-              resolve();
-            } else {
-              reject(new Error(`Linux TTS-Prozess beendet mit Code ${code}`));
-            }
+        const maxAttempts = 3;
+        const retryDelayMs = 500;
+
+        const runOnce = () => {
+          return new Promise((resolve, reject) => {
+            const lxshell_childD = proc.spawn("/bin/sh", lxshell_commands, { shell: true });
+            let stderr = "";
+
+            lxshell_childD.stderr.on("data", (data) => {
+              stderr += data.toString();
+            });
+
+            lxshell_childD.on("error", (err) => {
+              reject(err);
+            });
+
+            lxshell_childD.on("exit", (code) => {
+              if (code === 0) {
+                resolve();
+              } else {
+                reject(new Error(`Linux TTS-Prozess beendet mit Code ${code}. ${stderr}`));
+              }
+            });
+
+            lxshell_childD.stdin.end();
           });
+        };
 
-          lxshell_childD.stdin.end();
-        });
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            if (attempt > 1) logger.log("log", `TTS-Versuch ${attempt}/${maxAttempts} für ${wav_tts}`);
+            await runOnce();
+            if (attempt > 1) logger.log("log", `TTS erfolgreich nach ${attempt} Versuch(en) für ${wav_tts}`);
+            return;
+          } catch (err) {
+            logger.log("warn", `TTS-Versuch ${attempt}/${maxAttempts} fehlgeschlagen: ${err.message}`);
+            if (attempt < maxAttempts) {
+              await new Promise((r) => setTimeout(r, retryDelayMs));
+            } else {
+              throw new Error(`Linux TTS-Prozess nach ${maxAttempts} Versuchen fehlgeschlagen: ${err.message}`);
+            }
+          }
+        }
       },
     },
   };

@@ -350,7 +350,6 @@ function update_station_counts(stationId) {
   $("#rmld-med-" + stationId).text(med);
 }
 function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
-  //console.log(p_id);
   today = new Date();
   // restliche Zeit ermitteln
   var current_progress = Math.round((100 / (start.getTime() - end.getTime())) * (start.getTime() - today.getTime()));
@@ -477,7 +476,7 @@ socket.on("io.version", function (server_id) {
 
 // ggf. Fehler ausgeben
 socket.on("io.error", function (data) {
-  console.log("Error:", data);
+  console.error("Error:", data);
 });
 
 // Daten löschen, Uhr anzeigen
@@ -611,7 +610,6 @@ socket.on("io.Einsatz", function (data) {
     var wache_zeile = 0;
     var wachen_idstr = data.einsatzmittel[i].em_station_name.replace(/[^A-Z0-9]+/gi, "_");
     for (var j = 0, row; (row = table_em.rows[j]); j++) {
-      //console.log(row.cells[0].innerHTML);
       if (row.cells[0].innerHTML == data.einsatzmittel[i].em_station_name) {
         wache_vorhanden = true;
         wache_zeile = j;
