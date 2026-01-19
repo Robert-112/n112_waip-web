@@ -26,7 +26,6 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         if (!err) {
           socket.request.session.count++;
           socket.request.session.save();
-          console.log('Session-User',socket.request.user);
           logger.log("debug", `Session für ${remote_ip} (${socket.id}) wurde per Reload erneuert.`);
           socket.emit("io.info", `Session für (${socket.id}) per Reload erneuert.`);
         } else {
