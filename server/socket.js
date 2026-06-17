@@ -118,11 +118,8 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
   // Dashboard
   const nsp_dbrd = io.of("/dbrd");
   nsp_dbrd.on("connection", (socket) => {
-    // Benutzerinformationen im Socket speichern
-    if (!socket.request.user) {
-      socket.request.user = { id: null, user: "Gast", permissions: null }; // Gast-Benutzer speichern
-      logger.log("debug", "Socket.IO: Kein Benutzer angemeldet, Gast-Benutzer wird gespeichert.");
-    }
+    // socket.data.user wird beim dbrd-Event frisch aus der DB geladen (siehe unten).
+    socket.data.user = null;
 
     // Client-IP ermitteln
     const remote_ip = getRemoteIp(socket);
@@ -149,6 +146,18 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         if (!dbrd) {
           throw `Das Dashboards mit der UUID ${uuid} ist nicht mehr vorhanden (Anfrage lieferte kein Ergebnis)!`;
         } else {
+          // User frisch aus der DB laden (analog zum WAIP-Event).
+          const dbrd_passport_id = socket.request.session && socket.request.session.passport
+            ? socket.request.session.passport.user
+            : null;
+          const dbrd_fresh_user = dbrd_passport_id ? await sql.auth_deserializeUser(dbrd_passport_id) : null;
+          socket.data.user = dbrd_fresh_user || { id: null, user: "Gast", permissions: null };
+          logger.log("debug", `DBRD: User fuer Socket ${socket.id} geladen: ${socket.data.user.user} (Rechte: ${socket.data.user.permissions}).`);
+
+          // Permissions in waip_clients schreiben bevor socket.join, damit
+          // db_user_check_permission_for_waip sie sofort findet.
+          await sql.db_client_update_status(socket, "Standby");
+
           // Dashboard/Einsatz scheint vorhanden/plausibel, Socket-Room beitreten
           socket.join(dbrd.uuid);
           logger.log("dbrd", `Dashboard mit der UUID ${uuid} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);

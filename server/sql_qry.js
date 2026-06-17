@@ -1094,8 +1094,8 @@ module.exports = (db, app_cfg) => {
         let reset_timestamp = null;
 
         if (client_status !== "Standby") {
-          // User-ID ermitteln
-          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+          // User-ID aus socket.data.user lesen
+          const user_id = socket.data && socket.data.user && socket.data.user.id ? socket.data.user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt1 = db.prepare(`
@@ -1384,8 +1384,8 @@ module.exports = (db, app_cfg) => {
 
         // Anzeigezeit für einen Alarmmonitor ermitteln
         if (client_nsp === "/waip") {
-          // User-ID aus Socket ermitteln
-          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+          // User-ID aus socket.data.user lesen
+          const user_id = socket.data && socket.data.user && socket.data.user.id ? socket.data.user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt1 = db.prepare(`
@@ -1449,17 +1449,17 @@ module.exports = (db, app_cfg) => {
   const db_user_check_permission_for_waip = (socket, waip_id) => {
     return new Promise((resolve, reject) => {
       try {
-        // Berechtigung aus waip_clients lesen - das ist die zuverlaessigste Quelle,
-        // da sie beim WAIP-Event explizit geschrieben wird und bei fetchSockets()
-        // keine socket.data oder socket.request Referenzprobleme auftreten.
-        const stmt_client = db.prepare(`
-          SELECT user_permissions FROM waip_clients WHERE socket_id = ?;
-        `);
-        const client_row = stmt_client.get(socket.id);
-        const permissions = client_row ? client_row.user_permissions : null;
+        // User-Daten aus socket.data.user lesen.
+        // socket.data.user wird beim WAIP-Event in socket.js frisch aus der DB geladen
+        // und ist damit unabhaengig vom Passport-Snapshot des WebSocket-Handshakes.
+        // So werden Race Conditions vermieden, bei denen socket.request.user noch
+        // nicht oder inkonsistent gesetzt war (z.B. kurz nach Verbindungsaufbau).
+        const user = socket.data && socket.data.user ? socket.data.user : null;
+        const user_id = user && user.id ? user.id : null;
+        const permissions = user && user.permissions ? user.permissions : null;
 
-        // wenn keine permissions vorhanden oder "keine", kein Recht
-        if (!permissions || permissions === "keine") {
+        // wenn keine user_id oder permissions vorhanden, kein Recht
+        if (!user_id || !permissions) {
           resolve(false);
           return;
         }
@@ -1490,7 +1490,7 @@ module.exports = (db, app_cfg) => {
           }
         }
       } catch (error) {
-        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + socket.id + " " + waip_id + " " + error));
+        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + (socket.data.user || "kein User") + " " + waip_id + " " + error));
       }
     });
   };
@@ -1500,8 +1500,8 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         // User-ID und Berechtigung aus Socket ermitteln
-        const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
-        let permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
+        const user_id = socket.data && socket.data.user && socket.data.user.id ? socket.data.user.id : null;
+        let permissions = socket.data && socket.data.user && socket.data.user.permissions ? socket.data.user.permissions : null;
 
         // wenn keine user_id oder permissions übergeben wurden, dann false
         if (!user_id || !permissions) {
@@ -1544,7 +1544,7 @@ module.exports = (db, app_cfg) => {
         }
       } catch (error) {
         reject(
-          new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.request.user + wache_nr + error)
+          new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für eine Rückmeldung. " + socket.id + " " + wache_nr + " " + error)
         );
       }
     });
