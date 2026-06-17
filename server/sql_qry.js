@@ -189,8 +189,8 @@ module.exports = (db, app_cfg) => {
         if (row1 === undefined) {
           resolve(null);
         } else {
-          // User-ID ermitteln
-          const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
+          // User-ID aus socket.data.user lesen
+          const user_id = client_user && client_user.id ? client_user.id : null;
 
           // Reset-Counter des Users ermitteln
           const stmt2 = db.prepare(`
@@ -1078,22 +1078,11 @@ module.exports = (db, app_cfg) => {
           client_status = "Standby";
         }
 
-        // wenn socket.request.user undefined ist, dann erzeugen
-        if (socket.request.user === undefined) {
-          socket.request.user = {};
-        }
-
-        // Nutzername, falls bekannt
-        let user_name = socket.request.user.user;
-        if (user_name === undefined) {
-          user_name = "Gast";
-        }
-
-        // Berechtigungen, falls bekannt
-        let user_permissions = socket.request.user.permissions;
-        if (user_permissions === undefined) {
-          user_permissions = "keine";
-        }
+        // Nutzername und Berechtigungen aus socket.data.user lesen (wird beim WAIP-Event
+        // frisch aus der DB geladen und ist zuverlaessiger als socket.request.user).
+        const client_user = socket.data && socket.data.user ? socket.data.user : null;
+        const user_name = client_user && client_user.user ? client_user.user : "Gast";
+        const user_permissions = client_user && client_user.permissions ? client_user.permissions : "keine";
 
         // User-Agent
         let user_agent = socket.request.headers["user-agent"];
@@ -1460,12 +1449,17 @@ module.exports = (db, app_cfg) => {
   const db_user_check_permission_for_waip = (socket, waip_id) => {
     return new Promise((resolve, reject) => {
       try {
-        // User-ID und Berechtigung aus Socket ermitteln
-        const user_id = socket.request.user && socket.request.user.id ? socket.request.user.id : null;
-        const permissions = socket.request.user && socket.request.user.permissions ? socket.request.user.permissions : null;
+        // Berechtigung aus waip_clients lesen - das ist die zuverlaessigste Quelle,
+        // da sie beim WAIP-Event explizit geschrieben wird und bei fetchSockets()
+        // keine socket.data oder socket.request Referenzprobleme auftreten.
+        const stmt_client = db.prepare(`
+          SELECT user_permissions FROM waip_clients WHERE socket_id = ?;
+        `);
+        const client_row = stmt_client.get(socket.id);
+        const permissions = client_row ? client_row.user_permissions : null;
 
-        // wenn keine user_id oder permissions übergeben wurden, dann false
-        if (!user_id || !permissions) {
+        // wenn keine permissions vorhanden oder "keine", kein Recht
+        if (!permissions || permissions === "keine") {
           resolve(false);
           return;
         }
@@ -1496,7 +1490,7 @@ module.exports = (db, app_cfg) => {
           }
         }
       } catch (error) {
-        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + socket.request.user + waip_id + error));
+        reject(new Error("Fehler beim Überprüfen der Berechtigungen eines Benutzers für einen Einsatz. " + socket.id + " " + waip_id + " " + error));
       }
     });
   };
