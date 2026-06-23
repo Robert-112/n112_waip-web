@@ -4,37 +4,31 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
   // Wachalarm
   const nsp_waip = io.of("/waip");
   nsp_waip.on("connection", (socket) => {
-    // Benutzerinformationen im Socket speichern
-    if (!socket.request.user) {
-      socket.request.session.user = { id: null, user: "Gast", permissions: null }; // Gast-Benutzer speichern
-      // Speichern erzwingen, damit der Gast im Session-Store landet
-      socket.request.session.save((err) => {
-        if (err) {
-          logger.log("error", "Socket.IO: Konnte Gast-Session nicht speichern: " + err.message);
-        } else {
-          logger.log("debug", "Socket.IO: Gast-Benutzer in Session gespeichert (Session-ID: " + socket.request.session.id + ").");
-        }
-      });
-    }
+    // socket.data.user wird beim WAIP-Event frisch aus der DB geladen (siehe unten).
+    // Damit ist die Berechtigungspruefung vollstaendig unabhaengig vom Passport-Snapshot
+    // aus dem WebSocket-Handshake, der durch Race Conditions inkonsistent sein kann.
+    socket.data.user = null;
 
     // Client-IP ermitteln
     const remote_ip = getRemoteIp(socket);
 
-    // Session-Reload
+    // Session-Reload: haelt die Session im Store am Leben damit sie nicht ablaeuft.
+    // socket.request.user wird NICHT mehr fuer Berechtigungspruefungen verwendet;
+    // stattdessen wird socket.data.user genutzt, das beim WAIP-Event gesetzt wird.
     const session_timer = setInterval(() => {
       socket.request.session.reload((err) => {
         if (!err) {
           socket.request.session.count++;
           socket.request.session.save();
-          logger.log("debug", `Session für ${remote_ip} (${socket.id}) wurde per Reload erneuert.`);
-          socket.emit("io.info", `Session für (${socket.id}) per Reload erneuert.`);
+          logger.log("debug", `Session fuer ${remote_ip} (${socket.id}) wurde per Reload erneuert.`);
         } else {
-          logger.log("debug", `Fehler beim Erneuern der Session für ${remote_ip} (${socket.id} ${socket.request.user.user}): ${err.message}`);
-          socket.emit("io.error", `Fehler beim Erneuern der Session für (${socket.id}), Verbindung wird zurückgesetzt!`);
+          const user_name = socket.data.user ? socket.data.user.user : "Gast";
+          logger.log("debug", `Fehler beim Erneuern der Session fuer ${remote_ip} (${socket.id} ${user_name}): ${err.message}`);
+          socket.emit("io.error", `Fehler beim Erneuern der Session fuer (${socket.id}), Verbindung wird zurueckgesetzt!`);
           socket.conn.close();
         }
       });
-    }, app_cfg.global.session_cookie_max_age / 2); // Reload alle 30 Sekunden (bei 1 Minute Session-Cookie)
+    }, app_cfg.global.session_cookie_max_age / 2); // Reload alle 30 Minuten (bei 1 Stunde Session-Cookie)
 
     // Verbindungsfehler protokollieren
     socket.on("connection_error", (err) => {
@@ -59,6 +53,22 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         if (!result) {
           throw `Abfrage der Wache ${wachen_nr} lieferte kein Ergebnis!`;
         }
+
+        // User frisch aus der DB laden und in socket.data.user speichern.
+        // Passport setzt socket.request.user nur einmalig beim Handshake (Snapshot).
+        // Durch Race Conditions kann dieser Snapshot beim Eintreffen eines Alarms
+        // fehlen oder veraltet sein. socket.data ist unser eigener, stabiler Speicher.
+        const passport_id = socket.request.session && socket.request.session.passport
+          ? socket.request.session.passport.user
+          : null;
+        const fresh_user = passport_id ? await sql.auth_deserializeUser(passport_id) : null;
+        socket.data.user = fresh_user || { id: null, user: "Gast", permissions: null };
+        logger.log("debug", `WAIP: User fuer Socket ${socket.id} geladen: ${socket.data.user.user} (Rechte: ${socket.data.user.permissions}).`);
+
+        // Permissions jetzt schon in waip_clients schreiben (Standby), damit
+        // db_user_check_permission_for_waip sie bei einem sofort eingehenden Alarm findet.
+        // Muss VOR socket.join() passieren, damit kein Alarm ohne Permissions durchrutscht.
+        await sql.db_client_update_status(socket, "Standby");
 
         // Raum der Wache beitreten
         socket.join(wachen_nr);
@@ -108,11 +118,8 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
   // Dashboard
   const nsp_dbrd = io.of("/dbrd");
   nsp_dbrd.on("connection", (socket) => {
-    // Benutzerinformationen im Socket speichern
-    if (!socket.request.user) {
-      socket.request.user = { id: null, user: "Gast", permissions: null }; // Gast-Benutzer speichern
-      logger.log("debug", "Socket.IO: Kein Benutzer angemeldet, Gast-Benutzer wird gespeichert.");
-    }
+    // socket.data.user wird beim dbrd-Event frisch aus der DB geladen (siehe unten).
+    socket.data.user = null;
 
     // Client-IP ermitteln
     const remote_ip = getRemoteIp(socket);
@@ -139,6 +146,18 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         if (!dbrd) {
           throw `Das Dashboards mit der UUID ${uuid} ist nicht mehr vorhanden (Anfrage lieferte kein Ergebnis)!`;
         } else {
+          // User frisch aus der DB laden (analog zum WAIP-Event).
+          const dbrd_passport_id = socket.request.session && socket.request.session.passport
+            ? socket.request.session.passport.user
+            : null;
+          const dbrd_fresh_user = dbrd_passport_id ? await sql.auth_deserializeUser(dbrd_passport_id) : null;
+          socket.data.user = dbrd_fresh_user || { id: null, user: "Gast", permissions: null };
+          logger.log("debug", `DBRD: User fuer Socket ${socket.id} geladen: ${socket.data.user.user} (Rechte: ${socket.data.user.permissions}).`);
+
+          // Permissions in waip_clients schreiben bevor socket.join, damit
+          // db_user_check_permission_for_waip sie sofort findet.
+          await sql.db_client_update_status(socket, "Standby");
+
           // Dashboard/Einsatz scheint vorhanden/plausibel, Socket-Room beitreten
           socket.join(dbrd.uuid);
           logger.log("dbrd", `Dashboard mit der UUID ${uuid} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);
