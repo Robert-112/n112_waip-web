@@ -190,6 +190,7 @@ module.exports = (db, app_cfg) => {
           resolve(null);
         } else {
           // User-ID aus socket.data.user lesen
+          const client_user = socket.data && socket.data.user ? socket.data.user : null;
           const user_id = client_user && client_user.id ? client_user.id : null;
 
           // Reset-Counter des Users ermitteln
