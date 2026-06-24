@@ -129,7 +129,7 @@ module.exports = (db, app_cfg) => {
                 ?, 
                 (SELECT ID FROM waip_wachen WHERE name_wache LIKE ?),
                 ?,
-                ?, 
+                ?,
                 DATETIME(?),
                 DATETIME(?)
               );
@@ -718,48 +718,48 @@ module.exports = (db, app_cfg) => {
       try {
         const stmt = db.prepare(`
           -- Global
-          SELECT DISTINCT 
+          SELECT DISTINCT
             'global' AS typ,
             CAST(nr_wache AS TEXT) AS nr,
-            name_wache AS name 
-          FROM waip_wachen 
+            name_wache AS name
+          FROM waip_wachen
           WHERE nr_wache IS '0'
           UNION ALL
           -- Leitstellen
-          SELECT 
+          SELECT
             'leitstelle' AS typ,
             CAST(nr_leitstelle AS TEXT) AS nr,
             name_leitstelle AS name
-          FROM waip_wachen 
+          FROM waip_wachen
           WHERE nr_wache IS NOT '0'
-          GROUP BY name_leitstelle 
+          GROUP BY name_leitstelle
           UNION ALL
           -- Landkreise
-          SELECT 
+          SELECT
             'kreis' AS typ,
             CAST(nr_kreis AS TEXT) AS nr,
-            name_kreis AS name 
-          FROM waip_wachen 
+            name_kreis AS name
+          FROM waip_wachen
           WHERE nr_wache IS NOT '0'
           GROUP BY name_kreis
           UNION ALL
           -- Träger
-          SELECT DISTINCT 
+          SELECT DISTINCT
             'traeger' typ,
-            nr_kreis || nr_traeger AS nr, 
-            CASE 
+            nr_kreis || nr_traeger AS nr,
+            CASE
               WHEN name_erweiterung = '' THEN name_traeger
               ELSE CONCAT(name_traeger, ' [', name_erweiterung , ']'  )
             END AS name
-          FROM waip_wachen 
+          FROM waip_wachen
           WHERE nr_wache IS NOT '0'
           UNION ALL
           -- Wachen
-          SELECT 
+          SELECT
             'wache' AS typ,
             CAST(nr_wache AS TEXT) AS nr,
-            name_wache AS name 
-          FROM waip_wachen 
+            name_wache AS name
+          FROM waip_wachen
           WHERE nr_wache IS NOT '0'
           ORDER BY typ, name;
         `);
@@ -795,8 +795,8 @@ module.exports = (db, app_cfg) => {
             // wachen_nr plausibel, jetzt je nach Länge passende SQL-Anweisung ausführen
             if (len == 1) {
               const stmt = db.prepare(`
-                SELECT DISTINCT '1' length, nr_leitstelle nr, name_leitstelle name 
-                FROM waip_wachen 
+                SELECT DISTINCT '1' length, nr_leitstelle nr, name_leitstelle name
+                FROM waip_wachen
                 WHERE nr_leitstelle LIKE ?;
               `);
               const row = stmt.get(wachen_nr);
@@ -808,9 +808,9 @@ module.exports = (db, app_cfg) => {
             }
             if (len == 2) {
               const stmt = db.prepare(`
-                SELECT '2' length, nr_kreis nr, name_kreis name 
-                FROM waip_wachen 
-                WHERE nr_kreis LIKE ? 
+                SELECT '2' length, nr_kreis nr, name_kreis name
+                FROM waip_wachen
+                WHERE nr_kreis LIKE ?
                 GROUP BY name_kreis LIMIT 1
               `);
               const row = stmt.get(wachen_nr);
@@ -823,13 +823,13 @@ module.exports = (db, app_cfg) => {
             if (len == 4) {
               const stmt = db.prepare(`
                 SELECT '4' length, nr_kreis || nr_traeger nr,
-                  CASE 
+                  CASE
                     WHEN name_erweiterung = '' THEN name_traeger
                     ELSE CONCAT(name_traeger, ' [', name_erweiterung , ']'  )
                   END AS name
-                FROM waip_wachen 
-                WHERE nr_kreis LIKE SUBSTR(?,-4, 2) 
-                  AND nr_traeger LIKE SUBSTR(?,-2, 2) 
+                FROM waip_wachen
+                WHERE nr_kreis LIKE SUBSTR(?,-4, 2)
+                  AND nr_traeger LIKE SUBSTR(?,-2, 2)
                 GROUP BY name_traeger LIMIT 1;
               `);
               const row = stmt.get(wachen_nr, wachen_nr);
@@ -841,8 +841,8 @@ module.exports = (db, app_cfg) => {
             }
             if (len == 6) {
               const stmt = db.prepare(`
-                SELECT '6' length, nr_wache nr, name_wache name 
-                FROM waip_wachen 
+                SELECT '6' length, nr_wache nr, name_wache name
+                FROM waip_wachen
                 WHERE nr_wache LIKE ?;
               `);
               const row = stmt.get(wachen_nr);
@@ -1476,8 +1476,8 @@ module.exports = (db, app_cfg) => {
             WHERE em_waip_einsaetze_id = ?;
           `);
           const row = stmt.get(waip_id);
-          // keine Wache für Benutzer hinterlegt, dann false
-          if (row === undefined) {
+          // keine Wache für Benutzer hinterlegt oder alle Stationen unbekannt, dann false
+          if (row === undefined || row.wache === null || row.wache === undefined) {
             resolve(false);
           } else {
             // Berechtigungen mit Wache vergleichen, wenn gefunden, dann true, sonst false
@@ -1507,6 +1507,7 @@ module.exports = (db, app_cfg) => {
         // wenn keine user_id oder permissions übergeben wurden, dann false
         if (!user_id || !permissions) {
           resolve(false);
+          return;
         }
 
         // wenn admin, dann true, ansonsten Berechtigung abfragen

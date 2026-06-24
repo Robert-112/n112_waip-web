@@ -13,14 +13,35 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
     const remote_ip = getRemoteIp(socket);
 
     // Session-Reload: haelt die Session im Store am Leben damit sie nicht ablaeuft.
-    // socket.request.user wird NICHT mehr fuer Berechtigungspruefungen verwendet;
-    // stattdessen wird socket.data.user genutzt, das beim WAIP-Event gesetzt wird.
+    // Aktualisiert zusaetzlich socket.data.user, damit Berechtigungsaenderungen
+    // (z.B. durch Admin) ohne Seiten-Reload wirksam werden.
     const session_timer = setInterval(() => {
-      socket.request.session.reload((err) => {
+      socket.request.session.reload(async (err) => {
         if (!err) {
-          socket.request.session.count++;
-          socket.request.session.save();
-          logger.log("debug", `Session fuer ${remote_ip} (${socket.id}) wurde per Reload erneuert.`);
+          try {
+            socket.request.session.count++;
+            socket.request.session.save();
+
+            // User frisch aus DB laden, damit Berechtigungsaenderungen wirken
+            const passport_id = socket.request.session && socket.request.session.passport
+              ? socket.request.session.passport.user
+              : null;
+            if (passport_id) {
+              const refreshed_user = await sql.auth_deserializeUser(passport_id);
+              if (refreshed_user) {
+                socket.data.user = refreshed_user;
+                logger.log("debug", `Session und User fuer ${remote_ip} (${socket.id}) erneuert: ${refreshed_user.user}.`);
+              } else {
+                // User nicht mehr in DB -> als Gast behandeln
+                socket.data.user = { id: null, user: "Gast", permissions: null };
+                logger.log("warn", `User nach Session-Reload nicht mehr in DB, Socket ${socket.id} wird als Gast behandelt.`);
+              }
+            } else {
+              logger.log("debug", `Session fuer ${remote_ip} (${socket.id}) erneuert (kein Passport-User).`);
+            }
+          } catch (refreshErr) {
+            logger.log("error", `Fehler beim Aktualisieren des Users nach Session-Reload fuer ${socket.id}: ${refreshErr.message}`);
+          }
         } else {
           const user_name = socket.data.user ? socket.data.user.user : "Gast";
           logger.log("debug", `Fehler beim Erneuern der Session fuer ${remote_ip} (${socket.id} ${user_name}): ${err.message}`);
