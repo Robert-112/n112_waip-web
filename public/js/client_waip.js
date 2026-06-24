@@ -926,8 +926,9 @@ socket.on("io.new_rmld", function (data) {
   recount_rmld(pg_waip_uuid);
   // View anpassen
   reset_view();
-  // Textgröße der Rückmeldungen anpassen
-  resize_text();
+  // Textgröße der Rückmeldungen anpassen – debounced, damit bei Batch-Eingang nur einmal läuft
+  clearTimeout(_rmld_resize_timer);
+  _rmld_resize_timer = setTimeout(resize_text, 150);
 
   // Bing abspielen (nur wenn kein laufendes TTS überlagert wird)
   let audio = document.getElementById("audio");
@@ -964,38 +965,17 @@ socket.on("io.new_rmld", function (data) {
 /* ########################### */
 
 let counter_rmld = [];
+let _rmld_resize_timer = null;
 
 function reset_rmld() {
-  // alle Rückmeldungen zurücksetzen, indem alle Rückmeldungen mit der Klasse "pg-" + UUID gelöscht werden
-
-  let arr_rmld_uuids = [];
-
-  // Selektiere alle Elemente unterhalb von #container_rmld
-  $("#rmld_progressbars")
-    .children()
-    .each(function () {
-      console.log("Element:", $(this));
-      // Überprüfe, ob die ID des Elements mit dem Regex übereinstimmt
-      const regex = /^pg-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-      const elementId = $(this).attr("id");
-      if (regex.test(elementId)) {
-        // UUID aus der ID extrahieren
-        const uuid = elementId.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)[0];
-        // UUID zur Liste hinzufügen
-        arr_rmld_uuids.push(uuid);
-        console.log("Gefundene UUID:", uuid);
-        // Element löschen
-        $(this).remove();
-      }
-    });
-
-  // timer löschen, dabei die Liste arr_rmld_uuids durchgehen
-  for (let i = 0; i < arr_rmld_uuids.length; i++) {
-    let p_id = arr_rmld_uuids[i];
-    console.log("ID:", p_id);
-    // timer löschen
-    clearInterval(counter_rmld[p_id]);
-  }
+  const regex = /^pg-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
+  $("#rmld_progressbars").children().each(function () {
+    const match = regex.exec($(this).attr("id"));
+    if (match) {
+      clearInterval(counter_rmld[match[1]]);
+      $(this).remove();
+    }
+  });
 }
 
 function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_ma, p_med, p_start, p_end) {
@@ -1064,64 +1044,45 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
     // TODO PG-Bar ändern falls neue/angepasste Rückmeldung
   }
 
-  // Zeitschiene Anpassen
+  // Statischen Overlay-Text einmalig vorberechnen (ändert sich nicht)
+  let _caps = [];
+  if (p_agt > 0) _caps.push("AGT");
+  if (p_fzf > 0) _caps.push("FZF");
+  if (p_ma > 0) _caps.push("MA");
+  if (p_med > 0) _caps.push("MED");
+  let _overlay_text = (p_content || "") + (_caps.length > 0 ? " (" + _caps.join(", ") + ")" : "");
+
+  // DOM-Referenzen einmalig cachen
+  let _$bar = $("#pg-bar-" + p_id);
+  let _$overlay = $("#pg-text-" + p_id);
+
+  // Overlay-Spans einmalig anlegen – kein Rebuild jede Sekunde
+  _$overlay.empty();
+  let _timeNode = $("<span>").css({ position: "absolute", left: "4px" }).appendTo(_$overlay)[0];
+  if (_overlay_text) $("<span>").text(_overlay_text).appendTo(_$overlay);
+
+  // Zeitstempel als Millisekunden cachen
+  let _start_ms = p_start.getTime();
+  let _end_ms = p_end.getTime();
+
   clearInterval(counter_rmld[p_id]);
-  counter_rmld[p_id] = 0;
   counter_rmld[p_id] = setInterval(function () {
-    do_rmld_bar(p_id, p_start, p_end, p_content, p_agt, p_fzf, p_ma, p_med);
+    let now = Date.now();
+    let current_progress = Math.round((100 / (_start_ms - _end_ms)) * (_start_ms - now));
+
+    if (current_progress >= 100) {
+      _$bar.css("width", "100%").attr("aria-valuenow", 100);
+      _$overlay.empty().text(_overlay_text).addClass("ion-md-checkmark-circle");
+      clearInterval(counter_rmld[p_id]);
+    } else {
+      let diff = Math.abs(_end_ms - now);
+      let min = Math.floor(diff / 60000);
+      let sec = Math.floor((diff % 60000) / 1000);
+      _$bar.css("width", current_progress + "%").attr("aria-valuenow", current_progress);
+      // textContent direkt – kein jQuery-Overhead im 1-Sek-Takt
+      _timeNode.textContent = min + ":" + (sec < 10 ? "0" + sec : sec);
+    }
   }, 1000);
-}
-
-function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
-  //console.log(p_id);
-  today = new Date();
-  // restliche Zeit ermitteln
-  let current_progress = Math.round((100 / (start.getTime() - end.getTime())) * (start.getTime() - today.getTime()));
-
-  let diff = Math.abs(end - today);
-  let minutesDifference = Math.floor(diff / 1000 / 60);
-  diff -= minutesDifference * 1000 * 60;
-  let secondsDifference = Math.floor(diff / 1000);
-  if (secondsDifference <= 9) {
-    secondsDifference = "0" + secondsDifference;
-  }
-
-  if (content) {
-    var pg_text_done = " " + content;
-    var pg_text_time = minutesDifference + ":" + secondsDifference + " - " + content;
-  } else {
-    var pg_text_done = "";
-    var pg_text_time = minutesDifference + ":" + secondsDifference;
-  }
-  if (agt > 0) {
-    pg_text_done += " AGT";
-  }
-  if (fzf > 0) {
-    pg_text_done += " FZF";
-  }
-  if (ma > 0) {
-    pg_text_done += " MA";
-  }
-  if (med > 0) {
-    pg_text_done += " MED";
-  }
-
-  // Progressbar anpassen
-  if (current_progress >= 100) {
-    $("#pg-bar-" + p_id)
-      .css("width", "100%")
-      .attr("aria-valuenow", 100)
-      .text("");
-    $("#pg-text-" + p_id)
-      .text(pg_text_done)
-      .addClass("ion-md-checkmark-circle");
-    clearInterval(counter_ID[p_id]);
-  } else {
-    $("#pg-bar-" + p_id)
-      .css("width", current_progress + "%")
-      .attr("aria-valuenow", current_progress)
-      .text(pg_text_time);
-  }
 }
 
 function recount_rmld(p_uuid) {
