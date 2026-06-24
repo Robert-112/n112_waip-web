@@ -782,45 +782,6 @@ socket.on("io.new_waip", function (data) {
   // Karte leeren
   map.removeLayer(marker);
   map.removeLayer(geojson);
-  // Zoomsstufe bei 4K anpassen
-  let initialZoom = window.innerWidth >= 3840 && window.innerHeight >= 2160 ? 16 : 14;
-  // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
-  if (data.wgs84_x && data.wgs84_y) {
-    const lat = data.wgs84_x; // Quellcode nutzt wgs84_x als Breitengrad (?) – falls vertauscht ggf. anpassen
-    const lng = data.wgs84_y;
-    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(map);
-    try {
-      // Erzeuge Bounds um den Einzelpunkt und erweitere ihn um Faktor (Leaflet pad) für Kontext
-      let ptBounds = L.latLngBounds([lat, lng], [lat, lng]);
-      // 15% Puffer in alle Richtungen
-      ptBounds = ptBounds.pad(0.15);
-      const basePad = Math.min(window.innerWidth, window.innerHeight);
-      const pad = Math.max(30, Math.min(120, Math.round(basePad * 0.05)));
-      map.fitBounds(ptBounds, { padding: [pad, pad], maxZoom: initialZoom });
-    } catch (e) {
-      console.warn("fitBounds für Einzelpunkt fehlgeschlagen, fallback setView", e);
-      map.setView(new L.LatLng(lat, lng), initialZoom);
-    }
-  } else {
-    try {
-      const gjData = JSON.parse(data.geometry);
-      geojson = L.geoJSON(gjData).addTo(map);
-      const gjBounds = geojson.getBounds();
-      if (gjBounds.isValid()) {
-        // Dynamisches Padding (5% der kleineren Fensterkante, minimum 30px, maximum 120px)
-        const basePad = Math.min(window.innerWidth, window.innerHeight);
-        const pad = Math.max(30, Math.min(120, Math.round(basePad * 0.05)));
-        // fitBounds mit zusätzlichem Rand und Begrenzung der maximalen Vergrößerung
-        map.fitBounds(gjBounds, { padding: [pad, pad], maxZoom: initialZoom });
-      } else {
-        // Fallback: Nur Mittelpunkt setzen
-        const center = gjBounds.getCenter();
-        map.setView(center, initialZoom);
-      }
-    } catch (e) {
-      console.error("GeoJSON Parsing/Rendering Fehler", e);
-    }
-  }
 
   // Ablaufzeit setzen
   start_counter(data.zeitstempel, data.ablaufzeit);
@@ -829,13 +790,40 @@ socket.on("io.new_waip", function (data) {
   recount_rmld(data.uuid);
   // VIEW anpassen
   reset_view();
-  // TODO: Einzeige vergrößern wenn Felder nicht angezeigt werden
-  // Uhr ausblenden
+  // Uhr ausblenden, Tableau einblenden – MUSS vor map.fitBounds passieren,
+  // damit der Kartencontainer eine reale Größe hat wenn Leaflet rechnet
   $("#waipclock").addClass("d-none");
   $("#waiptableau").removeClass("d-none");
-  // Map neu zeichnen
+  // Leaflet die tatsächliche Containergröße mitteilen, bevor fitBounds aufgerufen wird
   map.invalidateSize();
-  //
+
+  // Zoomstufe: CSS-Pixel entscheiden (auf 4K ohne Skalierung ist innerWidth >=3840;
+  // bei Windows-Skalierung 150/200% meldet innerWidth ~1280/1920, dann reichen 14 Stufen)
+  const physW = window.innerWidth * (window.devicePixelRatio || 1);
+  const physH = window.innerHeight * (window.devicePixelRatio || 1);
+  const initialZoom = physW >= 3840 && physH >= 2160 ? 16 : 14;
+
+  // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
+  if (data.wgs84_x && data.wgs84_y) {
+    const lat = data.wgs84_x;
+    const lng = data.wgs84_y;
+    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(map);
+    map.setView(new L.LatLng(lat, lng), initialZoom);
+  } else {
+    try {
+      const gjData = JSON.parse(data.geometry);
+      geojson = L.geoJSON(gjData).addTo(map);
+      const gjBounds = geojson.getBounds();
+      if (gjBounds.isValid()) {
+        map.fitBounds(gjBounds, { padding: [50, 50], maxZoom: initialZoom });
+      } else {
+        map.setView(gjBounds.getCenter(), initialZoom);
+      }
+    } catch (e) {
+      console.error("GeoJSON Parsing/Rendering Fehler", e);
+    }
+  }
+
   resize_text();
 });
 
