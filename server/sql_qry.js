@@ -1194,6 +1194,28 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // Monitoring-Kennzahlen für Check_MK bereitstellen
+  const db_monitoring_get_stats = () => {
+    return new Promise((resolve, reject) => {
+      try {
+        const einsatz = db.prepare(`
+          SELECT
+            COUNT(*) AS total,
+            CAST((JULIANDAY('now', 'localtime') - JULIANDAY(MAX(zeitstempel))) * 24 * 60 AS INTEGER) AS last_min
+          FROM waip_einsaetze;
+        `).get();
+
+        const wachen = db.prepare(`
+          SELECT COUNT(*) AS total, SUM(aktiv) AS active FROM waip_wachen;
+        `).get();
+
+        resolve({ einsatz, wachen });
+      } catch (error) {
+        reject(new Error("Fehler beim Abfragen der Monitoring-Statistiken: " + error));
+      }
+    });
+  };
+
   // Client aus Datenbank entfernen
   const db_client_delete = (socket) => {
     return new Promise((resolve, reject) => {
@@ -2331,6 +2353,7 @@ module.exports = (db, app_cfg) => {
     db_tts_ortsdaten,
     db_client_update_status,
     db_client_get_connected,
+    db_monitoring_get_stats,
     db_client_delete,
     db_client_check_waip_id,
     db_log,
