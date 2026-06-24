@@ -300,6 +300,13 @@ audio {
   z-index: 1;
 }
 
+.clock-seconds {
+  font-size: 0.4em;
+  color: #555;
+  opacity: 0.65;
+  vertical-align: baseline;
+}
+
 #em_weitere {
   display: flex;
   justify-content: center;

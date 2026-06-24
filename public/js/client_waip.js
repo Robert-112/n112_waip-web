@@ -1281,11 +1281,12 @@ function set_clock() {
   if (element_time.substr(0, 5) == "13:37") {
     element_time = "1337";
   }
+  // Sekunden jede Sekunde aktualisieren
+  $("#clock-seconds").text(":" + curr_sek);
+
   // nur erneuern wenn sich Zeit geändert hat
-  if ($("#time").text() !== element_time) {
-    // Uhrzeit anzeigen
-    $("#time").text(element_time);
-    // Datum (Text) anzeigen
+  if ($("#clock-hhmm").text() !== element_time) {
+    $("#clock-hhmm").text(element_time);
     $("#day").text(element_day);
     resize_text();
   }
