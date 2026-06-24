@@ -444,8 +444,9 @@ try {
 }
 
 // Icon der Karte zuordnen
-// Markergröße dynamisch für 4K anpassen (4K jetzt nochmals größer)
-let is4K = window.innerWidth >= 3840 && window.innerHeight >= 2160;
+// Monitorauflösung prüfen (screen statt window.inner – unabhängig von Fenstergröße/Vollbild)
+let is4K = screen.width * (window.devicePixelRatio || 1) >= 3840 &&
+           screen.height * (window.devicePixelRatio || 1) >= 2160;
 let markerSize = is4K ? [50, 82] : [25, 41];
 let markerAnchor = is4K ? [25, 82] : [12, 41];
 let markerShadowSize = is4K ? [82, 82] : [41, 41];
@@ -797,11 +798,7 @@ socket.on("io.new_waip", function (data) {
   // Leaflet die tatsächliche Containergröße mitteilen, bevor fitBounds aufgerufen wird
   map.invalidateSize();
 
-  // Zoomstufe: CSS-Pixel entscheiden (auf 4K ohne Skalierung ist innerWidth >=3840;
-  // bei Windows-Skalierung 150/200% meldet innerWidth ~1280/1920, dann reichen 14 Stufen)
-  const physW = window.innerWidth * (window.devicePixelRatio || 1);
-  const physH = window.innerHeight * (window.devicePixelRatio || 1);
-  const initialZoom = physW >= 3840 && physH >= 2160 ? 16 : 14;
+  const initialZoom = is4K ? 16 : 14;
 
   // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
   if (data.wgs84_x && data.wgs84_y) {
