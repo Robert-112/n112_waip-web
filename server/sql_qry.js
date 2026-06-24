@@ -127,7 +127,7 @@ module.exports = (db, app_cfg) => {
               ) VALUES (
                 (SELECT ID FROM waip_einsatzmittel WHERE em_funkrufname LIKE ?),
                 ?, 
-                (SELECT ID FROM waip_wachen WHERE name_wache LIKE ?),
+                (SELECT ID FROM waip_wachen WHERE name_wache LIKE ? AND aktiv = 1),
                 ?,
                 ?,
                 DATETIME(?),
@@ -723,7 +723,7 @@ module.exports = (db, app_cfg) => {
             CAST(nr_wache AS TEXT) AS nr,
             name_wache AS name
           FROM waip_wachen
-          WHERE nr_wache IS '0'
+          WHERE nr_wache IS '0' AND aktiv = 1
           UNION ALL
           -- Leitstellen
           SELECT
@@ -731,7 +731,7 @@ module.exports = (db, app_cfg) => {
             CAST(nr_leitstelle AS TEXT) AS nr,
             name_leitstelle AS name
           FROM waip_wachen
-          WHERE nr_wache IS NOT '0'
+          WHERE nr_wache IS NOT '0' AND aktiv = 1
           GROUP BY name_leitstelle
           UNION ALL
           -- Landkreise
@@ -740,7 +740,7 @@ module.exports = (db, app_cfg) => {
             CAST(nr_kreis AS TEXT) AS nr,
             name_kreis AS name
           FROM waip_wachen
-          WHERE nr_wache IS NOT '0'
+          WHERE nr_wache IS NOT '0' AND aktiv = 1
           GROUP BY name_kreis
           UNION ALL
           -- Träger
@@ -752,7 +752,7 @@ module.exports = (db, app_cfg) => {
               ELSE CONCAT(name_traeger, ' [', name_erweiterung , ']'  )
             END AS name
           FROM waip_wachen
-          WHERE nr_wache IS NOT '0'
+          WHERE nr_wache IS NOT '0' AND aktiv = 1
           UNION ALL
           -- Wachen
           SELECT
@@ -760,7 +760,7 @@ module.exports = (db, app_cfg) => {
             CAST(nr_wache AS TEXT) AS nr,
             name_wache AS name
           FROM waip_wachen
-          WHERE nr_wache IS NOT '0'
+          WHERE nr_wache IS NOT '0' AND aktiv = 1
           ORDER BY typ, name;
         `);
         const rows = stmt.all();
@@ -797,7 +797,7 @@ module.exports = (db, app_cfg) => {
               const stmt = db.prepare(`
                 SELECT DISTINCT '1' length, nr_leitstelle nr, name_leitstelle name
                 FROM waip_wachen
-                WHERE nr_leitstelle LIKE ?;
+                WHERE nr_leitstelle LIKE ? AND aktiv = 1;
               `);
               const row = stmt.get(wachen_nr);
               if (row === undefined) {
@@ -810,7 +810,7 @@ module.exports = (db, app_cfg) => {
               const stmt = db.prepare(`
                 SELECT '2' length, nr_kreis nr, name_kreis name
                 FROM waip_wachen
-                WHERE nr_kreis LIKE ?
+                WHERE nr_kreis LIKE ? AND aktiv = 1
                 GROUP BY name_kreis LIMIT 1
               `);
               const row = stmt.get(wachen_nr);
@@ -830,6 +830,7 @@ module.exports = (db, app_cfg) => {
                 FROM waip_wachen
                 WHERE nr_kreis LIKE SUBSTR(?,-4, 2)
                   AND nr_traeger LIKE SUBSTR(?,-2, 2)
+                  AND aktiv = 1
                 GROUP BY name_traeger LIMIT 1;
               `);
               const row = stmt.get(wachen_nr, wachen_nr);
@@ -843,7 +844,7 @@ module.exports = (db, app_cfg) => {
               const stmt = db.prepare(`
                 SELECT '6' length, nr_wache nr, name_wache name
                 FROM waip_wachen
-                WHERE nr_wache LIKE ?;
+                WHERE nr_wache LIKE ? AND aktiv = 1;
               `);
               const row = stmt.get(wachen_nr);
               if (row === undefined) {
@@ -913,8 +914,8 @@ module.exports = (db, app_cfg) => {
               ?,
               ?,
               ?,
-              (SELECT id FROM waip_wachen WHERE name_wache LIKE ?),
-              (SELECT nr_wache FROM waip_wachen WHERE name_wache LIKE ?),
+              (SELECT id FROM waip_wachen WHERE name_wache LIKE ? AND aktiv = 1),
+              (SELECT nr_wache FROM waip_wachen WHERE name_wache LIKE ? AND aktiv = 1),
               ?,
               ?,
               ?
@@ -2214,7 +2215,8 @@ module.exports = (db, app_cfg) => {
           name_beschreibung = ?,
           name_erweiterung = ?,
           wgs84_x = ?,
-          wgs84_y = ?
+          wgs84_y = ?,
+          aktiv = ?
         WHERE id = ?;
       `);
         const info = stmt.run(
@@ -2234,6 +2236,7 @@ module.exports = (db, app_cfg) => {
           wache.name_erweiterung,
           wache.wgs84_x,
           wache.wgs84_y,
+          wache.aktiv === "on" ? 1 : 0,
           wache.id
         );
         resolve(info.changes);
@@ -2276,9 +2279,10 @@ module.exports = (db, app_cfg) => {
           nr_abteilung,
           name_beschreibung,
           wgs84_x,
-          wgs84_y
+          wgs84_y,
+          aktiv
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         );
       `);
         const info = stmt.run(
@@ -2296,7 +2300,8 @@ module.exports = (db, app_cfg) => {
           wache.nr_abteilung,
           wache.name_beschreibung,
           wache.wgs84_x,
-          wache.wgs84_y
+          wache.wgs84_y,
+          wache.aktiv === "on" ? 1 : 0
         );
         resolve(info.lastInsertRowid);
       } catch (error) {

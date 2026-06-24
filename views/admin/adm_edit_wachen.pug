@@ -78,6 +78,11 @@ block content
               .form-group.col-md-2
                 label Y Latitude
                 input.form-control(type="text" name="wgs84_y" pattern="-?\\d{1,2}\\.\\d+" title="Latitude im Dezimalformat, z.B. 52.12345")
+              .form-group.col-md-2
+                label Aktiv
+                .form-check
+                  input.form-check-input(type="checkbox" name="aktiv" checked)
+                  label.form-check-label Wache aktiv schalten
             button.btn.btn-success(type="submit") Anlegen
         .col-12
           .border-top.m-3
@@ -105,6 +110,7 @@ block content
                 th Name Erweiterung
                 th X Longitude
                 th Y Latitude
+                th Aktiv
                 th Aktion
             tbody
               each w in wachen
@@ -161,8 +167,10 @@ block content
                     td
                       .input-group.input-group-sm
                         input.form-control(type="text" name="wgs84_y" value=w.wgs84_y pattern="-?\\d{1,2}\\.\\d+" title="Latitude im Dezimalformat, z.B. 52.12345")
+                    td.text-center
+                      input(type="checkbox" name="aktiv" checked=(w.aktiv == 1))
                     td
-                      .btn-group(role="group") 
+                      .btn-group(role="group")
                         button.btn.btn-primary.btn-sm(type="submit") Speichern
                         // Lösch-Button nutzt dasselbe Formularfeld 'id', aber eigenes Ziel via formaction
                         button.btn.btn-danger.btn-sm(type="submit" formaction="/adm_edit_wachen/delete" formmethod="post" onclick="return confirm('Wache wirklich löschen?')") Löschen
