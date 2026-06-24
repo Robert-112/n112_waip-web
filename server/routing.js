@@ -325,18 +325,18 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       const waip  = clients.filter((c) => c.client_nsp === "/waip").length;
       const dbrd  = clients.filter((c) => c.client_nsp === "/dbrd").length;
       const alarm = clients.filter((c) => c.client_status && c.client_status !== "Standby").length;
-      lines.push(`0 waip_clients total=${total};;;0; waip=${waip};;;0; dbrd=${dbrd};;;0; alarm=${alarm};;;0; ${total} Clients (${waip}x /waip, ${dbrd}x /dbrd, ${alarm}x im Einsatz)`);
+      lines.push(`0 waip_clients total=${total};;;0;|waip=${waip};;;0;|dbrd=${dbrd};;;0;|alarm=${alarm};;;0; ${total} Clients (${waip}x /waip, ${dbrd}x /dbrd, ${alarm}x im Einsatz)`);
 
       // Service 2: Einsätze in der Datenbank
       const einsatz_total = stats.einsatz.total ?? 0;
       const last_min      = stats.einsatz.last_min;
       const last_text     = last_min != null ? `letzter vor ${last_min} min` : "keine Einsätze vorhanden";
-      lines.push(`0 waip_einsaetze count=${einsatz_total};;;0; last_min=${last_min ?? ""};;;0; ${einsatz_total} Einsätze in DB (${last_text})`);
+      lines.push(`0 waip_einsaetze count=${einsatz_total};;;0;|last_min=${last_min ?? ""};;;0; ${einsatz_total} Einsätze in DB (${last_text})`);
 
       // Service 3: konfigurierte Wachen
       const wachen_total  = stats.wachen.total  ?? 0;
       const wachen_active = stats.wachen.active ?? 0;
-      lines.push(`0 waip_wachen active=${wachen_active};;;0; total=${wachen_total};;;0; ${wachen_active}/${wachen_total} Wachen aktiv konfiguriert`);
+      lines.push(`0 waip_wachen active=${wachen_active};;;0;|total=${wachen_total};;;0; ${wachen_active}/${wachen_total} Wachen aktiv konfiguriert`);
 
       // Service 4: Prozess-Laufzeit
       const uptime_s = Math.floor(process.uptime());
