@@ -24,26 +24,30 @@ block content
                     p.card-text=success
                   .col-3.text-right
                     button#close_info.btn.btn-info.ion-md-close
-      .row
-        .col-lg-4.col-12.d-flex.align-self-stretch
-          .card.border-success.mb-3.w-100
-            .card-body.text-success.text-center
-              h5.card-title Benutzer hinzufügen
-              button.btn.btn-success.btn-lg.ion-md-add-circle(onclick='addUser();')
-        each val in users
-          .col-lg-4.col-12.d-flex.align-self-stretch
-            .card.border-dark.mb-3.w-100
-              .card-header= val.user
-              .card-body.text
-                p='Benutzerrechte: ' + val.permissions
-                //p='IP-Adresse: ' + val.ip_address
-              .card-footer.text-right
-                button.btn.btn-primary.mx-2.ion-md-create(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-ip_address=val.ip_address)  Bearbeiten
-                form(action='/adm_edit_users', method='POST', style='display:inline-block;')
-                  input(type='hidden', name='modal_method', value='DELETE')
-                  input(type='hidden', name='id', value=val.id)
-                  input(type='hidden', name='username', value=val.user)
-                  button.btn.btn-danger.mx-2.ion-md-trash(type='submit', value='submit')  Löschen
+      .row.mt-2
+        .col-12.mb-3
+          button.btn.btn-success.ion-md-add-circle(onclick='addUser();')  Benutzer hinzufügen
+        .col-12
+          table.table.table-striped.table-hover.table-sm
+            thead.thead-dark
+              tr
+                th Benutzername
+                th Beschreibung
+                th Berechtigung
+                th.text-right Aktionen
+            tbody
+              each val in users
+                tr
+                  td= val.user
+                  td.text-muted= val.description || ''
+                  td= val.permissions
+                  td.text-right.text-nowrap
+                    button.btn.btn-sm.btn-primary.mx-1.ion-md-create(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
+                    form(action='/adm_edit_users', method='POST', style='display:inline-block;')
+                      input(type='hidden', name='modal_method', value='DELETE')
+                      input(type='hidden', name='id', value=val.id)
+                      input(type='hidden', name='username', value=val.user)
+                      button.btn.btn-sm.btn-danger.mx-1.ion-md-trash(type='submit', value='submit')  Löschen
 
   #userModal.modal.fade(tabindex='-1', role='dialog', aria-hidden='true')
     .modal-dialog.modal-dialog-centered(role='document')
@@ -75,6 +79,10 @@ block content
                       | Benutzer
                     small.form-text.text-muted Benutzer können Wachalarme empfangen und eigene Einstzellungen festlegen.
                     input#waip_rights.form-control(type='text', name='waip_rights', pattern='(((^|,)([0-9]+))+)', placeholder='00,0000,00000,000001,...')
+            .form-group
+              label Beschreibung
+              input#description.form-control(type='text', name='description', placeholder='Optionale Beschreibung ...')
+              small.form-text.text-muted Kurze Beschreibung des Benutzers (optional).
             .form-group
               label Passwort
               input#UserPassword.form-control(type='password', name='password', placeholder='...')
@@ -115,6 +123,7 @@ block content
       }
       $("#UserPassword").prop("required", false);
       $("#ip").val($(current_user).data("ip_address"));
+      $("#description").val($(current_user).data("description"));
       $('#userModal').modal('show');
     }
     $('#close_info').on('click', function(event) {

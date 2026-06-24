@@ -195,7 +195,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   const createUser = async (req, res) => {
     try {
       const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
-      const result = await sql.auth_create_new_user(req.body.username, hash, "", req.body.permissions, req.body.ip);
+      const result = await sql.auth_create_new_user(req.body.username, hash, req.body.description || "", req.body.permissions, req.body.ip);
       if (result) {
         return res.redirect(
           "/adm_edit_users?success=" + encodeURIComponent("Neuer Benutzer wurde angelegt.")
@@ -257,7 +257,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
             encodeURIComponent("Sie können Ihr Recht als Administrator nicht selbst ändern!")
         );
       } else {
-        query += "permissions = '" + req.body.permissions + "', ip_address ='" + req.body.ip + "'";
+        query += "description = '" + (req.body.description || "").replace(/'/g, "''") + "', permissions = '" + req.body.permissions + "', ip_address ='" + req.body.ip + "'";
         runquery = true;
       }
 

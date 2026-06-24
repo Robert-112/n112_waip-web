@@ -233,6 +233,14 @@ module.exports = (bcrypt, app_cfg) => {
     } catch (e) {
       // Spalte existiert bereits, kein Handlungsbedarf
     }
+
+    // Migration: Spalte 'description' zu waip_user hinzufügen (falls noch nicht vorhanden)
+    try {
+      db.exec("ALTER TABLE waip_user ADD COLUMN description TEXT");
+      console.log("START - Migration: Spalte 'description' zur Tabelle waip_user hinzugefügt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
   }
 
   console.log("START - Datenbank geöffnet.");

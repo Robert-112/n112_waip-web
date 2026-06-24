@@ -1433,7 +1433,7 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT id, user, permissions, ip_address FROM waip_user;
+          SELECT id, user, description, permissions, ip_address FROM waip_user;
         `);
         const rows = stmt.all();
         if (rows.length === 0) {
