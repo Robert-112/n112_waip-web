@@ -7,7 +7,7 @@ $(document).ready(function () {
 });
 
 $(window).on("resize", function () {
-  resize_text();
+  resize_text(true);
   updateWachennameAnimation();
   updateRandomPosition();
 });
@@ -247,7 +247,7 @@ $("#replay").on("click", function (event) {
 /* ############################ */
 
 // Größen dynamisch anpassen, Hintergrundfarbe ggf. anpassen
-function resize_text() {
+function resize_text(reProcess) {
   // Hintergrund im Standby schwarz setzen
   if ($("#waipclock").is(":visible")) {
     $("body").css("background-color", "#000");
@@ -257,10 +257,12 @@ function resize_text() {
     textFit(document.getElementsByClassName("clock_frame"), {
       minFontSize: 4,
       maxFontSize: 500,
+      reProcess: reProcess,
     });
     textFit(document.getElementsByClassName("day_frame"), {
       minFontSize: 3,
       maxFontSize: 500,
+      reProcess: reProcess,
     });
   }
   // Tableau nur Anpassen wenn sichtbar
@@ -268,17 +270,19 @@ function resize_text() {
     textFit(document.getElementsByClassName("tf_singleline"), {
       minFontSize: 3,
       maxFontSize: 700,
+      reProcess: reProcess,
     });
     textFit(document.getElementsByClassName("tf_multiline"), {
       minFontSize: 3,
       maxFontSize: 500,
       multiLine: true,
+      reProcess: reProcess,
     });
     // Karte neu setzen
     map.invalidateSize();
     $("body").css("background-color", "#222");
     // Anpassung der Schriftgröße aller Divs mit der Klasse "cl_em_alarmiert"
-    textFit(document.getElementsByClassName("cl_em_alarmiert"), { minFontSize: 4, maxFontSize: 500 });
+    textFit(document.getElementsByClassName("cl_em_alarmiert"), { minFontSize: 4, maxFontSize: 500, reProcess: reProcess });
   }
 }
 
@@ -346,7 +350,7 @@ function do_on_Inactive() {
     paddingTop: "1rem",
     margin: 0,
   });
-  resize_text();
+  resize_text(true);
 }
 
 // bei Activitaet Header/Footer einblenden
@@ -364,7 +368,7 @@ function do_on_Active() {
     height: "calc(100vh - 60px - 5rem)",
     cursor: "auto",
   });
-  resize_text();
+  resize_text(true);
 }
 
 // bei Event (Aktiviaet) alles zuruecksetzen
@@ -583,8 +587,13 @@ socket.on("io.standby", function (data) {
   $("#em_weitere").text("");
   reset_rmld();
   recount_rmld();
+  // Leaflet-Reset: alle Layer entfernen und Basis-Kacheln + Platzhalter neu anlegen
+  map.eachLayer(function (layer) { map.removeLayer(layer); });
+  AddMapLayer();
+  marker = L.marker(new L.LatLng(0, 0), { icon: redIcon }).addTo(map);
+  geojson = L.geoJSON().addTo(map);
   map.setView(new L.LatLng(0, 0), 14);
-  // Tareset_responsebleau ausblenden
+  // Tableau ausblenden
   $("#waiptableau").addClass("d-none");
   $("#waipclock").removeClass("d-none");
   // Art der Standbyanzeige bestimmen
@@ -595,10 +604,11 @@ socket.on("io.standby", function (data) {
   }
   // 200ms warten
   setTimeout(function () {
-    resize_text();
+    resize_text(true);
     updateWachennameAnimation();
     updateRandomPosition();
   }, 200);
+
 });
 
 // Einsatzdaten laden, Wachalarm anzeigen
@@ -687,13 +697,7 @@ socket.on("io.new_waip", function (data) {
   }
   // Strasse und Hausnummer anfuegen
   if (data.strasse) {
-    // Hausnummer an Strasse anfuegen, falls vorhanden
-    tmp_strasse = data.strasse;
-    if (data.hausnummer) {
-      tmp_strasse = data.strasse + "&nbsp;" + data.hausnummer;
-    } else {
-      tmp_strasse = data.strasse;
-    }
+    let tmp_strasse = data.hausnummer ? data.strasse + "&nbsp;" + data.hausnummer : data.strasse;
     small_ortsdaten = small_ortsdaten + break_text_25(tmp_strasse) + "<br />";
   }
   if (small_ortsdaten.substr(small_ortsdaten.length - 4) == "<br />") {
@@ -784,6 +788,10 @@ socket.on("io.new_waip", function (data) {
     console.log(e); // error in the above string (in this case, yes)!
   }
 
+  // Rückmeldungs-Timer vollständig zurücksetzen
+  Object.keys(counter_rmld).forEach(function(id) { clearInterval(counter_rmld[id]); });
+  counter_rmld = {};
+
   // Karte leeren
   map.removeLayer(marker);
   map.removeLayer(geojson);
@@ -825,7 +833,7 @@ socket.on("io.new_waip", function (data) {
     }
   }
 
-  resize_text();
+  resize_text(true);
 });
 
 socket.on("io.new_rmld", function (data) {
@@ -929,7 +937,7 @@ socket.on("io.new_rmld", function (data) {
   reset_view();
   // Textgröße der Rückmeldungen anpassen – debounced, damit bei Batch-Eingang nur einmal läuft
   clearTimeout(_rmld_resize_timer);
-  _rmld_resize_timer = setTimeout(resize_text, 150);
+  _rmld_resize_timer = setTimeout(() => resize_text(true), 150);
 
   // Bing abspielen (nur wenn kein laufendes TTS überlagert wird)
   let audio = document.getElementById("audio");
