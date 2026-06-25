@@ -151,6 +151,7 @@ audio {
 [id^="rmld-bars-"] .progress-bar {
   overflow: visible;
   padding-left: 2px;
+  will-change: width;
 }
 
 [id^="pg-text-"] {

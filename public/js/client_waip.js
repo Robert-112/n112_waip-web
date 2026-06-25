@@ -273,7 +273,6 @@ function resize_text() {
       minFontSize: 3,
       maxFontSize: 500,
       multiLine: true,
-      reProcess: true,
     });
     // Karte neu setzen
     map.invalidateSize();
