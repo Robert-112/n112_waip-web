@@ -151,11 +151,10 @@ audio {
 [id^="rmld-bars-"] .progress-bar {
   overflow: visible;
   padding-left: 2px;
-  text-shadow: 0 0 3px #000, 0 0 6px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,0.9);
 }
 
 [id^="pg-text-"] {
-  text-shadow: 0 0 3px #000, 0 0 6px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,0.9);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.85);
   font-size: inherit;
   z-index: 1;
 }
@@ -165,7 +164,7 @@ audio {
 }
 
 #standbytimer-text {
-  text-shadow: 0 0 3px #000, 0 0 6px rgba(0,0,0,0.9), 0 1px 3px rgba(0,0,0,0.9);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.85);
 }
 
 #rueckmeldung .list-group-item {
