@@ -614,6 +614,8 @@ socket.on("io.standby", function (data) {
 // Einsatzdaten laden, Wachalarm anzeigen
 socket.on("io.new_waip", function (data) {
   console.log("Neuer Einsatz:", data);
+  // Monitor aus Inaktiv-Modus holen (stellt body-Dimensionen für textFit wieder her)
+  do_on_Active();
   // Einsatz-ID speichern
   waip_id = data.id;
   // Alarmzeitsetzen setzen, das format "YYYY-MM-DD HH:MM:SS" soll in "YYYY-MM-DD" & "HH:MM" umgewandelt werden
@@ -1254,7 +1256,7 @@ function set_clock() {
   if ($("#clock-hhmm").text() !== element_time) {
     $("#clock-hhmm").text(element_time);
     $("#day").text(element_day);
-    resize_text();
+    resize_text(true);
   }
 }
 
