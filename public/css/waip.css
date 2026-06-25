@@ -164,6 +164,11 @@ audio {
   padding-right: 2.5em;
 }
 
+#rmld_progressbars [id^="pg-text-"] {
+  font-size: 0.85em;
+  letter-spacing: -0.03em;
+}
+
 [id^="pg-text-"].ion-md-checkmark-circle::before {
   margin-right: 4px;
 }
