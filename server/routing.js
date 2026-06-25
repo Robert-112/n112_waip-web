@@ -301,6 +301,57 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   });
 
   /* ######################### */
+  /* ##### Monitoring     ##### */
+  /* ######################### */
+
+  // Check_MK Local Check: gibt Anwendungsstatus im Check_MK-Format aus (mehrere Services).
+  // Nur von localhost erreichbar; keine Session-Auth erforderlich.
+  app.get("/check_mk", async (req, res, next) => {
+    const client_ip = req.ip;
+    if (client_ip !== "127.0.0.1" && client_ip !== "::1" && client_ip !== "::ffff:127.0.0.1") {
+      return res.status(403).end();
+    }
+    try {
+      const [rows, stats] = await Promise.all([
+        sql.db_client_get_connected(),
+        sql.db_monitoring_get_stats(),
+      ]);
+
+      const lines = [];
+
+      // Service 1: verbundene Clients
+      const clients = rows || [];
+      const total = clients.length;
+      const waip  = clients.filter((c) => c.client_nsp === "/waip").length;
+      const dbrd  = clients.filter((c) => c.client_nsp === "/dbrd").length;
+      const alarm = clients.filter((c) => c.client_status && c.client_status !== "Standby").length;
+      lines.push(`0 waip_clients total=${total};;;0; waip=${waip};;;0; dbrd=${dbrd};;;0; alarm=${alarm};;;0; ${total} Clients (${waip}x /waip, ${dbrd}x /dbrd, ${alarm}x im Einsatz)`);
+
+      // Service 2: Einsätze in der Datenbank
+      const einsatz_total = stats.einsatz.total ?? 0;
+      const last_min      = stats.einsatz.last_min;
+      const last_text     = last_min != null ? `letzter vor ${last_min} min` : "keine Einsätze vorhanden";
+      lines.push(`0 waip_einsaetze count=${einsatz_total};;;0; last_min=${last_min ?? ""};;;0; ${einsatz_total} Einsätze in DB (${last_text})`);
+
+      // Service 3: konfigurierte Wachen
+      const wachen_total  = stats.wachen.total  ?? 0;
+      const wachen_active = stats.wachen.active ?? 0;
+      lines.push(`0 waip_wachen active=${wachen_active};;;0; total=${wachen_total};;;0; ${wachen_active}/${wachen_total} Wachen aktiv konfiguriert`);
+
+      // Service 4: Prozess-Laufzeit
+      const uptime_s = Math.floor(process.uptime());
+      const uptime_h = Math.floor(uptime_s / 3600);
+      const uptime_m = Math.floor((uptime_s % 3600) / 60);
+      lines.push(`0 waip_uptime seconds=${uptime_s};;;0; Laufzeit: ${uptime_h}h ${uptime_m}min`);
+
+      res.type("text").send(lines.join("\n") + "\n");
+    } catch (error) {
+      logger.log("error", "Fehler beim Abrufen der Monitoring-Daten fuer Check_MK: " + error);
+      res.type("text").send("3 waip_clients - Datenbankabfrage fehlgeschlagen\n");
+    }
+  });
+
+  /* ######################### */
   /* ##### Einstellungen ##### */
   /* ######################### */
 
