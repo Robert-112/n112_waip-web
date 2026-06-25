@@ -395,8 +395,15 @@ function start_counter(zeitstempel, ablaufzeit) {
 
 function do_progressbar(start, end) {
   today = new Date();
-  // restliche Zeit ermitteln
   let current_progress = Math.round((100 / (end.getTime() - start.getTime())) * (end.getTime() - today.getTime()));
+
+  if (current_progress <= 0) {
+    clearInterval(counter_ID);
+    counter_ID = 0;
+    $("#standbytimer-bar").css("width", "0%").attr("aria-valuenow", 0);
+    $("#standbytimer-text").text("");
+    return;
+  }
 
   let diff = Math.abs(end - today);
   let minutesDifference = Math.floor(diff / 1000 / 60);
@@ -405,12 +412,10 @@ function do_progressbar(start, end) {
   if (secondsDifference <= 9) {
     secondsDifference = "0" + secondsDifference;
   }
-  let minutes = minutesDifference + ":" + secondsDifference;
-  // Progressbar anpassen
   $("#standbytimer-bar")
     .css("width", current_progress + "%")
     .attr("aria-valuenow", current_progress);
-  $("#standbytimer-text").text(minutes + " min");
+  $("#standbytimer-text").text(minutesDifference + ":" + secondsDifference + " min");
 }
 
 /* ########################### */
@@ -563,8 +568,9 @@ socket.on("io.playtts", function (data) {
 // Daten löschen, Uhr anzeigen
 socket.on("io.standby", function (data) {
   console.log("Standby", data);
-  // Einsatz-ID auf 0 setzen
   waip_id = null;
+  clearInterval(counter_ID);
+  counter_ID = 0;
 
   $("#einsatz_art").removeClass(function (index, className) {
     return (className.match(/(^|\s)bg-\S+/g) || []).join(" ");
@@ -598,7 +604,6 @@ socket.on("io.standby", function (data) {
 
 // Einsatzdaten laden, Wachalarm anzeigen
 socket.on("io.new_waip", function (data) {
-  // DEBUG
   console.log("Neuer Einsatz:", data);
   // Einsatz-ID speichern
   waip_id = data.id;
@@ -825,6 +830,7 @@ socket.on("io.new_waip", function (data) {
 });
 
 socket.on("io.new_rmld", function (data) {
+  console.log("neue Rückmeldung:", data);
   // Rückmeldungen deaktiviert? (rmld_off wird serverseitig ins Template injiziert)
   try {
     if (typeof rmld_off !== "undefined" && rmld_off) {
@@ -835,7 +841,6 @@ socket.on("io.new_rmld", function (data) {
     // falls Variable nicht existiert einfach normal fortfahren
   }
   // DEBUG
-  console.log("neue Rückmeldung:", data);
   // FIXME  Änderung des Funktions-Typ berücksichtigen
   // Neue Rueckmeldung hinterlegen
   // HTML festlegen
@@ -970,6 +975,7 @@ function reset_rmld() {
     const match = regex.exec($(this).attr("id"));
     if (match) {
       clearInterval(counter_rmld[match[1]]);
+      delete counter_rmld[match[1]];
       $(this).remove();
     }
   });
@@ -1071,6 +1077,8 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
       _$bar.css("width", "100%").attr("aria-valuenow", 100);
       _$overlay.empty().removeClass("rmld-timer-running").text(_overlay_text).addClass("ion-md-checkmark-circle");
       clearInterval(counter_rmld[p_id]);
+      delete counter_rmld[p_id];
+      _$bar = _$overlay = null; // DOM-Referenzen für GC freigeben
     } else {
       let diff = Math.abs(_end_ms - now);
       let min = Math.floor(diff / 60000);
@@ -1138,13 +1146,9 @@ function reset_view() {
   } else {
     besonderheiten_on = true;
   }
-  console.log("rmld_on:", rmld_on);
-  console.log("em_weitere_on:", em_weitere_on);
-  console.log("besonderheiten_on:", besonderheiten_on);
+  console.log("rmld_on:", rmld_on, "em_weitere_on:", em_weitere_on, "besonderheiten_on:", besonderheiten_on);
   // VIEW anpassen
-  // v1 - wenn Rückmeldungen, weitere Einsatzmittel und Besonderheiten vorhanden sind
   if (rmld_on && (!em_weitere_on || em_weitere_on) && besonderheiten_on) {
-    console.log("v1");
     $("#container_rmld").removeClass("d-none");
     alterClass("#container_ortsdaten", "h-*", "h-45");
     alterClass("#container_ortsdaten", "col-*", "col-5");
@@ -1155,7 +1159,6 @@ function reset_view() {
   }
   // v2, v6 - wenn keine Rückmeldungen, egal ob weitere Einsatzmittel und keine Besonderheiten vorhanden sind
   if (!rmld_on && (!em_weitere_on || em_weitere_on) && !besonderheiten_on) {
-    console.log("v2, v6");
     $("#container_rmld").addClass("d-none");
     alterClass("#container_ortsdaten", "h-*", "h-45");
     alterClass("#container_ortsdaten", "col-*", "col-12");
@@ -1166,7 +1169,6 @@ function reset_view() {
   }
   // v3, v5 - wenn Besonderheiten, keine Rückmeldungen, egal ob weitere Einsatzmittel
   if (!rmld_on && (em_weitere_on || !em_weitere_on) && besonderheiten_on) {
-    console.log("v3, v5");
     $("#container_rmld").addClass("d-none");
     // wenn max. 2 Einsatzmittel alarmirt sind, dann mehr Höhe für Text
     if ($("#em_alarmiert_new").children().length <= 2) {
@@ -1185,7 +1187,6 @@ function reset_view() {
   }
   // v4, v7 - keine Besonderheiten, aber Rückmeldungen und egal ob weitere Einsatzmittel
   if (!besonderheiten_on && rmld_on && (em_weitere_on || !em_weitere_on)) {
-    console.log("v4, v7");
     $("#container_rmld").removeClass("d-none");
     alterClass("#container_ortsdaten", "h-*", "h-55");
     alterClass("#container_ortsdaten", "col-*", "col-5");
