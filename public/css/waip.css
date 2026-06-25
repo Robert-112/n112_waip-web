@@ -147,9 +147,24 @@ audio {
   }
 }
 
-#rmld_progressbars .progress-bar {
+#rmld_progressbars .progress-bar,
+[id^="rmld-bars-"] .progress-bar {
   overflow: visible;
   padding-left: 2px;
+}
+
+[id^="pg-text-"] {
+  text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+  font-size: inherit;
+  z-index: 1;
+}
+
+[id^="pg-text-"].ion-md-checkmark-circle::before {
+  margin-right: 4px;
+}
+
+#standbytimer-text {
+  text-shadow: 0 1px 3px rgba(0,0,0,0.85);
 }
 
 #rueckmeldung .list-group-item {
@@ -298,6 +313,13 @@ audio {
 #clock_day {
   transition: all 0.5s ease-in-out;
   z-index: 1;
+}
+
+.clock-seconds {
+  font-size: 0.4em;
+  color: #555;
+  opacity: 0.65;
+  vertical-align: baseline;
 }
 
 #em_weitere {

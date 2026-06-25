@@ -95,7 +95,8 @@ module.exports = (bcrypt, app_cfg) => {
         name_beschreibung TEXT,         -- neu
         name_erweiterung TEXT,          -- neu (Version 2.0.4)
         wgs84_x REAL,                   -- vorher: wgs84_x TEXT,
-        wgs84_y REAL                    -- vorher: wgs84_y TEXT
+        wgs84_y REAL,                   -- vorher: wgs84_y TEXT
+        aktiv INTEGER DEFAULT 1         -- neu: 1 = aktiv, 0 = inaktiv
       );
       
       -- Tabelle für Historie
@@ -224,6 +225,22 @@ module.exports = (bcrypt, app_cfg) => {
     const info = stmt.run();
 
     console.log("START - Datenbank existiert bereits, keine Erstellung notwendig. Temporäre Daten in Waip_clients wurden gelöscht:", info.changes);
+
+    // Migration: Spalte 'aktiv' zu waip_wachen hinzufügen (falls noch nicht vorhanden)
+    try {
+      db.exec("ALTER TABLE waip_wachen ADD COLUMN aktiv INTEGER DEFAULT 1");
+      console.log("START - Migration: Spalte 'aktiv' zur Tabelle waip_wachen hinzugefügt (alle bestehenden Wachen auf aktiv gesetzt).");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
+
+    // Migration: Spalte 'description' zu waip_user hinzufügen (falls noch nicht vorhanden)
+    try {
+      db.exec("ALTER TABLE waip_user ADD COLUMN description TEXT");
+      console.log("START - Migration: Spalte 'description' zur Tabelle waip_user hinzugefügt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
   }
 
   console.log("START - Datenbank geöffnet.");

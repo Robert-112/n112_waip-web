@@ -4,50 +4,54 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   const waip_verteilen_socket = (einsatzdaten, socket, wachen_nr, reset_timestamp) => {
     return new Promise(async (resolve, reject) => {
       try {
+        // Lokale Kopie erstellen, damit das geteilte einsatzdaten-Objekt nicht durch
+        // Berechtigungs-Stripping fuer andere Sockets im selben Raum veraendert wird.
+        const data = { ...einsatzdaten };
+
         // Berechtigungen für den Einsatz, anhand der Wachen-Berechtigung ueberpruefen
-        const permissions = await sql.db_user_check_permission_for_waip(socket, einsatzdaten.id);
+        const permissions = await sql.db_user_check_permission_for_waip(socket, data.id);
 
         // wenn Berechtigungen nicht passen / nicht vorhanden sind, dann Daten entfernen
         if (!permissions) {
-          einsatzdaten.einsatznummer = "";
-          einsatzdaten.objekt = "";
-          einsatzdaten.objektteil = "";
-          einsatzdaten.besonderheiten = "";
-          einsatzdaten.strasse = "";
-          einsatzdaten.hausnummer = "";
-          einsatzdaten.einsatzdetails = "";
-          einsatzdaten.wgs84_x = "";
-          einsatzdaten.wgs84_y = "";
+          data.einsatznummer = "";
+          data.objekt = "";
+          data.objektteil = "";
+          data.besonderheiten = "";
+          data.strasse = "";
+          data.hausnummer = "";
+          data.einsatzdetails = "";
+          data.wgs84_x = "";
+          data.wgs84_y = "";
           // Flag setzen, dass Berechtigungen nicht ok sind
-          einsatzdaten.permissions = false;
+          data.permissions = false;
         } else {
           // Flag setzen, dass Berechtigungen ok sind
-          einsatzdaten.permissions = true;
+          data.permissions = true;
         }
 
         // Ablaufzeit zum Einsatz hinzufuegen, damit diese auf der Seite ausgewertet werden kann
-        einsatzdaten.ablaufzeit = reset_timestamp;
+        data.ablaufzeit = reset_timestamp;
 
         // pruefen ob Einsatz bereits genau so beim Client angezeigt wurde (Doppelalarmierung)
-        const doppelalarm = await sql.db_einsatz_check_history(einsatzdaten, socket);
+        const doppelalarm = await sql.db_einsatz_check_history(data, socket);
 
         if (doppelalarm) {
           // Log das Einsatz explizit nicht an Client gesendet wurde
-          logger.log("waip", `Einsatz ${einsatzdaten.id} für Wache ${wachen_nr} nicht an Socket ${socket.id} gesendet, Doppelalarmierung.`);
+          logger.log("waip", `Einsatz ${data.id} für Wache ${wachen_nr} nicht an Socket ${socket.id} gesendet, Doppelalarmierung.`);
           resolve(false);
         } else {
           // Einsatz-ID dem Socket zuweisen, fuer spaetere Abgleiche
-          socket.data.waip_id = einsatzdaten.id;
+          socket.data.waip_id = data.id;
 
           // Einsatzdaten an Client senden
-          socket.emit("io.new_waip", einsatzdaten);
-          logger.log("waip", `Einsatz ${einsatzdaten.id} für Wache ${wachen_nr} an ${socket.id} gesendet.`);
+          socket.emit("io.new_waip", data);
+          logger.log("waip", `Einsatz ${data.id} für Wache ${wachen_nr} an ${socket.id} gesendet.`);
 
           // Client-Status mit Wachennummer aktualisieren
-          sql.db_client_update_status(socket, einsatzdaten.id);
+          sql.db_client_update_status(socket, data.id);
 
           // Sound erstellen und an Client senden
-          const tts = await tts_erstellen(app_cfg, einsatzdaten, wachen_nr);
+          const tts = await tts_erstellen(app_cfg, data, wachen_nr);
           if (tts) {
             // Sound-Link senden
             socket.emit("io.playtts", tts);
@@ -79,7 +83,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
         } else {
           // Einsatzdaten an alle beteiligten Wachen (Websocket-Raum) verteilen
           for (const rooms of socket_rooms) {
-            wachen_nr = rooms.room;
+            const wachen_nr = rooms.room;
 
             // Einsatzdaten passend pro Wache aus Datenbank laden
             const einsatzdaten = await sql.db_einsatz_get_for_wache(waip_id, wachen_nr);
@@ -134,7 +138,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       try {
         // alle waip-uuids durchgehen und jeweils die Rückmeldungsdaten anhand der einzelnen UUIDs im Array ermitteln und senden
         for (const key in obj_waip_uuid_with_rmld_uuid) {
-          waip_uuid = key;
+          const waip_uuid = key;
 
           // Einsatz-ID mittels Einsatz-UUID ermitteln
           const waip_id = await sql.db_einsatz_get_waipid_by_uuid(waip_uuid);
@@ -146,7 +150,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
           // Rückmeldungen an alle beteiligten Wachen ('/waip'-Websocket-Raum) verteilen
           for (const waip_room of waip_rooms) {
-            wachen_nr = waip_room.room;
+            const wachen_nr = waip_room.room;
 
             // alle zur Wache zugehörigen Alarmmonitor-Sockets ermitteln
             const waip_sockets = await io.of("/waip").in(wachen_nr.toString()).fetchSockets();

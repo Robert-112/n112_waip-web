@@ -444,8 +444,9 @@ try {
 }
 
 // Icon der Karte zuordnen
-// Markergröße dynamisch für 4K anpassen (4K jetzt nochmals größer)
-let is4K = window.innerWidth >= 3840 && window.innerHeight >= 2160;
+// Monitorauflösung prüfen (screen statt window.inner – unabhängig von Fenstergröße/Vollbild)
+let is4K = screen.width * (window.devicePixelRatio || 1) >= 3840 &&
+           screen.height * (window.devicePixelRatio || 1) >= 2160;
 let markerSize = is4K ? [50, 82] : [25, 41];
 let markerAnchor = is4K ? [25, 82] : [12, 41];
 let markerShadowSize = is4K ? [82, 82] : [41, 41];
@@ -782,45 +783,6 @@ socket.on("io.new_waip", function (data) {
   // Karte leeren
   map.removeLayer(marker);
   map.removeLayer(geojson);
-  // Zoomsstufe bei 4K anpassen
-  let initialZoom = window.innerWidth >= 3840 && window.innerHeight >= 2160 ? 16 : 14;
-  // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
-  if (data.wgs84_x && data.wgs84_y) {
-    const lat = data.wgs84_x; // Quellcode nutzt wgs84_x als Breitengrad (?) – falls vertauscht ggf. anpassen
-    const lng = data.wgs84_y;
-    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(map);
-    try {
-      // Erzeuge Bounds um den Einzelpunkt und erweitere ihn um Faktor (Leaflet pad) für Kontext
-      let ptBounds = L.latLngBounds([lat, lng], [lat, lng]);
-      // 15% Puffer in alle Richtungen
-      ptBounds = ptBounds.pad(0.15);
-      const basePad = Math.min(window.innerWidth, window.innerHeight);
-      const pad = Math.max(30, Math.min(120, Math.round(basePad * 0.05)));
-      map.fitBounds(ptBounds, { padding: [pad, pad], maxZoom: initialZoom });
-    } catch (e) {
-      console.warn("fitBounds für Einzelpunkt fehlgeschlagen, fallback setView", e);
-      map.setView(new L.LatLng(lat, lng), initialZoom);
-    }
-  } else {
-    try {
-      const gjData = JSON.parse(data.geometry);
-      geojson = L.geoJSON(gjData).addTo(map);
-      const gjBounds = geojson.getBounds();
-      if (gjBounds.isValid()) {
-        // Dynamisches Padding (5% der kleineren Fensterkante, minimum 30px, maximum 120px)
-        const basePad = Math.min(window.innerWidth, window.innerHeight);
-        const pad = Math.max(30, Math.min(120, Math.round(basePad * 0.05)));
-        // fitBounds mit zusätzlichem Rand und Begrenzung der maximalen Vergrößerung
-        map.fitBounds(gjBounds, { padding: [pad, pad], maxZoom: initialZoom });
-      } else {
-        // Fallback: Nur Mittelpunkt setzen
-        const center = gjBounds.getCenter();
-        map.setView(center, initialZoom);
-      }
-    } catch (e) {
-      console.error("GeoJSON Parsing/Rendering Fehler", e);
-    }
-  }
 
   // Ablaufzeit setzen
   start_counter(data.zeitstempel, data.ablaufzeit);
@@ -829,13 +791,36 @@ socket.on("io.new_waip", function (data) {
   recount_rmld(data.uuid);
   // VIEW anpassen
   reset_view();
-  // TODO: Einzeige vergrößern wenn Felder nicht angezeigt werden
-  // Uhr ausblenden
+  // Uhr ausblenden, Tableau einblenden – MUSS vor map.fitBounds passieren,
+  // damit der Kartencontainer eine reale Größe hat wenn Leaflet rechnet
   $("#waipclock").addClass("d-none");
   $("#waiptableau").removeClass("d-none");
-  // Map neu zeichnen
+  // Leaflet die tatsächliche Containergröße mitteilen, bevor fitBounds aufgerufen wird
   map.invalidateSize();
-  //
+
+  const initialZoom = is4K ? 16 : 14;
+
+  // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
+  if (data.wgs84_x && data.wgs84_y) {
+    const lat = data.wgs84_x;
+    const lng = data.wgs84_y;
+    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(map);
+    map.setView(new L.LatLng(lat, lng), initialZoom);
+  } else {
+    try {
+      const gjData = JSON.parse(data.geometry);
+      geojson = L.geoJSON(gjData).addTo(map);
+      const gjBounds = geojson.getBounds();
+      if (gjBounds.isValid()) {
+        map.fitBounds(gjBounds, { padding: [50, 50], maxZoom: initialZoom });
+      } else {
+        map.setView(gjBounds.getCenter(), initialZoom);
+      }
+    } catch (e) {
+      console.error("GeoJSON Parsing/Rendering Fehler", e);
+    }
+  }
+
   resize_text();
 });
 
@@ -938,8 +923,9 @@ socket.on("io.new_rmld", function (data) {
   recount_rmld(pg_waip_uuid);
   // View anpassen
   reset_view();
-  // Textgröße der Rückmeldungen anpassen
-  resize_text();
+  // Textgröße der Rückmeldungen anpassen – debounced, damit bei Batch-Eingang nur einmal läuft
+  clearTimeout(_rmld_resize_timer);
+  _rmld_resize_timer = setTimeout(resize_text, 150);
 
   // Bing abspielen (nur wenn kein laufendes TTS überlagert wird)
   let audio = document.getElementById("audio");
@@ -976,38 +962,17 @@ socket.on("io.new_rmld", function (data) {
 /* ########################### */
 
 let counter_rmld = [];
+let _rmld_resize_timer = null;
 
 function reset_rmld() {
-  // alle Rückmeldungen zurücksetzen, indem alle Rückmeldungen mit der Klasse "pg-" + UUID gelöscht werden
-
-  let arr_rmld_uuids = [];
-
-  // Selektiere alle Elemente unterhalb von #container_rmld
-  $("#rmld_progressbars")
-    .children()
-    .each(function () {
-      console.log("Element:", $(this));
-      // Überprüfe, ob die ID des Elements mit dem Regex übereinstimmt
-      const regex = /^pg-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-      const elementId = $(this).attr("id");
-      if (regex.test(elementId)) {
-        // UUID aus der ID extrahieren
-        const uuid = elementId.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)[0];
-        // UUID zur Liste hinzufügen
-        arr_rmld_uuids.push(uuid);
-        console.log("Gefundene UUID:", uuid);
-        // Element löschen
-        $(this).remove();
-      }
-    });
-
-  // timer löschen, dabei die Liste arr_rmld_uuids durchgehen
-  for (let i = 0; i < arr_rmld_uuids.length; i++) {
-    let p_id = arr_rmld_uuids[i];
-    console.log("ID:", p_id);
-    // timer löschen
-    clearInterval(counter_rmld[p_id]);
-  }
+  const regex = /^pg-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
+  $("#rmld_progressbars").children().each(function () {
+    const match = regex.exec($(this).attr("id"));
+    if (match) {
+      clearInterval(counter_rmld[match[1]]);
+      $(this).remove();
+    }
+  });
 }
 
 function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_ma, p_med, p_start, p_end) {
@@ -1076,64 +1041,45 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
     // TODO PG-Bar ändern falls neue/angepasste Rückmeldung
   }
 
-  // Zeitschiene Anpassen
+  // Statischen Overlay-Text einmalig vorberechnen (ändert sich nicht)
+  let _caps = [];
+  if (p_agt > 0) _caps.push("AGT");
+  if (p_fzf > 0) _caps.push("FZF");
+  if (p_ma > 0) _caps.push("MA");
+  if (p_med > 0) _caps.push("MED");
+  let _overlay_text = (p_content || "") + (_caps.length > 0 ? " (" + _caps.join(", ") + ")" : "");
+
+  // DOM-Referenzen einmalig cachen
+  let _$bar = $("#pg-bar-" + p_id);
+  let _$overlay = $("#pg-text-" + p_id);
+
+  // Overlay-Spans einmalig anlegen – kein Rebuild jede Sekunde
+  _$overlay.empty();
+  let _timeNode = $("<span>").css({ position: "absolute", left: "4px" }).appendTo(_$overlay)[0];
+  if (_overlay_text) $("<span>").text(_overlay_text).appendTo(_$overlay);
+
+  // Zeitstempel als Millisekunden cachen
+  let _start_ms = p_start.getTime();
+  let _end_ms = p_end.getTime();
+
   clearInterval(counter_rmld[p_id]);
-  counter_rmld[p_id] = 0;
   counter_rmld[p_id] = setInterval(function () {
-    do_rmld_bar(p_id, p_start, p_end, p_content, p_agt, p_fzf, p_ma, p_med);
+    let now = Date.now();
+    let current_progress = Math.round((100 / (_start_ms - _end_ms)) * (_start_ms - now));
+
+    if (current_progress >= 100) {
+      _$bar.css("width", "100%").attr("aria-valuenow", 100);
+      _$overlay.empty().text(_overlay_text).addClass("ion-md-checkmark-circle");
+      clearInterval(counter_rmld[p_id]);
+    } else {
+      let diff = Math.abs(_end_ms - now);
+      let min = Math.floor(diff / 60000);
+      let sec = Math.floor((diff % 60000) / 1000);
+      _$bar.css("width", current_progress + "%").attr("aria-valuenow", current_progress);
+      // textContent direkt – kein jQuery-Overhead im 1-Sek-Takt
+      _timeNode.textContent = min + ":" + (sec < 10 ? "0" + sec : sec);
+    }
   }, 1000);
-}
-
-function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
-  //console.log(p_id);
-  today = new Date();
-  // restliche Zeit ermitteln
-  let current_progress = Math.round((100 / (start.getTime() - end.getTime())) * (start.getTime() - today.getTime()));
-
-  let diff = Math.abs(end - today);
-  let minutesDifference = Math.floor(diff / 1000 / 60);
-  diff -= minutesDifference * 1000 * 60;
-  let secondsDifference = Math.floor(diff / 1000);
-  if (secondsDifference <= 9) {
-    secondsDifference = "0" + secondsDifference;
-  }
-
-  if (content) {
-    var pg_text_done = " " + content;
-    var pg_text_time = minutesDifference + ":" + secondsDifference + " - " + content;
-  } else {
-    var pg_text_done = "";
-    var pg_text_time = minutesDifference + ":" + secondsDifference;
-  }
-  if (agt > 0) {
-    pg_text_done += " AGT";
-  }
-  if (fzf > 0) {
-    pg_text_done += " FZF";
-  }
-  if (ma > 0) {
-    pg_text_done += " MA";
-  }
-  if (med > 0) {
-    pg_text_done += " MED";
-  }
-
-  // Progressbar anpassen
-  if (current_progress >= 100) {
-    $("#pg-bar-" + p_id)
-      .css("width", "100%")
-      .attr("aria-valuenow", 100)
-      .text("");
-    $("#pg-text-" + p_id)
-      .text(pg_text_done)
-      .addClass("ion-md-checkmark-circle");
-    clearInterval(counter_ID[p_id]);
-  } else {
-    $("#pg-bar-" + p_id)
-      .css("width", current_progress + "%")
-      .attr("aria-valuenow", current_progress)
-      .text(pg_text_time);
-  }
 }
 
 function recount_rmld(p_uuid) {
@@ -1293,11 +1239,12 @@ function set_clock() {
   if (element_time.substr(0, 5) == "13:37") {
     element_time = "1337";
   }
+  // Sekunden jede Sekunde aktualisieren
+  $("#clock-seconds").text(":" + curr_sek);
+
   // nur erneuern wenn sich Zeit geändert hat
-  if ($("#time").text() !== element_time) {
-    // Uhrzeit anzeigen
-    $("#time").text(element_time);
-    // Datum (Text) anzeigen
+  if ($("#clock-hhmm").text() !== element_time) {
+    $("#clock-hhmm").text(element_time);
     $("#day").text(element_day);
     resize_text();
   }

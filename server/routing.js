@@ -47,7 +47,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       }
       res.render("page_home", {
         public: app_cfg.public,
-        title: "Startseite",
+        title: "Wachalarm IP-Web",
         user: req.user,
         user_waips: user_waips,
         user_dbrds: user_dbrds,

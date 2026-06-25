@@ -245,11 +245,42 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
   } else {
     // TODO Anpassung bei Update
   }
-  // Zeitschiene Anpassen
+  // Statischen Overlay-Text einmalig vorberechnen
+  var _caps = [];
+  if (p_agt > 0) _caps.push("AGT");
+  if (p_fzf > 0) _caps.push("FZF");
+  if (p_ma > 0) _caps.push("MA");
+  if (p_med > 0) _caps.push("MED");
+  var _overlay_text = (p_content || "") + (_caps.length > 0 ? " (" + _caps.join(", ") + ")" : "");
+
+  // DOM-Referenzen einmalig cachen
+  var _$bar = $("#pg-bar-" + p_id);
+  var _$overlay = $("#pg-text-" + p_id);
+
+  // Overlay-Spans einmalig anlegen
+  _$overlay.empty();
+  var _timeNode = $("<span>").css({ position: "absolute", left: "4px" }).appendTo(_$overlay)[0];
+  if (_overlay_text) $("<span>").text(_overlay_text).appendTo(_$overlay);
+
+  var _start_ms = p_start.getTime();
+  var _end_ms = p_end.getTime();
+
   clearInterval(counter_rmld[p_id]);
-  counter_rmld[p_id] = 0;
   counter_rmld[p_id] = setInterval(function () {
-    do_rmld_bar(p_id, p_start, p_end, p_content, p_agt, p_fzf, p_ma, p_med);
+    var now = Date.now();
+    var current_progress = Math.round((100 / (_start_ms - _end_ms)) * (_start_ms - now));
+
+    if (current_progress >= 100) {
+      _$bar.css("width", "100%").attr("aria-valuenow", 100);
+      _$overlay.empty().text(_overlay_text).addClass("ion-md-checkmark-circle");
+      clearInterval(counter_rmld[p_id]);
+    } else {
+      var diff = Math.abs(_end_ms - now);
+      var min = Math.floor(diff / 60000);
+      var sec = Math.floor((diff % 60000) / 1000);
+      _$bar.css("width", current_progress + "%").attr("aria-valuenow", current_progress);
+      _timeNode.textContent = min + ":" + (sec < 10 ? "0" + sec : sec);
+    }
   }, 1000);
 }
 
@@ -349,56 +380,6 @@ function update_station_counts(stationId) {
   $("#rmld-fzf-" + stationId).text(fzf);
   $("#rmld-med-" + stationId).text(med);
 }
-function do_rmld_bar(p_id, start, end, content, agt, fzf, ma, med) {
-  today = new Date();
-  // restliche Zeit ermitteln
-  var current_progress = Math.round((100 / (start.getTime() - end.getTime())) * (start.getTime() - today.getTime()));
-
-  var diff = Math.abs(end - today);
-  var minutesDifference = Math.floor(diff / 1000 / 60);
-  diff -= minutesDifference * 1000 * 60;
-  var secondsDifference = Math.floor(diff / 1000);
-  if (secondsDifference <= 9) {
-    secondsDifference = "0" + secondsDifference;
-  }
-
-  if (content) {
-    var pg_text_done = " " + content;
-    var pg_text_time = minutesDifference + ":" + secondsDifference + " - " + content;
-  } else {
-    var pg_text_done = "";
-    var pg_text_time = minutesDifference + ":" + secondsDifference;
-  }
-  if (agt > 0) {
-    pg_text_done += " AGT";
-  }
-  if (fzf > 0) {
-    pg_text_done += " FZF";
-  }
-  if (ma > 0) {
-    pg_text_done += " MA";
-  }
-  if (med > 0) {
-    pg_text_done += " MED";
-  }
-
-  // Progressbar anpassen
-  if (current_progress >= 100) {
-    $("#pg-bar-" + p_id)
-      .css("width", "100%")
-      .attr("aria-valuenow", 100);
-    $("#pg-text-" + p_id)
-      .text(pg_text_done)
-      .addClass("ion-md-checkmark-circle");
-    // FIXME Counter_Id not defined
-    clearInterval(counter_ID[p_id]);
-  } else {
-    $("#pg-bar-" + p_id)
-      .css("width", current_progress + "%")
-      .attr("aria-valuenow", current_progress);
-    $("#pg-text-" + p_id).text(pg_text_time);
-  }
-}
 
 function recount_rmld(p_uuid) {
   let bar_uuid = "bar-" + p_uuid;
@@ -418,9 +399,6 @@ function recount_rmld(p_uuid) {
   $("#gf-counter").text($(".pg-gf").length);
   $("#zf-counter").text($(".pg-zf").length);
   $("#vf-counter").text($(".pg-vf").length);
-
-  // zähle all Elemente mit der class p_agt und dem wert 1
-  console.log($(".p_agt").length);
 
   $("#agt-counter").text($(".p_agt").length);
   $("#ma-counter").text($(".p_ma").length);
