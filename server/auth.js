@@ -19,7 +19,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     store: sessionStore,
     key: "connect.sid",
     secret: app_cfg.global.sessionsecret,
-    //resave: true,
+    resave: false,
     saveUninitialized: true,
     // rolling: true sorgt dafür, dass bei jeder Antwort das Ablaufdatum des Cookies erneuert wird,
     // solange der Client aktiv bleibt.
