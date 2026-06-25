@@ -117,21 +117,25 @@ module.exports = (db, app_cfg) => {
           content.alarmdaten.forEach((item, index, array) => {
             const stmt = db.prepare(`
               INSERT OR REPLACE INTO waip_einsatzmittel (
-                id, 
-                em_waip_einsaetze_id, 
-                em_station_id, 
-                em_station_name, 
-                em_funkrufname, 
+                id,
+                em_waip_einsaetze_id,
+                em_station_id,
+                em_station_name,
+                em_funkrufname,
                 em_zeitstempel_alarmierung,
-                em_zeitstempel_ausgerueckt
+                em_zeitstempel_ausgerueckt,
+                em_zeitstempel_alarmierung_iso,
+                em_zeitstempel_ausgerueckt_iso
               ) VALUES (
                 (SELECT ID FROM waip_einsatzmittel WHERE em_funkrufname LIKE ?),
-                ?, 
+                ?,
                 (SELECT ID FROM waip_wachen WHERE name_wache LIKE ? AND aktiv = 1),
                 ?,
                 ?,
                 DATETIME(?),
-                DATETIME(?)
+                DATETIME(?),
+                ?,
+                ?
               );
             `);
 
@@ -142,7 +146,9 @@ module.exports = (db, app_cfg) => {
               item.wachenname,
               item.einsatzmittel,
               Datetime_to_SQLiteDate(item.zeit_alarmierung),
-              Datetime_to_SQLiteDate(item.zeit_ausgerueckt)
+              Datetime_to_SQLiteDate(item.zeit_ausgerueckt),
+              item.zeit_alarmierung_iso || null,
+              item.zeit_ausgerueckt_iso || null
             );
 
             // Schleife erhoehen
@@ -401,13 +407,15 @@ module.exports = (db, app_cfg) => {
 
             // Abfrage der alarmierten Einsatzmittel der Wache
             const stmt1 = db.prepare(`
-                SELECT 
+                SELECT
                   em_funkrufname AS 'name',
                   em_zeitstempel_alarmierung AS 'zeit',
-                  em_station_name AS 'wache'
+                  em_station_name AS 'wache',
+                  em_zeitstempel_alarmierung_iso AS 'zeit_alarmierung_iso',
+                  em_zeitstempel_ausgerueckt_iso AS 'zeit_ausgerueckt_iso'
                 FROM waip_einsatzmittel
-                WHERE 
-                  em_waip_einsaetze_id = ? 
+                WHERE
+                  em_waip_einsaetze_id = ?
                   ${em_sql_filter}
                 ;
               `);
@@ -418,13 +426,15 @@ module.exports = (db, app_cfg) => {
 
             // Abfrage der weiteren Einsatzmittel zum Einsatz
             const stmt2 = db.prepare(`
-                SELECT 
+                SELECT
                   em_funkrufname AS 'name',
                   em_zeitstempel_alarmierung AS 'zeit',
-                  em_station_name AS 'wache'
+                  em_station_name AS 'wache',
+                  em_zeitstempel_alarmierung_iso AS 'zeit_alarmierung_iso',
+                  em_zeitstempel_ausgerueckt_iso AS 'zeit_ausgerueckt_iso'
                 FROM waip_einsatzmittel
-                WHERE 
-                  em_waip_einsaetze_id = ? 
+                WHERE
+                  em_waip_einsaetze_id = ?
                   ${emnot_sql_filter}
                 ;
               `);
@@ -477,9 +487,10 @@ module.exports = (db, app_cfg) => {
         } else {
           // Einsatzmittel zum Einsatz finden
           const stmt1 = db.prepare(`
-            SELECT 
-              e.em_station_id, e.em_funkrufname, e.em_zeitstempel_alarmierung, e.em_station_name 
-            FROM waip_einsatzmittel e 
+            SELECT
+              e.em_station_id, e.em_funkrufname, e.em_zeitstempel_alarmierung, e.em_station_name,
+              e.em_zeitstempel_alarmierung_iso, e.em_zeitstempel_ausgerueckt_iso
+            FROM waip_einsatzmittel e
             WHERE e.em_waip_einsaetze_id = ?;
           `);
           // Einsatzmittel den Einsatzdaten hinzufügen

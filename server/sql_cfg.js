@@ -74,6 +74,8 @@ module.exports = (bcrypt, app_cfg) => {
         em_zeitstempel_alarmierung DATETIME,         -- vorher: zeitstempel TEXT,
         em_zeitstempel_ausgerueckt DATETIME,         -- neu
         em_zeitstempel_fms DATETIME,                 -- neu
+        em_zeitstempel_alarmierung_iso TEXT,         -- neu: ISO-Zeit Alarmierung
+        em_zeitstempel_ausgerueckt_iso TEXT,         -- neu: ISO-Zeit Ausruecken
         em_staerke_els TEXT                          -- vorher: staerke TEXT
       );
 
@@ -237,7 +239,22 @@ module.exports = (bcrypt, app_cfg) => {
     // Migration: Spalte 'description' zu waip_user hinzufügen (falls noch nicht vorhanden)
     try {
       db.exec("ALTER TABLE waip_user ADD COLUMN description TEXT");
-      console.log("START - Migration: Spalte 'description' zur Tabelle waip_user hinzugefügt.");
+      console.log("START - Migration: Spalte 'description' zur Tabelle waip_user hinzugefuegt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
+
+    // Migration: ISO-Zeit-Spalten zu waip_einsatzmittel hinzufügen (falls noch nicht vorhanden)
+    try {
+      db.exec("ALTER TABLE waip_einsatzmittel ADD COLUMN em_zeitstempel_alarmierung_iso TEXT");
+      console.log("START - Migration: Spalte 'em_zeitstempel_alarmierung_iso' zur Tabelle waip_einsatzmittel hinzugefuegt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
+
+    try {
+      db.exec("ALTER TABLE waip_einsatzmittel ADD COLUMN em_zeitstempel_ausgerueckt_iso TEXT");
+      console.log("START - Migration: Spalte 'em_zeitstempel_ausgerueckt_iso' zur Tabelle waip_einsatzmittel hinzugefuegt.");
     } catch (e) {
       // Spalte existiert bereits, kein Handlungsbedarf
     }
