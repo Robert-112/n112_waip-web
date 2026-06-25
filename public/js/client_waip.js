@@ -1054,7 +1054,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
   let _$overlay = $("#pg-text-" + p_id);
 
   // Overlay-Spans einmalig anlegen – kein Rebuild jede Sekunde
-  _$overlay.empty();
+  _$overlay.empty().addClass("rmld-timer-running");
   let _timeNode = $("<span>").css({ position: "absolute", left: "4px" }).appendTo(_$overlay)[0];
   if (_overlay_text) $("<span>").text(_overlay_text).appendTo(_$overlay);
 
@@ -1069,7 +1069,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
 
     if (current_progress >= 100) {
       _$bar.css("width", "100%").attr("aria-valuenow", 100);
-      _$overlay.empty().text(_overlay_text).addClass("ion-md-checkmark-circle");
+      _$overlay.empty().removeClass("rmld-timer-running").text(_overlay_text).addClass("ion-md-checkmark-circle");
       clearInterval(counter_rmld[p_id]);
     } else {
       let diff = Math.abs(_end_ms - now);

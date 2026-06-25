@@ -159,6 +159,11 @@ audio {
   z-index: 1;
 }
 
+[id^="pg-text-"].rmld-timer-running {
+  padding-left: 2.5em;
+  padding-right: 2.5em;
+}
+
 [id^="pg-text-"].ion-md-checkmark-circle::before {
   margin-right: 4px;
 }
