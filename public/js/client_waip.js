@@ -449,6 +449,9 @@ try {
   if (typeof sound_off !== "undefined" && sound_off) {
     attrTexts.push("Soundprüfung deaktiviert");
   }
+  if (typeof show_login !== "undefined" && show_login && typeof user_authenticated !== "undefined" && !user_authenticated) {
+    attrTexts.push("nicht angemeldet");
+  }
   if (attrTexts.length) {
     const optAttr = L.control.attribution({ position: "bottomleft", prefix: "" });
     optAttr.addAttribution(attrTexts.join(" | "));
