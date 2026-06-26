@@ -254,35 +254,42 @@ function resize_text(reProcess) {
   }
   // Uhr-Text nur Anpassen wenn sichtbar
   if ($("#clock_day").is(":visible")) {
-    textFit(document.getElementsByClassName("clock_frame"), {
-      minFontSize: 4,
-      maxFontSize: 500,
-      reProcess: reProcess,
-    });
-    textFit(document.getElementsByClassName("day_frame"), {
-      minFontSize: 3,
-      maxFontSize: 500,
-      reProcess: reProcess,
-    });
+    try {
+      textFit(document.getElementsByClassName("clock_frame"), {
+        minFontSize: 4,
+        maxFontSize: 500,
+        reProcess: reProcess,
+      });
+      textFit(document.getElementsByClassName("day_frame"), {
+        minFontSize: 3,
+        maxFontSize: 500,
+        reProcess: reProcess,
+      });
+    } catch (e) { console.error("resize_text clock_frame/day_frame:", e); }
   }
   // Tableau nur Anpassen wenn sichtbar
   if ($("#waiptableau").is(":visible")) {
-    textFit(document.getElementsByClassName("tf_singleline"), {
-      minFontSize: 3,
-      maxFontSize: 700,
-      reProcess: reProcess,
-    });
-    textFit(document.getElementsByClassName("tf_multiline"), {
-      minFontSize: 3,
-      maxFontSize: 500,
-      multiLine: true,
-      reProcess: reProcess,
-    });
+    try {
+      textFit(document.getElementsByClassName("tf_singleline"), {
+        minFontSize: 3,
+        maxFontSize: 700,
+        reProcess: reProcess,
+      });
+    } catch (e) { console.error("resize_text tf_singleline:", e); }
+    try {
+      textFit(document.getElementsByClassName("tf_multiline"), {
+        minFontSize: 3,
+        maxFontSize: 500,
+        multiLine: true,
+        reProcess: reProcess,
+      });
+    } catch (e) { console.error("resize_text tf_multiline:", e); }
     // Karte neu setzen
     map.invalidateSize();
     $("body").css("background-color", "#222");
-    // Anpassung der Schriftgröße aller Divs mit der Klasse "cl_em_alarmiert"
-    textFit(document.getElementsByClassName("cl_em_alarmiert"), { minFontSize: 4, maxFontSize: 500, reProcess: reProcess });
+    try {
+      textFit(document.getElementsByClassName("cl_em_alarmiert"), { minFontSize: 4, maxFontSize: 500, reProcess: reProcess });
+    } catch (e) { console.error("resize_text cl_em_alarmiert:", e); }
   }
 }
 
