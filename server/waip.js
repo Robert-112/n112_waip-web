@@ -200,21 +200,25 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
         // Rückmeldungen durchgehen und einzeln an Socket senden
         for (const rmld_data of rmld_arr) {
+          // Lokale Kopie erstellen, damit das geteilte rmld_data-Objekt nicht durch
+          // Berechtigungs-Stripping für andere Sockets im selben Raum verändert wird.
+          const data = { ...rmld_data };
+
           // Berechtigungen für aufgerufenen Alarmmonitor überpruefen
-          const permissions = await sql.db_user_check_permission_for_rmld(socket, rmld_data.wache_nr);
+          const permissions = await sql.db_user_check_permission_for_rmld(socket, data.wache_nr);
 
           // wenn Berechtigungen nicht passen / nicht vorhanden sind, dann Daten entfernen
           if (!permissions) {
-            rmld_data.rmld_alias = null;
-            rmld_data.rmld_address = null;
+            data.rmld_alias = null;
+            data.rmld_address = null;
           }
 
           // Rueckmeldung an Socket/Client senden
-          socket.emit("io.new_rmld", rmld_data);
+          socket.emit("io.new_rmld", data);
 
           const logMessage1 = `Rückmeldungen an Socket ${socket.id} gesendet.`;
           logger.log("log", logMessage1);
-          const logMessage2 = `Rückmeldung JSON: ${JSON.stringify(rmld_data)}`;
+          const logMessage2 = `Rückmeldung JSON: ${JSON.stringify(data)}`;
           logger.log("debug", logMessage2);
         }
 
