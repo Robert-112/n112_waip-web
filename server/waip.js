@@ -1,6 +1,7 @@
 const e = require("express");
 
 module.exports = (io, sql, fs, logger, app_cfg) => {
+  const { tts_erstellen } = require("./tts.js")(fs, logger, sql, app_cfg);
   const waip_verteilen_socket = (einsatzdaten, socket, wachen_nr, reset_timestamp) => {
     return new Promise(async (resolve, reject) => {
       try {
@@ -51,7 +52,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           sql.db_client_update_status(socket, data.id);
 
           // Sound erstellen und an Client senden
-          const tts = await tts_erstellen(app_cfg, data, wachen_nr);
+          const tts = await tts_erstellen(data, wachen_nr);
           if (tts) {
             // Sound-Link senden
             socket.emit("io.playtts", tts);
@@ -283,197 +284,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
   };
 
   // TODO WAIP: Funktion um Clients remote "neuzustarten" (Seite neu laden), niedrige Prioritaet
-
-  // Konstanten für TTS-Konfiguration
-  const TTS_CONFIG = {
-    audio: {
-      sampleRate: 44100,
-      channels: 2,
-      bitrate: "128k",
-    },
-    fileExtensions: {
-      wav: ".wav",
-      mp3: ".mp3",
-      tmp: "_tmp.mp3",
-    },
-  };
-
-  // Plattform-spezifische TTS-Implementierungen
-  const ttsImplementations = {
-    win32: {
-      createTTS: async (tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell) => {
-        const pwshell_commands = [
-          `
-          Add-Type -AssemblyName System.speech;
-          $speak = New-Object System.Speech.Synthesis.SpeechSynthesizer;
-          $speak.SetOutputToWaveFile("${wav_tts}");
-          $speak.Speak("${tts_text}");
-          $speak.Dispose();
-          ffmpeg -nostats -hide_banner -loglevel 0 -y -i ${wav_tts} -vn -ar ${TTS_CONFIG.audio.sampleRate} -ac ${TTS_CONFIG.audio.channels} -ab ${TTS_CONFIG.audio.bitrate} -f mp3 ${mp3_tmp};
-          ffmpeg -nostats -hide_banner -loglevel 0 -y -i "concat:${mp3_bell}|${mp3_tmp}" -acodec copy ${mp3_tts};
-          rm ${wav_tts};
-          rm ${mp3_tmp};
-          `,
-        ];
-
-        return new Promise((resolve, reject) => {
-          const proc = require("child_process");
-          const pwshell_childD = proc.spawn("powershell", pwshell_commands, { shell: true });
-
-          pwshell_childD.stderr.on("data", (data) => {
-            reject(new Error(`Fehler beim Erstellen der TTS-Datei (win32): ${data}`));
-          });
-
-          pwshell_childD.on("exit", (code) => {
-            if (code === 0) {
-              resolve();
-            } else {
-              reject(new Error(`Powershell-Prozess beendet mit Code ${code}`));
-            }
-          });
-
-          pwshell_childD.stdin.end();
-        });
-      },
-    },
-    linux: {
-      createTTS: async (tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell) => {
-        const lxshell_commands = [
-          "-c",
-          `
-          pico2wave --lang=de-DE --wave=${wav_tts} "${tts_text}"
-          ffmpeg -nostats -hide_banner -loglevel 0 -y -i ${wav_tts} -vn -ar ${TTS_CONFIG.audio.sampleRate} -ac ${TTS_CONFIG.audio.channels} -ab ${TTS_CONFIG.audio.bitrate} -f mp3 ${mp3_tmp}
-          ffmpeg -nostats -hide_banner -loglevel 0 -y -i "concat:${mp3_bell}|${mp3_tmp}" -acodec copy ${mp3_tts}
-          rm ${wav_tts}
-          rm ${mp3_tmp}`,
-        ];
-
-        const proc = require("child_process");
-
-        const maxAttempts = 3;
-        const retryDelayMs = 500;
-
-        const runOnce = () => {
-          return new Promise((resolve, reject) => {
-            const lxshell_childD = proc.spawn("/bin/sh", lxshell_commands, { shell: true });
-            let stderr = "";
-
-            lxshell_childD.stderr.on("data", (data) => {
-              stderr += data.toString();
-            });
-
-            lxshell_childD.on("error", (err) => {
-              reject(err);
-            });
-
-            lxshell_childD.on("exit", (code) => {
-              if (code === 0) {
-                resolve();
-              } else {
-                reject(new Error(`Linux TTS-Prozess beendet mit Code ${code}. ${stderr}`));
-              }
-            });
-
-            lxshell_childD.stdin.end();
-          });
-        };
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          try {
-            if (attempt > 1) logger.log("log", `TTS-Versuch ${attempt}/${maxAttempts} für ${wav_tts}`);
-            await runOnce();
-            if (attempt > 1) logger.log("log", `TTS erfolgreich nach ${attempt} Versuch(en) für ${wav_tts}`);
-            return;
-          } catch (err) {
-            logger.log("warn", `TTS-Versuch ${attempt}/${maxAttempts} fehlgeschlagen: ${err.message}`);
-            if (attempt < maxAttempts) {
-              await new Promise((r) => setTimeout(r, retryDelayMs));
-            } else {
-              throw new Error(`Linux TTS-Prozess nach ${maxAttempts} Versuchen fehlgeschlagen: ${err.message}`);
-            }
-          }
-        }
-      },
-    },
-  };
-
-  const tts_erstellen = async (app_cfg, einsatzdaten, wachen_nr) => {
-    try {
-      let full_half = "";
-      if (einsatzdaten.permissions) {
-        // Berechtigungen vorhanden, volle Einsatzdaten verwenden
-        full_half = "full";
-      } else {
-        // Berechtigungen nicht vorhanden, reduzierte Einsatzdaten verwenden
-        full_half = "half";
-      }
-
-      // Einsatz-UUID inkl. Wachennummer und Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
-      const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr + "_" + full_half;
-      const soundPath = process.cwd() + app_cfg.global.soundpath;
-      const mediaPath = app_cfg.global.mediapath;
-
-      // Pfade der Sound-Dateien definieren
-      const wav_tts = soundPath + id + TTS_CONFIG.fileExtensions.wav;
-      const mp3_tmp = soundPath + id + TTS_CONFIG.fileExtensions.tmp;
-      const mp3_tts = soundPath + id + TTS_CONFIG.fileExtensions.mp3;
-      const mp3_url = mediaPath + id + TTS_CONFIG.fileExtensions.mp3;
-
-      // Prüfen ob mp3 bereits existiert
-      if (fs.existsSync(mp3_tts)) {
-        return mp3_url;
-      }
-
-      // Alarmgong basierend auf Einsatzart wählen
-      const mp3_bell =
-        soundPath +
-        (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" ? "bell_long.mp3" : "bell_short.mp3");
-
-      // Sprachansage Text erstellen
-      let tts_text = `${einsatzdaten.einsatzart}, ${einsatzdaten.stichwort}. `;
-      // Orts-/Objekt-Text zusammensetzen ohne 'null' oder leere Teile
-      const locParts = [];
-      if (einsatzdaten.objektteil) locParts.push(einsatzdaten.objektteil);
-      if (einsatzdaten.objekt) locParts.push(einsatzdaten.objekt);
-      if (einsatzdaten.ort) locParts.push(einsatzdaten.ort);
-      // Ortsteil nur anhängen, wenn vorhanden und nicht identisch zu Ort (case-insensitive)
-      if (einsatzdaten.ortsteil && (!einsatzdaten.ort || einsatzdaten.ortsteil.toLowerCase() !== einsatzdaten.ort.toLowerCase())) {
-        locParts.push(einsatzdaten.ortsteil);
-      }
-      tts_text += locParts.join(", ");
-
-      // Textersetzungen aus Datenbank laden in TTS-Text durchführen
-      tts_text = await sql.db_tts_ortsdaten(tts_text);
-
-      // Einsatzmittel TTS-Text verarbeiten
-      await Promise.all(einsatzdaten.em_alarmiert.map((em) => sql.db_tts_einsatzmittel(em)));
-      const tts_text_em_alarmiert = einsatzdaten.em_alarmiert.map((em) => em.tts_text).join(", ");
-      tts_text += `. Für ${tts_text_em_alarmiert}`;
-
-      // Sondersignal hinzufügen
-      tts_text += einsatzdaten.sondersignal == 1 ? ", mit Sondersignal" : ", ohne Sonderrechte";
-      tts_text += ". Ende der Durchsage!";
-
-      // Ungewollte Zeichen entfernen
-      tts_text = tts_text.replace(/[:/-]/g, " ");
-
-      // Plattform-spezifische TTS-Erstellung
-      const platform = process.platform;
-      if (!ttsImplementations[platform]) {
-        throw new Error(`TTS für das Betriebssystem ${platform} nicht verfügbar!`);
-      }
-
-      await ttsImplementations[platform].createTTS(tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell);
-      return mp3_url;
-    } catch (error) {
-      // Fallback: Standard-Gong zurückgeben, wenn TTS-Erstellung fehlschlägt
-      const bkp_mp3_bell =
-        app_cfg.global.mediapath +
-        (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" ? "bell_long.mp3" : "bell_short.mp3");
-      logger.log("warn", `TTS-Erstellung fehlgeschlagen, sende nur Gong. Fehler: ${error.message}`);
-      return bkp_mp3_bell;
-    }
-  };
 
   // Funktion die alle xxx Sekunden ausgeführt wird
   const system_cleanup = async () => {

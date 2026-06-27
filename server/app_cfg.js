@@ -70,4 +70,11 @@ app_cfg.public = {
   show_login: (process.env.SHOW_LOGIN ?? "true") === "true",
 };
 
+app_cfg.tts = {
+  provider: process.env.TTS_PROVIDER || "local",
+  piper_host: process.env.PIPER_HOST || "localhost",
+  piper_port: Number(process.env.PIPER_PORT) || 10200,
+  piper_voice: process.env.PIPER_VOICE || "de_DE-thorsten_emotional-medium",
+};
+
 module.exports = app_cfg;
