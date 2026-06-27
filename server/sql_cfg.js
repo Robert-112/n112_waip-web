@@ -1,3 +1,6 @@
+const fs = require("fs");
+const path = require("path");
+
 module.exports = (bcrypt, app_cfg) => {
   // Datenbank einrichten
   const Database = require("better-sqlite3");
@@ -197,7 +200,7 @@ module.exports = (bcrypt, app_cfg) => {
     `;
 
     // weitere Standardwerte für ersten Start hinzufügen
-    sqlInit = sqlInit + app_cfg.sqlite.startup;
+    sqlInit = sqlInit + fs.readFileSync(path.resolve(__dirname, "../sql_seed.sql"), "utf8");
 
     // Datenbank mit Tabellen und Inhalten erstellen
     db.exec(sqlInit);
