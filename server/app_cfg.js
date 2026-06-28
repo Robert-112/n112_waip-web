@@ -70,6 +70,12 @@ app_cfg.public = {
   show_login: (process.env.SHOW_LOGIN ?? "true") === "true",
 };
 
+app_cfg.osrm = {
+  enabled: (process.env.OSRM_ENABLED ?? "false") === "true",
+  host: process.env.OSRM_HOST || "localhost",
+  port: Number(process.env.OSRM_PORT) || 5000,
+};
+
 app_cfg.tts = {
   provider: process.env.TTS_PROVIDER || "local",
   piper_host: process.env.PIPER_HOST || "localhost",

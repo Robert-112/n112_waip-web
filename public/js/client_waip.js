@@ -12,35 +12,25 @@ $(window).on("resize", function () {
   updateRandomPosition();
 });
 
-// Funktion zum Hinzufügen und Testen eines WMS-Layers
-function AddMapLayer() {
-  let maxMapZoom = 18; // Standard-Zoomstufe
+// Funktion zum Hinzufügen eines Kartenlayers (Tile oder WMS)
+function AddMapLayer(targetMap) {
+  const m = targetMap || map;
+  let maxMapZoom = 18;
 
-  // Layer der Karte basierend auf dem Typ des Kartendienstes hinzufuegen
   if (map_service.type === "tile") {
-    // Tile-Map hinzufuegen
-    L.tileLayer(map_service.tile_url, {
-      maxZoom: maxMapZoom,
-    }).addTo(map);
+    L.tileLayer(map_service.tile_url, { maxZoom: maxMapZoom }).addTo(m);
   } else if (map_service.type === "wms") {
-    // WMS-Map hinzufuegen
     var wmsLayer = L.tileLayer.wms(map_service.wms_url, {
       layers: map_service.wms_layers,
       format: map_service.wms_format,
       transparent: map_service.wms_transparent,
       version: map_service.wms_version,
     });
-
-    // Fehlerbehandlung: Wenn der WMS-Layer nicht geladen werden kann, dann versuche den Tile-Layer
     wmsLayer.on("tileerror", function () {
       console.warn("WMS-Layer konnte nicht geladen werden, versuche Tile-Layer:", map_service.tile_url);
-      // Tile-Map hinufuegen
-      L.tileLayer(map_service.tile_url, {
-        maxZoom: maxMapZoom,
-      }).addTo(map);
+      L.tileLayer(map_service.tile_url, { maxZoom: maxMapZoom }).addTo(m);
     });
-
-    wmsLayer.addTo(map);
+    wmsLayer.addTo(m);
   }
 }
 
@@ -485,6 +475,10 @@ let marker = L.marker(new L.LatLng(0, 0), {
 // GeoJSON vordefinieren
 let geojson = L.geoJSON().addTo(map);
 
+// OSRM-Routen-Layer und Inset-Map
+let routeLayers = [];
+let insetMap = null;
+
 /* ########################### */
 /* ######## SOCKET.IO ######## */
 /* ########################### */
@@ -597,6 +591,9 @@ socket.on("io.standby", function (data) {
   $("#em_weitere").text("");
   reset_rmld();
   recount_rmld();
+  // Routen und Inset-Karte aufräumen
+  destroy_inset_map();
+  clear_route_layers();
   // Leaflet-Reset: alle Layer entfernen und Basis-Kacheln + Platzhalter neu anlegen
   map.eachLayer(function (layer) { map.removeLayer(layer); });
   AddMapLayer();
@@ -803,6 +800,9 @@ socket.on("io.new_waip", function (data) {
   Object.keys(counter_rmld).forEach(function(id) { clearInterval(counter_rmld[id]); });
   counter_rmld = {};
 
+  // Routen und Inset-Karte aus vorherigem Einsatz löschen
+  destroy_inset_map();
+  clear_route_layers();
   // Karte leeren
   map.removeLayer(marker);
   map.removeLayer(geojson);
@@ -829,6 +829,10 @@ socket.on("io.new_waip", function (data) {
     const lng = data.wgs84_y;
     marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(map);
     map.setView(new L.LatLng(lat, lng), initialZoom);
+    // Inset-Karte nur bei Punkt-Einsatz mit Vollberechtigung
+    if (data.permissions) {
+      create_inset_map(lat, lng);
+    }
   } else {
     try {
       const gjData = JSON.parse(data.geometry);
@@ -845,6 +849,11 @@ socket.on("io.new_waip", function (data) {
   }
 
   resize_text(true);
+});
+
+// OSRM-Routen empfangen und auf der Karte zeichnen
+socket.on("io.routes", function (routes) {
+  draw_routes(routes);
 });
 
 socket.on("io.new_rmld", function (data) {
@@ -1392,4 +1401,101 @@ function alterClass(elementId, removeClassPattern, addClass) {
     // Neue Klasse hinzufügen
     element.classList.add(addClass);
   }
+}
+
+/* ########################### */
+/* ######## OSRM Routen ###### */
+/* ########################### */
+
+function clear_route_layers() {
+  routeLayers.forEach(function (l) { map.removeLayer(l); });
+  routeLayers = [];
+}
+
+function draw_routes(routes) {
+  clear_route_layers();
+  if (!routes || !routes.length) return;
+
+  const allBounds = [];
+
+  routes.forEach(function (route) {
+    if (!route.geometry) return;
+
+    // Schatten
+    const shadow = L.geoJSON(route.geometry, {
+      style: { color: "#000000", weight: 10, opacity: 0.18, lineCap: "round", lineJoin: "round" },
+    }).addTo(map);
+    routeLayers.push(shadow);
+
+    // Halo (weißer Hintergrund) für besseren Kontrast
+    const halo = L.geoJSON(route.geometry, {
+      style: { color: "#ffffff", weight: 5, opacity: 0.65, lineCap: "round", lineJoin: "round" },
+    }).addTo(map);
+    routeLayers.push(halo);
+
+    // Farbige Linie
+    const layer = L.geoJSON(route.geometry, {
+      style: { color: route.color, weight: 4, opacity: 1.0, lineCap: "round", lineJoin: "round" },
+    }).addTo(map);
+    routeLayers.push(layer);
+
+    // Startpunkt-Marker (Wache)
+    const coords = route.geometry.coordinates;
+    if (coords && coords.length) {
+      const start = coords[0]; // GeoJSON: [lng, lat]
+      const startMarker = L.circleMarker([start[1], start[0]], {
+        radius: 8,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: route.color,
+        fillOpacity: 1.0,
+      }).addTo(map);
+      if (route.name_wache) startMarker.bindTooltip(route.name_wache, { permanent: true, direction: "auto", offset: [0, -10], className: "route-label" });
+      routeLayers.push(startMarker);
+    }
+
+    try {
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) allBounds.push(bounds);
+    } catch (_) {}
+  });
+
+  if (allBounds.length) {
+    let combined = allBounds[0];
+    for (let i = 1; i < allBounds.length; i++) combined = combined.extend(allBounds[i]);
+    // Marker-Position einbeziehen falls vorhanden
+    try {
+      const mPos = marker.getLatLng();
+      if (mPos.lat !== 0 || mPos.lng !== 0) combined = combined.extend(mPos);
+    } catch (_) {}
+    map.fitBounds(combined, { padding: [30, 30] });
+  }
+}
+
+function create_inset_map(lat, lng) {
+  destroy_inset_map();
+  const el = document.getElementById("map-inset");
+  if (!el) return;
+  el.classList.remove("d-none");
+  insetMap = L.map("map-inset", {
+    zoomControl: false,
+    attributionControl: false,
+    dragging: false,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    keyboard: false,
+    touchZoom: false,
+  }).setView([lat, lng], 17);
+  AddMapLayer(insetMap);
+  L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(insetMap);
+}
+
+function destroy_inset_map() {
+  if (insetMap) {
+    insetMap.remove();
+    insetMap = null;
+  }
+  const el = document.getElementById("map-inset");
+  if (el) el.classList.add("d-none");
 }

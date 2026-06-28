@@ -76,32 +76,59 @@ var FullscreenControl = L.Control.extend({
 });
 map.addControl(new FullscreenControl());
 var fullscreenMap = null;
+function fitFullscreenMap() {
+  if (!fullscreenMap) return;
+  fullscreenMap.invalidateSize();
+  var allBounds = [];
+  currentRoutes.forEach(function (route) {
+    if (!route.geometry) return;
+    try {
+      var b = L.geoJSON(route.geometry).getBounds();
+      if (b.isValid()) allBounds.push(b);
+    } catch (_) {}
+  });
+  if (allBounds.length) {
+    var combined = allBounds[0];
+    for (var i = 1; i < allBounds.length; i++) combined = combined.extend(allBounds[i]);
+    fullscreenMap.fitBounds(combined, { padding: [40, 40] });
+  } else if (currentGeometry) {
+    if (currentGeometry.type === "point" && currentGeometry.coords) {
+      fullscreenMap.setView(currentGeometry.coords, 15);
+    } else if (currentGeometry.geojson) {
+      try { fullscreenMap.fitBounds(L.geoJSON(currentGeometry.geojson).getBounds()); } catch (_) {}
+    }
+  }
+}
 function initFullscreenMap() {
   if (fullscreenMap) {
-    fullscreenMap.invalidateSize();
+    fitFullscreenMap();
     return;
   }
   fullscreenMap = L.map("map_fullscreen", { zoomControl: true, attributionControl: false });
   AddMapLayer(fullscreenMap);
+  // Initialen View setzen damit Layer sofort korrekt gerendert werden
+  if (currentGeometry && currentGeometry.type === "point" && currentGeometry.coords) {
+    fullscreenMap.setView(currentGeometry.coords, 12);
+  } else {
+    fullscreenMap.setView([51.0, 10.0], 6);
+  }
   if (currentGeometry) {
     if (currentGeometry.type === "point" && currentGeometry.coords) {
       L.marker(currentGeometry.coords, { icon: redIcon }).addTo(fullscreenMap);
-      fullscreenMap.setView(currentGeometry.coords, 15);
     } else if (currentGeometry.geojson) {
-      var gj = L.geoJSON(currentGeometry.geojson).addTo(fullscreenMap);
-      fullscreenMap.fitBounds(gj.getBounds());
+      L.geoJSON(currentGeometry.geojson).addTo(fullscreenMap);
     }
   }
+  drawRoutesOnMap(currentRoutes, fullscreenMap, fullscreenRouteLayers);
 }
 $("#mapModal").on("shown.bs.modal", function () {
-  if (fullscreenMap) {
-    fullscreenMap.invalidateSize();
-  }
+  fitFullscreenMap();
 });
 $("#mapModal").on("hidden.bs.modal", function () {
   if (fullscreenMap) {
     fullscreenMap.remove();
     fullscreenMap = null;
+    fullscreenRouteLayers = [];
   }
 });
 
@@ -124,6 +151,41 @@ var marker = L.marker(new L.LatLng(0, 0), {
 
 // GeoJSON vordefinieren
 var geojson = L.geoJSON().addTo(map);
+
+// OSRM-Routen-Layer
+var routeLayers = [];
+var fullscreenRouteLayers = [];
+var currentRoutes = [];
+
+function drawRoutesOnMap(routes, targetMap, layerArr) {
+  layerArr.forEach(function (l) { targetMap.removeLayer(l); });
+  layerArr.length = 0;
+  if (!routes || !routes.length) return;
+  routes.forEach(function (route) {
+    if (!route.geometry) return;
+    var shadow = L.geoJSON(route.geometry, {
+      style: { color: "#000000", weight: 10, opacity: 0.18, lineCap: "round", lineJoin: "round" },
+    }).addTo(targetMap);
+    layerArr.push(shadow);
+    var halo = L.geoJSON(route.geometry, {
+      style: { color: "#ffffff", weight: 5, opacity: 0.65, lineCap: "round", lineJoin: "round" },
+    }).addTo(targetMap);
+    layerArr.push(halo);
+    var layer = L.geoJSON(route.geometry, {
+      style: { color: route.color, weight: 4, opacity: 1.0, lineCap: "round", lineJoin: "round" },
+    }).addTo(targetMap);
+    layerArr.push(layer);
+    var coords = route.geometry.coordinates;
+    if (coords && coords.length) {
+      var start = coords[0];
+      var startMarker = L.circleMarker([start[1], start[0]], {
+        radius: 8, color: "#ffffff", weight: 2, fillColor: route.color, fillOpacity: 1.0,
+      }).addTo(targetMap);
+      if (route.name_wache) startMarker.bindTooltip(route.name_wache, { permanent: true, direction: "auto", offset: [0, -10], className: "route-label" });
+      layerArr.push(startMarker);
+    }
+  });
+}
 
 /* ########################### */
 /* ####### Rückmeldung ####### */
@@ -650,6 +712,9 @@ socket.on("io.Einsatz", function (data) {
     // Einsatzmittel hinzuefuegen
     document.getElementById(wachen_idstr).appendChild(flex_div_em);
   }
+  // Alte Routen entfernen
+  routeLayers.forEach(function (l) { map.removeLayer(l); });
+  routeLayers = [];
   // Karte leeren
   map.removeLayer(marker);
   map.removeLayer(geojson);
@@ -664,6 +729,32 @@ socket.on("io.Einsatz", function (data) {
     map.fitBounds(geojson.getBounds());
     map.setZoom(13);
     currentGeometry = { type: "geojson", geojson: JSON.parse(data.geometry) };
+  }
+});
+
+// OSRM-Routen auf dem Dashboard anzeigen
+socket.on("io.routes", function (routes) {
+  currentRoutes = routes || [];
+  drawRoutesOnMap(currentRoutes, map, routeLayers);
+  if (fullscreenMap) drawRoutesOnMap(currentRoutes, fullscreenMap, fullscreenRouteLayers);
+
+  // Kartenausschnitt auf Routen + Einsatzmarker anpassen
+  var allBounds = [];
+  currentRoutes.forEach(function (route) {
+    if (!route.geometry) return;
+    try {
+      var b = L.geoJSON(route.geometry).getBounds();
+      if (b.isValid()) allBounds.push(b);
+    } catch (_) {}
+  });
+  if (allBounds.length) {
+    var combined = allBounds[0];
+    for (var i = 1; i < allBounds.length; i++) combined = combined.extend(allBounds[i]);
+    try {
+      var mPos = marker.getLatLng();
+      if (mPos.lat !== 0 || mPos.lng !== 0) combined = combined.extend(mPos);
+    } catch (_) {}
+    map.fitBounds(combined, { padding: [30, 30] });
   }
 });
 

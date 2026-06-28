@@ -1,6 +1,14 @@
 module.exports = (db, app_cfg) => {
   // Module laden
-  const { v5: uuidv5 } = require("uuid");
+  const crypto = require("crypto");
+  const uuidv5 = (name, namespace) => {
+    const nsBytes = Buffer.from(namespace.replace(/-/g, ""), "hex");
+    const hash = crypto.createHash("sha1").update(nsBytes).update(Buffer.from(name, "utf8")).digest();
+    hash[6] = (hash[6] & 0x0f) | 0x50;
+    hash[8] = (hash[8] & 0x3f) | 0x80;
+    const h = hash.slice(0, 16).toString("hex");
+    return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20,32)}`;
+  };
 
   // Hilfsfunktion um Datum&Zeit (29.12.23&20:06) in SQLite-Zeit umzuwandeln
   const Datetime_to_SQLiteDate = (s) => {
@@ -535,6 +543,13 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // mit ID die UUID eines Einsatzes finden
+  const db_einsatz_get_uuid_by_id = (waip_id) => {
+    const stmt = db.prepare(`SELECT uuid FROM waip_einsaetze WHERE id = ?;`);
+    const row = stmt.get(String(waip_id));
+    return row ? row.uuid : null;
+  };
+
   // mit UUID die ID eines Einsatzes finden
   const db_einsatz_get_waipid_by_uuid = (waip_uuid) => {
     return new Promise((resolve, reject) => {
@@ -685,6 +700,57 @@ module.exports = (db, app_cfg) => {
         reject(new Error("Fehler beim Aktualisieren des Status eines Einsatzes. " + error));
       }
     });
+  };
+
+  // Alarmierte Wachen mit Koordinaten für OSRM-Routenberechnung
+  const db_routen_stationen_get = (waip_id) => {
+    const stmt = db.prepare(`
+      SELECT DISTINCT
+        w.id        AS station_id,
+        w.nr_wache,
+        w.name_wache,
+        w.wgs84_x,
+        w.wgs84_y
+      FROM waip_einsatzmittel em
+      JOIN waip_wachen w ON w.id = em.em_station_id
+      WHERE em.em_waip_einsaetze_id = ?
+        AND em.em_zeitstempel_alarmierung IS NOT NULL
+        AND em.em_zeitstempel_alarmierung != ''
+        AND w.wgs84_x IS NOT NULL AND w.wgs84_x != 0
+        AND w.wgs84_y IS NOT NULL AND w.wgs84_y != 0
+    `);
+    return stmt.all(String(waip_id));
+  };
+
+  // Route für alle Einsatzmittel einer Wache in einem Einsatz speichern
+  const db_route_speichern = (waip_id, station_id, route_full, route_half) => {
+    const stmt = db.prepare(`
+      UPDATE waip_einsatzmittel
+      SET em_wgs84_route_full = ?, em_wgs84_route_half = ?
+      WHERE em_waip_einsaetze_id = ? AND em_station_id = ?
+    `);
+    stmt.run(
+      route_full ? JSON.stringify(route_full) : null,
+      route_half ? JSON.stringify(route_half) : null,
+      String(waip_id),
+      String(station_id)
+    );
+  };
+
+  // Gespeicherte Routen für einen Einsatz abrufen
+  const db_routen_get = (waip_id) => {
+    const stmt = db.prepare(`
+      SELECT DISTINCT
+        w.nr_wache,
+        w.name_wache,
+        em.em_wgs84_route_full,
+        em.em_wgs84_route_half
+      FROM waip_einsatzmittel em
+      JOIN waip_wachen w ON w.id = em.em_station_id
+      WHERE em.em_waip_einsaetze_id = ?
+        AND (em.em_wgs84_route_full IS NOT NULL OR em.em_wgs84_route_half IS NOT NULL)
+    `);
+    return stmt.all(String(waip_id));
   };
 
   // Einsatzdaten vollständig löschen
@@ -2397,5 +2463,9 @@ module.exports = (db, app_cfg) => {
     db_wache_update,
     db_wache_delete,
     db_wache_create,
+    db_routen_stationen_get,
+    db_route_speichern,
+    db_routen_get,
+    db_einsatz_get_uuid_by_id,
   };
 };

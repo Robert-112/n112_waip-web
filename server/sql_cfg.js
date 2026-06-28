@@ -261,6 +261,21 @@ module.exports = (bcrypt, app_cfg) => {
     } catch (e) {
       // Spalte existiert bereits, kein Handlungsbedarf
     }
+
+    // Migration: Routen-Spalten zu waip_einsatzmittel hinzufügen (falls noch nicht vorhanden)
+    try {
+      db.exec("ALTER TABLE waip_einsatzmittel ADD COLUMN em_wgs84_route_full TEXT");
+      console.log("START - Migration: Spalte 'em_wgs84_route_full' zur Tabelle waip_einsatzmittel hinzugefuegt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
+
+    try {
+      db.exec("ALTER TABLE waip_einsatzmittel ADD COLUMN em_wgs84_route_half TEXT");
+      console.log("START - Migration: Spalte 'em_wgs84_route_half' zur Tabelle waip_einsatzmittel hinzugefuegt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
   }
 
   console.log("START - Datenbank geöffnet.");

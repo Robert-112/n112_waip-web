@@ -2,14 +2,26 @@ const net = require("net");
 const { spawnSync, spawn } = require("child_process");
 
 module.exports = (fs, logger, sql, app_cfg) => {
-  // ffmpeg-Verfügbarkeit beim Start prüfen
-  const _ffmpegCheck = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
-  if (_ffmpegCheck.error) {
-    logger.log("warn", "ffmpeg nicht gefunden! TTS-Erstellung wird fehlschlagen. Bitte ffmpeg installieren.");
+  const dev = app_cfg.development.dev_log;
+
+  // ffmpeg-Pfad bestimmen: bekannte Pfade prüfen (Homebrew macOS + Linux-System)
+  const _ffmpegCandidates = ["ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"];
+  const ffmpegBin = _ffmpegCandidates.find((p) => !spawnSync(p, ["-version"], { stdio: "ignore" }).error) || "ffmpeg";
+  if (ffmpegBin === "ffmpeg" && spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error) {
+    logger.log("warn", `ffmpeg nicht gefunden (gesucht in: ${_ffmpegCandidates.join(", ")})! TTS-Erstellung wird fehlschlagen.`);
+  } else if (dev) {
+    logger.log("log", `TTS: ffmpeg gefunden unter ${ffmpegBin}`);
+  }
+
+  if (dev) {
+    const p = app_cfg.tts?.provider || process.platform;
+    logger.log("log", `TTS: Modul geladen. Provider=${p}` +
+      (p === "piper" ? ` Host=${app_cfg.tts.piper_host} Port=${app_cfg.tts.piper_port} Voice=${app_cfg.tts.piper_voice}` : ""));
   }
 
   // Wyoming-Protokoll: Text an Piper senden und PCM-Audio empfangen
   const synthesize_wyoming = (host, port, voice, text) => {
+    if (dev) logger.log("log", `Piper Wyoming: Verbindungsaufbau zu ${host}:${port} Voice=${voice} TextLänge=${text.length}`);
     return new Promise((resolve, reject) => {
       let settled = false;
       let timer;
@@ -17,43 +29,88 @@ module.exports = (fs, logger, sql, app_cfg) => {
       const fail = (err) => { if (settled) return; settled = true; clearTimeout(timer); client.destroy(); reject(err); };
 
       const client = net.createConnection({ host, port }, () => {
+        if (dev) logger.log("log", `Piper Wyoming: Verbunden mit ${host}:${port}, sende synthesize-Anfrage`);
         client.write(JSON.stringify({ type: "synthesize", data: { text, voice: { name: voice } } }) + "\n");
       });
 
       const audioChunks = [];
       let audioInfo = null;
       let buf = Buffer.alloc(0);
+      // Wyoming v1.9+: Jede Nachricht hat Header-Zeile + optionale Data-Payload (data_length Bytes)
+      // + optionale Binary-Payload (payload_length Bytes). State-Machine dafür:
+      let state = "header"; // "header" | "data" | "payload"
+      let pendingMsg = null;
+      let dataLeft = 0;
       let payloadLeft = 0;
+      let chunkCount = 0;
+
+      const processMsg = (msg, eventData) => {
+        if (msg.type === "audio-start") {
+          audioInfo = eventData || msg.data || null;
+          if (dev) logger.log("log", `Piper Wyoming: audio-start – rate=${audioInfo?.rate} width=${audioInfo?.width} channels=${audioInfo?.channels}`);
+        } else if (msg.type === "audio-chunk") {
+          if (!audioInfo?.rate && eventData?.rate) audioInfo = eventData;
+          chunkCount++;
+        } else if (msg.type === "audio-stop") {
+          const totalBytes = audioChunks.reduce((s, c) => s + c.length, 0);
+          if (dev) logger.log("log", `Piper Wyoming: audio-stop – ${chunkCount} Chunks, ${totalBytes} Bytes PCM (${(totalBytes/1024).toFixed(1)} KB), rate=${audioInfo?.rate}`);
+          done({ audioInfo, chunks: audioChunks });
+        } else if (msg.type === "error") {
+          if (dev) logger.log("log", `Piper Wyoming: Fehler – ${JSON.stringify(eventData ?? msg)}`);
+          fail(new Error("Piper Fehler: " + JSON.stringify(eventData ?? msg)));
+        } else if (dev) {
+          logger.log("log", `Piper Wyoming: Unbekannte Nachricht type=${msg.type}`);
+        }
+      };
 
       client.on("data", (data) => {
         buf = Buffer.concat([buf, data]);
         while (buf.length > 0) {
-          if (payloadLeft > 0) {
+          if (state === "payload") {
             if (buf.length < payloadLeft) break;
             audioChunks.push(Buffer.from(buf.slice(0, payloadLeft)));
             buf = buf.slice(payloadLeft);
             payloadLeft = 0;
+            state = "header";
+          } else if (state === "data") {
+            if (buf.length < dataLeft) break;
+            const dataBytes = buf.slice(0, dataLeft);
+            buf = buf.slice(dataLeft);
+            dataLeft = 0;
+            let eventData = null;
+            try { eventData = JSON.parse(dataBytes.toString()); } catch (_) {}
+            processMsg(pendingMsg, eventData);
+            pendingMsg = null;
+            state = payloadLeft > 0 ? "payload" : "header";
           } else {
+            // state === "header": Header-JSON-Zeile einlesen
             const nl = buf.indexOf(10); // '\n'
             if (nl === -1) break;
-            let msg;
-            try { msg = JSON.parse(buf.slice(0, nl).toString()); } catch (_) { buf = buf.slice(nl + 1); continue; }
+            const rawLine = buf.slice(0, nl).toString();
             buf = buf.slice(nl + 1);
-            if (msg.type === "audio-start") {
-              audioInfo = msg.data;
-            } else if (msg.type === "audio-chunk") {
-              payloadLeft = msg.payload_length || 0;
-            } else if (msg.type === "audio-stop") {
-              done({ audioInfo, chunks: audioChunks });
-            } else if (msg.type === "error") {
-              fail(new Error("Piper Fehler: " + JSON.stringify(msg.data)));
+            let msg;
+            try { msg = JSON.parse(rawLine); } catch (_) { continue; }
+            const dl = msg.data_length || 0;
+            const pl = msg.payload_length || 0;
+            payloadLeft = pl;
+            if (dl > 0) {
+              pendingMsg = msg;
+              dataLeft = dl;
+              state = "data";
+            } else {
+              // Älteres Wyoming ohne data_length: data ist direkt in msg.data inline
+              processMsg(msg, msg.data || null);
+              state = pl > 0 ? "payload" : "header";
             }
           }
         }
       });
 
       timer = setTimeout(() => fail(new Error("Piper Wyoming Timeout nach 30s")), 30000);
-      client.on("error", fail);
+      client.on("error", (err) => {
+        if (dev) logger.log("log", `Piper Wyoming: Verbindungsfehler – ${err.message}`);
+        fail(err);
+      });
       client.on("close", () => { if (!settled) fail(new Error("Piper Wyoming: Verbindung unerwartet geschlossen")); });
     });
   };
@@ -189,6 +246,7 @@ module.exports = (fs, logger, sql, app_cfg) => {
     },
     piper: {
       createTTS: async (tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell) => {
+        if (dev) logger.log("log", `Piper TTS: Starte Synthese. Text="${tts_text}"`);
         // WAV via Wyoming-Protokoll von Piper holen und schreiben
         const { audioInfo, chunks } = await synthesize_wyoming(
           app_cfg.tts.piper_host,
@@ -197,10 +255,11 @@ module.exports = (fs, logger, sql, app_cfg) => {
           tts_text
         );
         write_wav(wav_tts, audioInfo, chunks);
+        if (dev) logger.log("log", `Piper TTS: WAV geschrieben nach ${wav_tts}`);
 
         // ffmpeg: WAV → MP3 (temporär), dann Gong + TTS zusammenfügen
         const run_ffmpeg = (args) => new Promise((res, rej) => {
-          const p = spawn("ffmpeg", args);
+          const p = spawn(ffmpegBin, args);
           let stderr = "";
           p.stderr.on("data", (d) => { stderr += d.toString(); });
           p.on("error", rej);
@@ -223,20 +282,17 @@ module.exports = (fs, logger, sql, app_cfg) => {
 
         try { fs.unlinkSync(wav_tts); } catch (_) {}
         try { fs.unlinkSync(mp3_tmp); } catch (_) {}
+        if (dev) logger.log("log", `Piper TTS: Fertig. MP3 gespeichert unter ${mp3_tts}`);
       },
     },
   };
 
+  // Laufende Synthesen: verhindert Doppel-Erstellung bei gleichzeitigen Verbindungen
+  const _ttsInProgress = new Map();
+
   const tts_erstellen = async (einsatzdaten, wachen_nr) => {
     try {
-      let full_half = "";
-      if (einsatzdaten.permissions) {
-        // Berechtigungen vorhanden, volle Einsatzdaten verwenden
-        full_half = "full";
-      } else {
-        // Berechtigungen nicht vorhanden, reduzierte Einsatzdaten verwenden
-        full_half = "half";
-      }
+      const full_half = einsatzdaten.permissions ? "full" : "half";
 
       // Einsatz-UUID inkl. Wachennummer und Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
       const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr + "_" + full_half;
@@ -252,6 +308,12 @@ module.exports = (fs, logger, sql, app_cfg) => {
       // Prüfen ob mp3 bereits existiert
       if (fs.existsSync(mp3_tts)) {
         return mp3_url;
+      }
+
+      // Bereits laufende Synthese für diese id abwarten statt neu starten
+      if (_ttsInProgress.has(id)) {
+        if (dev) logger.log("log", `TTS tts_erstellen: Warte auf laufende Synthese für ${id}`);
+        return await _ttsInProgress.get(id);
       }
 
       // Alarmgong basierend auf Einsatzart wählen
@@ -288,16 +350,24 @@ module.exports = (fs, logger, sql, app_cfg) => {
       tts_text = tts_text.replace(/[:/-]/g, " ");
 
       // TTS-Provider auswählen: Piper (wenn konfiguriert) oder plattformspezifisch
-      const ttsProvider = (app_cfg.tts && app_cfg.tts.provider === "piper")
-        ? ttsImplementations.piper
-        : ttsImplementations[process.platform];
+      const providerKey = (app_cfg.tts && app_cfg.tts.provider === "piper") ? "piper" : process.platform;
+      const ttsProvider = ttsImplementations[providerKey];
+
+      if (dev) logger.log("log", `TTS tts_erstellen: Provider="${providerKey}" Text="${tts_text}" MP3="${mp3_tts}"`);
 
       if (!ttsProvider) {
-        throw new Error(`TTS nicht verfügbar (Provider: ${app_cfg.tts?.provider || process.platform})`);
+        throw new Error(`TTS nicht verfügbar (Provider: ${providerKey})`);
       }
 
-      await ttsProvider.createTTS(tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell);
-      return mp3_url;
+      const synthesis = ttsProvider.createTTS(tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell)
+        .then(() => {
+          if (dev) logger.log("log", `TTS tts_erstellen: Erfolgreich abgeschlossen. URL=${mp3_url}`);
+          return mp3_url;
+        })
+        .finally(() => _ttsInProgress.delete(id));
+
+      _ttsInProgress.set(id, synthesis);
+      return await synthesis;
     } catch (error) {
       // Fallback: Standard-Gong zurückgeben, wenn TTS-Erstellung fehlschlägt
       const bkp_mp3_bell =

@@ -2,6 +2,7 @@ const e = require("express");
 
 module.exports = (io, sql, fs, logger, app_cfg) => {
   const { tts_erstellen } = require("./tts.js")(fs, logger, sql, app_cfg);
+  const osrm = app_cfg.osrm.enabled ? require("./osrm.js")(app_cfg, logger) : null;
   const waip_verteilen_socket = (einsatzdaten, socket, wachen_nr, reset_timestamp) => {
     return new Promise(async (resolve, reject) => {
       try {
@@ -82,12 +83,17 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           // FIXME db_einsatz_loeschen liefert die Anzahl der gelöschten Daten zurück, hier beachten
           sql.db_einsatz_loeschen(waip_id);
         } else {
+          let basis_einsatzdaten = null;
+
           // Einsatzdaten an alle beteiligten Wachen (Websocket-Raum) verteilen
           for (const rooms of socket_rooms) {
             const wachen_nr = rooms.room;
 
             // Einsatzdaten passend pro Wache aus Datenbank laden
             const einsatzdaten = await sql.db_einsatz_get_for_wache(waip_id, wachen_nr);
+
+            // Basis-Einsatzdaten (mit Koordinaten) für OSRM merken
+            if (!basis_einsatzdaten && einsatzdaten) basis_einsatzdaten = einsatzdaten;
 
             // alles Sockets der Wache ermitteln
             const sockets = await io.of("/waip").in(wachen_nr.toString()).fetchSockets();
@@ -109,6 +115,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
                 resolve(true);
               }
             }
+          }
+
+          // OSRM-Routen asynchron berechnen und verteilen (non-blocking nach Alarmausgabe)
+          if (osrm && basis_einsatzdaten) {
+            osrm_routen_berechnen(waip_id, basis_einsatzdaten).catch((err) =>
+              logger.log("error", `OSRM Routenberechnung für Einsatz ${waip_id} fehlgeschlagen: ${err.message}`)
+            );
           }
         }
       } catch (error) {
@@ -270,6 +283,8 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           socket.emit("io.Einsatz", einsatzdaten);
           // Rueckmeldungen verteilen
           rmld_arr_verteilen_socket(einsatzdaten.id, socket);
+          // Routen senden (wenn OSRM aktiviert)
+          if (osrm) routen_verteilen_socket(einsatzdaten.id, socket);
           const logMessage = `Einsatzdaten für Dashboard ${dbrd_uuid} an Socket ${socket.id} gesendet`;
           logger.log("log", logMessage);
           sql.db_client_update_status(socket, einsatzdaten.id);
@@ -281,6 +296,102 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
         reject(new Error("Fehler beim Senden der Dashboard-Daten für einen Client. " + error));
       }
     });
+  };
+
+  // Routen für einen Socket senden – wählt route_full oder route_half je nach Berechtigung
+  const routen_verteilen_socket = async (waip_id, socket) => {
+    try {
+      const routen = sql.db_routen_get(waip_id);
+      if (!routen || !routen.length) return;
+
+      const permissions = await sql.db_user_check_permission_for_waip(socket, waip_id);
+
+      const payload = routen
+        .map((r) => {
+          const geometry_str = permissions ? r.em_wgs84_route_full : r.em_wgs84_route_half;
+          if (!geometry_str) return null;
+          return {
+            nr_wache: r.nr_wache,
+            name_wache: r.name_wache,
+            color: osrm.wachen_color(r.nr_wache),
+            geometry: JSON.parse(geometry_str),
+          };
+        })
+        .filter(Boolean);
+
+      if (payload.length) socket.emit("io.routes", payload);
+    } catch (err) {
+      logger.log("error", `Fehler beim Senden von Routen an Socket ${socket.id}: ${err.message}`);
+    }
+  };
+
+  // Routen an alle verbundenen Sockets eines Einsatzes verteilen
+  const routen_verteilen_rooms = async (waip_id) => {
+    try {
+      const socket_rooms = await sql.db_einsatz_get_waip_rooms(waip_id);
+      for (const room of socket_rooms) {
+        const sockets = await io.of("/waip").in(room.room.toString()).fetchSockets();
+        for (const socket of sockets) {
+          if (socket.data.waip_id === waip_id) {
+            routen_verteilen_socket(waip_id, socket);
+          }
+        }
+      }
+
+      // Dashboard-Sockets mit Routen versorgen
+      const waip_uuid = sql.db_einsatz_get_uuid_by_id(waip_id);
+      if (waip_uuid) {
+        const dbrd_sockets = await io.of("/dbrd").in(waip_uuid).fetchSockets();
+        for (const socket of dbrd_sockets) {
+          routen_verteilen_socket(waip_id, socket);
+        }
+      }
+    } catch (err) {
+      logger.log("error", `Fehler beim Verteilen von Routen für Einsatz ${waip_id}: ${err.message}`);
+    }
+  };
+
+  // OSRM-Routen berechnen, in DB speichern und an alle verbundenen Clients senden
+  const osrm_routen_berechnen = async (waip_id, einsatzdaten) => {
+    const stationen = sql.db_routen_stationen_get(waip_id);
+    if (!stationen || !stationen.length) {
+      logger.log("log", `OSRM: Keine alarmierten Wachen mit Koordinaten für Einsatz ${waip_id}.`);
+      return;
+    }
+
+    const hat_geometry = !!einsatzdaten.geometry;
+
+    for (const station of stationen) {
+      try {
+        // Genaue Route von Wache zum Einsatzort
+        const route_full = await osrm.get_route(
+          station.wgs84_x, station.wgs84_y,
+          einsatzdaten.wgs84_x, einsatzdaten.wgs84_y
+        );
+
+        let route_half;
+        if (hat_geometry) {
+          // Route zum Schwerpunkt des Bereichs, am Rand abgeschnitten
+          const centroid = osrm.get_centroid(einsatzdaten.geometry);
+          const route_to_centroid = await osrm.get_route(
+            station.wgs84_x, station.wgs84_y,
+            centroid.lat, centroid.lng
+          );
+          route_half = osrm.clip_route_at_boundary(route_to_centroid, einsatzdaten.geometry);
+        } else {
+          // Kein Bereich vorhanden – half = full (kein Sicherheitsrisiko, da kein Bereich)
+          route_half = route_full;
+        }
+
+        sql.db_route_speichern(waip_id, station.station_id, route_full, route_half);
+        logger.log("log", `OSRM Route für Wache ${station.nr_wache} (Einsatz ${waip_id}) gespeichert.`);
+      } catch (err) {
+        logger.log("warn", `OSRM Route für Wache ${station.nr_wache} fehlgeschlagen: ${err.message}`);
+      }
+    }
+
+    // Routen an alle aktuell verbundenen Clients senden
+    await routen_verteilen_rooms(waip_id);
   };
 
   // TODO WAIP: Funktion um Clients remote "neuzustarten" (Seite neu laden), niedrige Prioritaet
@@ -388,5 +499,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
     rmld_arr_verteilen_socket: rmld_arr_verteilen_socket,
     rmld_verteilen_rooms: rmld_verteilen_rooms,
     dbrd_verteilen_socket: dbrd_verteilen_socket,
+    routen_verteilen_socket: routen_verteilen_socket,
   };
 };
