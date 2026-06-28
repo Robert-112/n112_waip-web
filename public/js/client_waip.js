@@ -1,15 +1,21 @@
 // TODO: Remote-Reload per Socket
 
+
 $(document).ready(function () {
   set_clock();
   updateWachennameAnimation();
   startRandomPositioning();
 });
 
+let _resize_debounce = null;
 $(window).on("resize", function () {
-  resize_text(true);
-  updateWachennameAnimation();
-  updateRandomPosition();
+  // Debounce: textFit erst nach Abschluss des Resize ausführen, nicht bei jedem Event
+  clearTimeout(_resize_debounce);
+  _resize_debounce = setTimeout(function () {
+    resize_text(true);
+    updateWachennameAnimation();
+    updateRandomPosition();
+  }, 250);
 });
 
 // Funktion zum Hinzufügen eines Kartenlayers (Tile oder WMS)
@@ -47,6 +53,29 @@ let audioBlockedToast = null;
 // Flag ob Browser (noch) Autoplay blockiert
 let audioBlocked = false;
 
+// JS-basiertes Blinken – ersetzt CSS-Animation (schont CPU auf schwacher Hardware)
+let _blinkInterval = null;
+let _blinkElements = new Set();
+let _blinkOn = true;
+
+function startBlink(el) {
+  if (!el) return;
+  _blinkElements.add(el);
+  if (!_blinkInterval) {
+    _blinkInterval = setInterval(function () {
+      _blinkOn = !_blinkOn;
+      _blinkElements.forEach(function (e) { e.style.opacity = _blinkOn ? "1" : "0.15"; });
+    }, 800);
+  }
+}
+
+function stopAllBlinks() {
+  if (_blinkInterval) { clearInterval(_blinkInterval); _blinkInterval = null; }
+  _blinkElements.forEach(function (e) { e.style.opacity = ""; });
+  _blinkElements.clear();
+  _blinkOn = true;
+}
+
 // Autoplay-Blockade anzeigen (Blinken des Volume-Off Icons)
 function indicateAudioBlocked() {
   try {
@@ -60,8 +89,8 @@ function indicateAudioBlocked() {
       icon.classList.remove("ion-md-volume-high");
       icon.classList.add("ion-md-volume-off");
     }
-    // Blinken hinzufuegen und anzeigen
-    icon.classList.add("blink-audio");
+    // Blinken starten
+    startBlink(icon);
     audioBlocked = true; // Blockade markieren
     showAudioBlockedToast();
   } catch (e) {
@@ -93,6 +122,9 @@ function resetAudioUi() {
     removeAudioBlockedToast();
   }
 }
+
+// Flag: Listener am Toast-Element wurden bereits registriert (verhindert Akkumulation)
+let toastListenersAdded = false;
 
 // Toast erstellen – erscheint oben links über der Karte
 function tryActivate(evt) {
@@ -128,7 +160,8 @@ function showAudioBlockedToast() {
     const container = document.getElementById("audio-toast-container");
     const toast = document.getElementById("audio-blocked-toast");
     if (!container || !toast) return;
-    if (!audioBlockedToast) {
+    // Click-/Close-Listener nur einmalig am Toast-Element registrieren
+    if (!toastListenersAdded) {
       toast.addEventListener("click", tryActivate);
       const closeBtn = toast.querySelector(".close");
       if (closeBtn)
@@ -136,8 +169,11 @@ function showAudioBlockedToast() {
           e.stopPropagation();
           removeAudioBlockedToast();
         });
+      toastListenersAdded = true;
+    }
+    if (!audioBlockedToast) {
+      // Globale einmalige Listener neu registrieren (entfernen sich nach erstem Auslösen selbst)
       document.addEventListener("keydown", tryActivate, { once: true });
-      // Globaler einmaliger Klick irgendwo auf die Seite startet ebenfalls Audio
       document.addEventListener("click", tryActivate, { once: true });
     }
     // Sichtbar machen
@@ -145,7 +181,7 @@ function showAudioBlockedToast() {
     toast.classList.add("show");
     // Icon blinken lassen
     const iconInToast = toast.querySelector(".ion-md-volume-off");
-    if (iconInToast) iconInToast.classList.add("blink-audio");
+    if (iconInToast) startBlink(iconInToast);
     audioBlockedToast = toast;
   } catch (e) {
     console.log("showAudioBlockedToast error", e);
@@ -187,9 +223,8 @@ waipAudio.addEventListener("pause", function () {
 
 waipAudio.addEventListener("play", function () {
   let tmp_element;
-  // Beim erfolgreichen Start Blinken entfernen
-  const blinkIcon = document.querySelector(".blink-audio");
-  if (blinkIcon) blinkIcon.classList.remove("blink-audio");
+  // Beim erfolgreichen Start Blinken stoppen
+  stopAllBlinks();
   audioBlocked = false; // Wiedergabe läuft
   // Pause-Symbol in Play-Symbol
   tmp_element = document.querySelector(".ion-md-play-circle");
@@ -245,34 +280,17 @@ function resize_text(reProcess) {
   // Uhr-Text nur Anpassen wenn sichtbar
   if ($("#clock_day").is(":visible")) {
     try {
-      textFit(document.getElementsByClassName("clock_frame"), {
-        minFontSize: 4,
-        maxFontSize: 500,
-        reProcess: reProcess,
-      });
-      textFit(document.getElementsByClassName("day_frame"), {
-        minFontSize: 3,
-        maxFontSize: 500,
-        reProcess: reProcess,
-      });
+      textFit(document.getElementsByClassName("clock_frame"), { minFontSize: 4, maxFontSize: 500, reProcess: reProcess });
+      textFit(document.getElementsByClassName("day_frame"), { minFontSize: 3, maxFontSize: 500, reProcess: reProcess });
     } catch (e) { console.error("resize_text clock_frame/day_frame:", e); }
   }
   // Tableau nur Anpassen wenn sichtbar
   if ($("#waiptableau").is(":visible")) {
     try {
-      textFit(document.getElementsByClassName("tf_singleline"), {
-        minFontSize: 3,
-        maxFontSize: 700,
-        reProcess: reProcess,
-      });
+      textFit(document.getElementsByClassName("tf_singleline"), { minFontSize: 3, maxFontSize: 700, reProcess: reProcess });
     } catch (e) { console.error("resize_text tf_singleline:", e); }
     try {
-      textFit(document.getElementsByClassName("tf_multiline"), {
-        minFontSize: 3,
-        maxFontSize: 500,
-        multiLine: true,
-        reProcess: reProcess,
-      });
+      textFit(document.getElementsByClassName("tf_multiline"), { minFontSize: 3, maxFontSize: 500, multiLine: true, reProcess: reProcess });
     } catch (e) { console.error("resize_text tf_multiline:", e); }
     // Karte neu setzen
     map.invalidateSize();
@@ -334,9 +352,13 @@ function start_inactivtimer() {
   timeoutID = window.setTimeout(do_on_Inactive, 3000);
 }
 
+// Zustand: true = Navbar sichtbar (aktiv), false = ausgeblendet (inaktiv)
+let _ui_active = true;
+
 // bei Inaktivitaet Header/Footer ausblenden
 function do_on_Inactive() {
-  // do something
+  if (!_ui_active) return; // bereits inaktiv – kein erneuter Reflow
+  _ui_active = false;
   $(".navbar").fadeOut("slow");
   $(".footer").fadeOut("slow");
   $(".fullheight").css({
@@ -347,13 +369,15 @@ function do_on_Inactive() {
     paddingTop: "1rem",
     margin: 0,
   });
-  resize_text(true);
+  // resize nach abgeschlossenem fadeOut, nicht sofort – sonst misst textFit falsche Größen
+  setTimeout(function () { resize_text(true); }, 650);
 }
 
 // bei Activitaet Header/Footer einblenden
 function do_on_Active() {
   start_inactivtimer();
-  // do something
+  if (_ui_active) return; // bereits aktiv – kein erneuter Reflow bei jeder Mausbewegung
+  _ui_active = true;
   $(".navbar").fadeIn("slow");
   $(".footer").fadeIn("slow");
   $("body").css({
@@ -365,7 +389,8 @@ function do_on_Active() {
     height: "calc(100vh - 60px - 5rem)",
     cursor: "auto",
   });
-  resize_text(true);
+  // resize nach abgeschlossenem fadeIn, nicht sofort
+  setTimeout(function () { resize_text(true); }, 650);
 }
 
 // bei Event (Aktiviaet) alles zuruecksetzen
@@ -589,6 +614,7 @@ socket.on("io.standby", function (data) {
   $("#besonderheiten").text("");
   $("#em_alarmiert").empty();
   $("#em_weitere").text("");
+  $("#rueckmeldung").addClass("d-none");
   reset_rmld();
   recount_rmld();
   // Routen und Inset-Karte aufräumen
@@ -1274,7 +1300,11 @@ function set_clock() {
   if ($("#clock-hhmm").text() !== element_time) {
     $("#clock-hhmm").text(element_time);
     $("#day").text(element_day);
-    resize_text(true);
+    // resize_text nur wenn Uhr sichtbar ist – während Alarm (waiptableau sichtbar) ist
+    // ein vollständiges textFit-Reprocessing jede Minute unnötige CPU-Last
+    if ($("#waipclock").is(":visible")) {
+      resize_text(true);
+    }
   }
 }
 
@@ -1376,10 +1406,11 @@ function updateRandomPosition() {
   const randomX = Math.floor(Math.random() * maxX);
   const randomY = Math.floor(Math.random() * maxY);
 
-  // Position setzen
+  // Position via transform – löst keinen Layout-Reflow aus (Compositor-Thread)
   clockDay.style.position = "absolute";
-  clockDay.style.left = `${randomX}px`;
-  clockDay.style.top = `${randomY}px`;
+  clockDay.style.left = "0";
+  clockDay.style.top = "0";
+  clockDay.style.transform = `translate(${randomX}px, ${randomY}px)`;
 }
 
 /* ############################ */

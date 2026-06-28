@@ -1,7 +1,7 @@
 const turf = require("@turf/turf");
 
 // Farbpalette für Routen – gut lesbar auf hellen und dunklen Karten
-const ROUTE_COLORS = ["#e63946", "#2196F3", "#4CAF50", "#FF9800", "#9C27B0", "#00BCD4", "#FF5722", "#009688"];
+const ROUTE_COLORS = ["#c0392b", "#1565C0", "#2e7d32", "#e65100", "#6a1b9a", "#00838f", "#bf360c", "#00695c"];
 
 module.exports = (app_cfg, logger) => {
   const dev = app_cfg.development.dev_log;
