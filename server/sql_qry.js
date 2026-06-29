@@ -56,6 +56,21 @@ module.exports = (db, app_cfg) => {
 
   // SQL-Abfragen
 
+  // Alarmdaten auf aktive Wachen filtern — gibt nur Eintraege zurueck, bei denen die Wache aktiv ist
+  const db_alarmdaten_filter_aktiv = (alarmdaten) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`
+          SELECT name_wache FROM waip_wachen WHERE name_wache LIKE ? AND aktiv = 1;
+        `);
+        const aktiv = alarmdaten.filter((item) => stmt.get(item.wachenname) !== undefined);
+        resolve(aktiv);
+      } catch (error) {
+        reject(new Error("Fehler beim Filtern der Alarmdaten nach aktiven Wachen. " + error));
+      }
+    });
+  };
+
   // Einsatz inkl. Einsatzmitteln in Datenbank speichern
   const db_einsatz_speichern = (content) => {
     return new Promise(async (resolve, reject) => {
@@ -2410,6 +2425,7 @@ module.exports = (db, app_cfg) => {
   };
 
   return {
+    db_alarmdaten_filter_aktiv,
     db_einsatz_speichern,
     db_einsatz_for_client_ermitteln,
     db_einsatz_check_uuid,
