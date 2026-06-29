@@ -77,5 +77,20 @@ module.exports = (app_cfg, logger) => {
     }
   };
 
-  return { get_route, get_centroid, clip_route_at_boundary, wachen_color };
+  // Prüft ob eine Wache (Startpunkt) innerhalb des Einsatzbereichs liegt.
+  // In diesem Fall würde route_half den echten Einsatzort verraten → keine Route speichern.
+  const station_inside_boundary = (stationLat, stationLng, boundaryGeojson) => {
+    try {
+      let raw = typeof boundaryGeojson === "string" ? JSON.parse(boundaryGeojson) : boundaryGeojson;
+      let poly = raw;
+      if (raw.type === "FeatureCollection" && raw.features?.length) poly = raw.features[0];
+      if (poly.type !== "Feature") poly = turf.feature(poly);
+      return turf.booleanPointInPolygon(turf.point([stationLng, stationLat]), poly);
+    } catch (err) {
+      logger.log("warn", `OSRM station_inside_boundary Fehler: ${err.message}`);
+      return false;
+    }
+  };
+
+  return { get_route, get_centroid, clip_route_at_boundary, station_inside_boundary, wachen_color };
 };

@@ -32,8 +32,9 @@ function AddMapLayer(targetMap) {
       transparent: map_service.wms_transparent,
       version: map_service.wms_version,
     });
-    wmsLayer.on("tileerror", function () {
+    wmsLayer.once("tileerror", function () {
       console.warn("WMS-Layer konnte nicht geladen werden, versuche Tile-Layer:", map_service.tile_url);
+      m.removeLayer(wmsLayer);
       L.tileLayer(map_service.tile_url, { maxZoom: maxMapZoom }).addTo(m);
     });
     wmsLayer.addTo(m);
@@ -1486,7 +1487,7 @@ function draw_routes(routes) {
         fillColor: route.color,
         fillOpacity: 1.0,
       }).addTo(map);
-      if (route.name_wache) startMarker.bindTooltip(route.name_wache, { permanent: true, direction: "auto", offset: [0, -10], className: "route-label" });
+      if (route.name_wache) startMarker.bindTooltip(route.name_wache, { permanent: true, direction: "top", offset: [0, -10], className: "route-label" });
       routeLayers.push(startMarker);
     }
 
@@ -1522,10 +1523,11 @@ function draw_routes(routes) {
       insetEl.style.left   = stationWest  ? "auto" : "10px";
       insetEl.style.right  = stationWest  ? "10px" : "auto";
 
-      // fitBounds-Padding passend zur neuen Inset-Position (paddingTopLeft = [x,y] von oben-links)
-      // 272 = 260px Inset + 10px Rand + 2px Border; 15px auf den freien Seiten
-      const ptl = [stationWest ? 15 : 272, stationSouth ? 15 : 272];
-      const pbr = [stationWest ? 272 : 15, stationSouth ? 272 : 15];
+      // fitBounds-Padding aus tatsächlicher Inset-Größe lesen, damit responsive CSS-Änderungen
+      // (min(260px, 38%)) automatisch berücksichtigt werden.
+      const insetPad = insetEl.offsetWidth + 12; // Breite + 10px Rand + 2px Border
+      const ptl = [stationWest ? 15 : insetPad, stationSouth ? 15 : insetPad];
+      const pbr = [stationWest ? insetPad : 15, stationSouth ? insetPad : 15];
       map.fitBounds(combined, { paddingTopLeft: ptl, paddingBottomRight: pbr });
     } else {
       map.fitBounds(combined, { padding: [15, 15] });

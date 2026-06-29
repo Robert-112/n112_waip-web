@@ -389,13 +389,20 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
         let route_half;
         if (hat_geometry) {
-          // Route zum Schwerpunkt des Bereichs, am Rand abgeschnitten
-          const centroid = osrm.get_centroid(einsatzdaten.geometry);
-          const route_to_centroid = await osrm.get_route(
-            station.wgs84_x, station.wgs84_y,
-            centroid.lat, centroid.lng
-          );
-          route_half = osrm.clip_route_at_boundary(route_to_centroid, einsatzdaten.geometry);
+          if (osrm.station_inside_boundary(station.wgs84_x, station.wgs84_y, einsatzdaten.geometry)) {
+            // Wache liegt im Einsatzbereich: jede Route würde den echten Einsatzort verraten.
+            // Für eingeschränkte Nutzer wird deshalb gar keine Route gespeichert.
+            route_half = null;
+            logger.log("log", `OSRM: Wache ${station.nr_wache} liegt im Einsatzbereich – route_half nicht berechnet.`);
+          } else {
+            // Route zum Schwerpunkt des Bereichs, am Rand abgeschnitten
+            const centroid = osrm.get_centroid(einsatzdaten.geometry);
+            const route_to_centroid = await osrm.get_route(
+              station.wgs84_x, station.wgs84_y,
+              centroid.lat, centroid.lng
+            );
+            route_half = osrm.clip_route_at_boundary(route_to_centroid, einsatzdaten.geometry);
+          }
         } else {
           // Kein Bereich vorhanden – half = full (kein Sicherheitsrisiko, da kein Bereich)
           route_half = route_full;

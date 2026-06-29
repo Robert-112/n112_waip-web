@@ -33,10 +33,12 @@ function AddMapLayer(targetMap) {
       version: map_service.wms_version,
     });
 
-    // Fehlerbehandlung: Wenn der WMS-Layer nicht geladen werden kann, dann versuche den Tile-Layer
-    wmsLayer.on("tileerror", function () {
+    // Fehlerbehandlung: Wenn der WMS-Layer nicht geladen werden kann, dann einmalig auf Tile-Layer wechseln.
+    // .once() statt .on() verhindert, dass der Handler für jeden fehlgeschlagenen Tile (20-50 pro Viewport)
+    // ausgelöst wird und dabei gestapelte Tile-Layer erzeugt.
+    wmsLayer.once("tileerror", function () {
       console.warn("WMS-Layer konnte nicht geladen werden, versuche Tile-Layer:", map_service.tile_url);
-      // Tile-Map hinufuegen
+      tMap.removeLayer(wmsLayer);
       L.tileLayer(map_service.tile_url, {
         maxZoom: maxMapZoom,
       }).addTo(tMap);
@@ -181,7 +183,7 @@ function drawRoutesOnMap(routes, targetMap, layerArr) {
       var startMarker = L.circleMarker([start[1], start[0]], {
         radius: 8, color: "#ffffff", weight: 2, fillColor: route.color, fillOpacity: 1.0,
       }).addTo(targetMap);
-      if (route.name_wache) startMarker.bindTooltip(route.name_wache, { permanent: true, direction: "auto", offset: [0, -10], className: "route-label" });
+      if (route.name_wache) startMarker.bindTooltip(route.name_wache, { permanent: true, direction: "top", offset: [0, -10], className: "route-label" });
       layerArr.push(startMarker);
     }
   });
@@ -738,12 +740,14 @@ socket.on("io.routes", function (routes) {
   drawRoutesOnMap(currentRoutes, map, routeLayers);
   if (fullscreenMap) drawRoutesOnMap(currentRoutes, fullscreenMap, fullscreenRouteLayers);
 
-  // Kartenausschnitt auf Routen + Einsatzmarker anpassen
+  // Kartenausschnitt auf Routen + Einsatzmarker anpassen.
+  // Bounds direkt aus Koordinaten berechnen statt temporärer GeoJSON-Objekte (kein DOM-Overhead).
   var allBounds = [];
   currentRoutes.forEach(function (route) {
-    if (!route.geometry) return;
+    if (!route.geometry || !route.geometry.coordinates || !route.geometry.coordinates.length) return;
     try {
-      var b = L.geoJSON(route.geometry).getBounds();
+      var latlngs = route.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
+      var b = L.latLngBounds(latlngs);
       if (b.isValid()) allBounds.push(b);
     } catch (_) {}
   });
