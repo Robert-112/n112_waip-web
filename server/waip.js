@@ -91,21 +91,32 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
             // alles Sockets der Wache ermitteln
             const sockets = await io.of("/waip").in(wachen_nr.toString()).fetchSockets();
 
+            // prüfen ob nach dem Aktiv-Filter noch Einsatzmittel vorhanden sind
+            const keineAktivenEinsatzmittel =
+              (!einsatzdaten.em_alarmiert || einsatzdaten.em_alarmiert.length === 0) &&
+              (!einsatzdaten.em_weitere || einsatzdaten.em_weitere.length === 0);
+
             // an jeden Socket entsprechende Daten senden
             for (const socket of sockets) {
-              // Prüfen ob für den Client die Anzeigezeit abgelaufen ist
-              const reset_timestamp = await sql.db_client_get_alarm_anzeigbar(socket, einsatzdaten.id);
-
-              if (!einsatzdaten || !reset_timestamp) {
-                // Standby senden
+              if (keineAktivenEinsatzmittel) {
+                // Standby senden, da keine Einsatzmittel aktiver Wachen vorhanden
                 standby_verteilen_socket(socket);
-                // wenn keine Einsatzdaten vorhanden sind, dann nichts senden (Standby)
-                logger.log("waip", `Kein anzuzeigender Einsatz für ${wachen_nr} vorhanden, sende keine Einsatzdaten, sondern Standby.`);
+                logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr} verworfen: keine Einsatzmittel aktiver Wachen, sende Standby.`);
                 resolve(false);
               } else {
-                // Einsatz an den einzelnen Socket versenden
-                waip_verteilen_socket(einsatzdaten, socket, wachen_nr, reset_timestamp);
-                resolve(true);
+                // Prüfen ob für den Client die Anzeigezeit abgelaufen ist
+                const reset_timestamp = await sql.db_client_get_alarm_anzeigbar(socket, einsatzdaten.id);
+
+                if (!einsatzdaten || !reset_timestamp) {
+                  // Standby senden
+                  standby_verteilen_socket(socket);
+                  logger.log("waip", `Kein anzuzeigender Einsatz für ${wachen_nr} vorhanden, sende keine Einsatzdaten, sondern Standby.`);
+                  resolve(false);
+                } else {
+                  // Einsatz an den einzelnen Socket versenden
+                  waip_verteilen_socket(einsatzdaten, socket, wachen_nr, reset_timestamp);
+                  resolve(true);
+                }
               }
             }
           }

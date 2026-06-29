@@ -389,20 +389,20 @@ module.exports = (db, app_cfg) => {
             resolve(null);
           } else {
             // Filter für Einsatzmittel vorbereiten
-            let em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%') `;
-            let emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%') OR em_station_id IS NULL) `;
+            let em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE ${wachen_nr} || '%' AND aktiv = 1) `;
+            let emnot_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache NOT LIKE ${wachen_nr} || '%' AND aktiv = 1) `;
 
             // wenn wachen_nr 0, dann % fuer Abfrage festlegen
             if (parseInt(wachen_nr) == 0) {
               wachen_nr = "%";
-              em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%') `;
-              emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%') OR em_station_id IS NULL) `;
+              em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache LIKE '%' AND aktiv = 1) `;
+              emnot_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_wache NOT LIKE '%' AND aktiv = 1) `;
             }
 
             // wenn die Wachen-ID 1 bis 5 ist, handelt es sich um eine Leitstelle
             if (wachen_nr.toString().length === 1 && parseInt(wachen_nr) >= 1 && parseInt(wachen_nr) <= 5) {
-              em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) `;
-              emnot_sql_filter = `AND (em_station_id NOT IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr}) OR em_station_id IS NULL) `;
+              em_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle LIKE ${wachen_nr} AND aktiv = 1) `;
+              emnot_sql_filter = `AND em_station_id IN (SELECT id FROM waip_wachen WHERE nr_leitstelle NOT LIKE ${wachen_nr} AND aktiv = 1) `;
             }
 
             // Abfrage der alarmierten Einsatzmittel der Wache
