@@ -491,6 +491,7 @@ module.exports = (db, app_cfg) => {
               e.em_station_id, e.em_funkrufname, e.em_zeitstempel_alarmierung, e.em_station_name,
               e.em_zeitstempel_alarmierung_iso, e.em_zeitstempel_ausgerueckt_iso
             FROM waip_einsatzmittel e
+            JOIN waip_wachen w ON w.id = e.em_station_id AND w.aktiv = 1
             WHERE e.em_waip_einsaetze_id = ?;
           `);
           // Einsatzmittel den Einsatzdaten hinzufügen
@@ -498,9 +499,10 @@ module.exports = (db, app_cfg) => {
 
           // Wachen zum Einsatz finden und hinzufuegen
           const stmt2 = db.prepare(`
-            SELECT DISTINCT 
-              e.em_station_id, e.em_station_name 
-            FROM waip_einsatzmittel e 
+            SELECT DISTINCT
+              e.em_station_id, e.em_station_name
+            FROM waip_einsatzmittel e
+            JOIN waip_wachen w ON w.id = e.em_station_id AND w.aktiv = 1
             WHERE e.em_waip_einsaetze_id = ?;
           `);
           einsatzdaten.wachen = stmt2.all(einsatzdaten.id);
@@ -568,8 +570,8 @@ module.exports = (db, app_cfg) => {
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 5 )) b,
             GROUP_CONCAT(DISTINCT wa.nr_wache) c
           FROM waip_einsaetze we
-          LEFT JOIN waip_einsatzmittel em ON em.em_waip_einsaetze_id = we.id
-          LEFT JOIN waip_wachen wa ON wa.id = em.em_station_id
+          JOIN waip_einsatzmittel em ON em.em_waip_einsaetze_id = we.id
+          JOIN waip_wachen wa ON wa.id = em.em_station_id AND wa.aktiv = 1
           GROUP BY we.id
           ORDER BY we.zeitstempel DESC, we.einsatzart, we.stichwort;
         `);
