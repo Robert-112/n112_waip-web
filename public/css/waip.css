@@ -412,8 +412,8 @@ audio {
   position: absolute;
   bottom: 10px;
   left: 10px;
-  width: 220px;
-  height: 220px;
+  width: 260px;
+  height: 260px;
   z-index: 1000;
   border-radius: 6px;
   border: 2px solid rgba(255,255,255,0.8);

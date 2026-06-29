@@ -306,7 +306,14 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
       const permissions = await sql.db_user_check_permission_for_waip(socket, waip_id);
 
+      // Routen auf Wachen der eigenen Wachennummer begrenzen (em_alarmiert-Filter).
+      // Dashboard-Sockets (kein wachen_nr) und Leitstellen-Sockets (1–5) sehen alle Routen.
+      const wachen_nr = socket.data.wachen_nr;
+      const wachen_nr_int = wachen_nr ? parseInt(wachen_nr) : 0;
+      const filterByWache = wachen_nr && wachen_nr_int !== 0 && (wachen_nr_int < 1 || wachen_nr_int > 5);
+
       const payload = routen
+        .filter((r) => !filterByWache || String(r.nr_wache).startsWith(wachen_nr))
         .map((r) => {
           const geometry_str = permissions ? r.em_wgs84_route_full : r.em_wgs84_route_half;
           if (!geometry_str) return null;

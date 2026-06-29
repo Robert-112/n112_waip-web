@@ -453,6 +453,10 @@ let map = L.map("map", {
   attributionControl: false,
 }).setView([51.733005, 14.338048], 13);
 
+// Eigener Pane für den Zielmarker, damit er immer über Routen-Tooltips liegt
+map.createPane("zielPane");
+map.getPane("zielPane").style.zIndex = 700;
+
 AddMapLayer();
 
 // Attribution für Optionen anzeigen (nebeneinander)
@@ -495,6 +499,7 @@ let redIcon = new L.Icon({
 // Icon setzen
 let marker = L.marker(new L.LatLng(0, 0), {
   icon: redIcon,
+  pane: "zielPane",
 }).addTo(map);
 
 // GeoJSON vordefinieren
@@ -853,7 +858,7 @@ socket.on("io.new_waip", function (data) {
   if (data.wgs84_x && data.wgs84_y) {
     const lat = data.wgs84_x;
     const lng = data.wgs84_y;
-    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(map);
+    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon, pane: "zielPane" }).addTo(map);
     map.setView(new L.LatLng(lat, lng), initialZoom);
     // Inset-Karte nur bei Punkt-Einsatz mit Vollberechtigung
     if (data.permissions) {
@@ -1499,7 +1504,32 @@ function draw_routes(routes) {
       const mPos = marker.getLatLng();
       if (mPos.lat !== 0 || mPos.lng !== 0) combined = combined.extend(mPos);
     } catch (_) {}
-    map.fitBounds(combined, { padding: [30, 30] });
+
+    const insetEl = document.getElementById("map-inset");
+    const insetVisible = insetEl && !insetEl.classList.contains("d-none");
+
+    if (insetVisible) {
+      // Inset in den Quadranten verschieben, der dem Routenstart (Wache) gegenüberliegt
+      const firstCoords = routes.length && routes[0].geometry && routes[0].geometry.coordinates;
+      const startCoord = firstCoords && firstCoords.length ? firstCoords[0] : null; // [lng, lat]
+      const center = combined.getCenter();
+      const stationSouth = startCoord ? startCoord[1] < center.lat : true;
+      const stationWest  = startCoord ? startCoord[0] < center.lng : true;
+
+      // Inset gegenüber der Wache positionieren
+      insetEl.style.top    = stationSouth ? "auto" : "10px";
+      insetEl.style.bottom = stationSouth ? "10px" : "auto";
+      insetEl.style.left   = stationWest  ? "auto" : "10px";
+      insetEl.style.right  = stationWest  ? "10px" : "auto";
+
+      // fitBounds-Padding passend zur neuen Inset-Position (paddingTopLeft = [x,y] von oben-links)
+      // 272 = 260px Inset + 10px Rand + 2px Border; 15px auf den freien Seiten
+      const ptl = [stationWest ? 15 : 272, stationSouth ? 15 : 272];
+      const pbr = [stationWest ? 272 : 15, stationSouth ? 272 : 15];
+      map.fitBounds(combined, { paddingTopLeft: ptl, paddingBottomRight: pbr });
+    } else {
+      map.fitBounds(combined, { padding: [15, 15] });
+    }
   }
 }
 

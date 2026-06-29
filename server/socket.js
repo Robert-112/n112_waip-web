@@ -92,6 +92,7 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         await sql.db_client_update_status(socket, "Standby");
 
         // Raum der Wache beitreten
+        socket.data.wachen_nr = String(wachen_nr);
         socket.join(wachen_nr);
         logger.log("waip", `Alarmmonitor Nr. ${wachen_nr} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);
 
