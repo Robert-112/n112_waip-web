@@ -92,6 +92,7 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         await sql.db_client_update_status(socket, "Standby");
 
         // Raum der Wache beitreten
+        socket.data.wachen_nr = String(wachen_nr);
         socket.join(wachen_nr);
         logger.log("waip", `Alarmmonitor Nr. ${wachen_nr} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);
 
@@ -120,6 +121,9 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
           if (rmld_waip_arr) {
             waip.rmld_arr_verteilen_socket(rmld_waip_arr, socket);
           }
+
+          // Routen senden (wenn OSRM aktiviert)
+          waip.routen_verteilen_socket(einsatzdaten.id, socket);
         } else {
           // Standby an Alarmmonitor senden
           waip.standby_verteilen_socket(socket);

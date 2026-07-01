@@ -1,46 +1,43 @@
 // TODO: Remote-Reload per Socket
 
+
 $(document).ready(function () {
   set_clock();
   updateWachennameAnimation();
   startRandomPositioning();
 });
 
+let _resize_debounce = null;
 $(window).on("resize", function () {
-  resize_text(true);
-  updateWachennameAnimation();
-  updateRandomPosition();
+  // Debounce: textFit erst nach Abschluss des Resize ausführen, nicht bei jedem Event
+  clearTimeout(_resize_debounce);
+  _resize_debounce = setTimeout(function () {
+    resize_text(true);
+    updateWachennameAnimation();
+    updateRandomPosition();
+  }, 250);
 });
 
-// Funktion zum Hinzufügen und Testen eines WMS-Layers
-function AddMapLayer() {
-  let maxMapZoom = 18; // Standard-Zoomstufe
+// Funktion zum Hinzufügen eines Kartenlayers (Tile oder WMS)
+function AddMapLayer(targetMap) {
+  const m = targetMap || map;
+  let maxMapZoom = 18;
 
-  // Layer der Karte basierend auf dem Typ des Kartendienstes hinzufuegen
   if (map_service.type === "tile") {
-    // Tile-Map hinzufuegen
-    L.tileLayer(map_service.tile_url, {
-      maxZoom: maxMapZoom,
-    }).addTo(map);
+    L.tileLayer(map_service.tile_url, { maxZoom: maxMapZoom }).addTo(m);
   } else if (map_service.type === "wms") {
-    // WMS-Map hinzufuegen
     var wmsLayer = L.tileLayer.wms(map_service.wms_url, {
       layers: map_service.wms_layers,
       format: map_service.wms_format,
       transparent: map_service.wms_transparent,
       version: map_service.wms_version,
     });
-
-    // Fehlerbehandlung: Wenn der WMS-Layer nicht geladen werden kann, dann versuche den Tile-Layer
-    wmsLayer.on("tileerror", function () {
+    wmsLayer.once("tileerror", function () {
       console.warn("WMS-Layer konnte nicht geladen werden, versuche Tile-Layer:", map_service.tile_url);
-      // Tile-Map hinufuegen
-      L.tileLayer(map_service.tile_url, {
-        maxZoom: maxMapZoom,
-      }).addTo(map);
+      m.removeLayer(wmsLayer);
+      L.tileLayer(map_service.tile_url, { maxZoom: maxMapZoom }).addTo(m);
     });
-
-    wmsLayer.addTo(map);
+    wmsLayer.addTo(m);
   }
 }
 
@@ -57,6 +54,29 @@ let audioBlockedToast = null;
 // Flag ob Browser (noch) Autoplay blockiert
 let audioBlocked = false;
 
+// JS-basiertes Blinken – ersetzt CSS-Animation (schont CPU auf schwacher Hardware)
+let _blinkInterval = null;
+let _blinkElements = new Set();
+let _blinkOn = true;
+
+function startBlink(el) {
+  if (!el) return;
+  _blinkElements.add(el);
+  if (!_blinkInterval) {
+    _blinkInterval = setInterval(function () {
+      _blinkOn = !_blinkOn;
+      _blinkElements.forEach(function (e) { e.style.opacity = _blinkOn ? "1" : "0.15"; });
+    }, 800);
+  }
+}
+
+function stopAllBlinks() {
+  if (_blinkInterval) { clearInterval(_blinkInterval); _blinkInterval = null; }
+  _blinkElements.forEach(function (e) { e.style.opacity = ""; });
+  _blinkElements.clear();
+  _blinkOn = true;
+}
+
 // Autoplay-Blockade anzeigen (Blinken des Volume-Off Icons)
 function indicateAudioBlocked() {
   try {
@@ -70,8 +90,8 @@ function indicateAudioBlocked() {
       icon.classList.remove("ion-md-volume-high");
       icon.classList.add("ion-md-volume-off");
     }
-    // Blinken hinzufuegen und anzeigen
-    icon.classList.add("blink-audio");
+    // Blinken starten
+    startBlink(icon);
     audioBlocked = true; // Blockade markieren
     showAudioBlockedToast();
   } catch (e) {
@@ -103,6 +123,9 @@ function resetAudioUi() {
     removeAudioBlockedToast();
   }
 }
+
+// Flag: Listener am Toast-Element wurden bereits registriert (verhindert Akkumulation)
+let toastListenersAdded = false;
 
 // Toast erstellen – erscheint oben links über der Karte
 function tryActivate(evt) {
@@ -138,7 +161,8 @@ function showAudioBlockedToast() {
     const container = document.getElementById("audio-toast-container");
     const toast = document.getElementById("audio-blocked-toast");
     if (!container || !toast) return;
-    if (!audioBlockedToast) {
+    // Click-/Close-Listener nur einmalig am Toast-Element registrieren
+    if (!toastListenersAdded) {
       toast.addEventListener("click", tryActivate);
       const closeBtn = toast.querySelector(".close");
       if (closeBtn)
@@ -146,8 +170,11 @@ function showAudioBlockedToast() {
           e.stopPropagation();
           removeAudioBlockedToast();
         });
+      toastListenersAdded = true;
+    }
+    if (!audioBlockedToast) {
+      // Globale einmalige Listener neu registrieren (entfernen sich nach erstem Auslösen selbst)
       document.addEventListener("keydown", tryActivate, { once: true });
-      // Globaler einmaliger Klick irgendwo auf die Seite startet ebenfalls Audio
       document.addEventListener("click", tryActivate, { once: true });
     }
     // Sichtbar machen
@@ -155,7 +182,7 @@ function showAudioBlockedToast() {
     toast.classList.add("show");
     // Icon blinken lassen
     const iconInToast = toast.querySelector(".ion-md-volume-off");
-    if (iconInToast) iconInToast.classList.add("blink-audio");
+    if (iconInToast) startBlink(iconInToast);
     audioBlockedToast = toast;
   } catch (e) {
     console.log("showAudioBlockedToast error", e);
@@ -197,9 +224,8 @@ waipAudio.addEventListener("pause", function () {
 
 waipAudio.addEventListener("play", function () {
   let tmp_element;
-  // Beim erfolgreichen Start Blinken entfernen
-  const blinkIcon = document.querySelector(".blink-audio");
-  if (blinkIcon) blinkIcon.classList.remove("blink-audio");
+  // Beim erfolgreichen Start Blinken stoppen
+  stopAllBlinks();
   audioBlocked = false; // Wiedergabe läuft
   // Pause-Symbol in Play-Symbol
   tmp_element = document.querySelector(".ion-md-play-circle");
@@ -255,34 +281,17 @@ function resize_text(reProcess) {
   // Uhr-Text nur Anpassen wenn sichtbar
   if ($("#clock_day").is(":visible")) {
     try {
-      textFit(document.getElementsByClassName("clock_frame"), {
-        minFontSize: 4,
-        maxFontSize: 500,
-        reProcess: reProcess,
-      });
-      textFit(document.getElementsByClassName("day_frame"), {
-        minFontSize: 3,
-        maxFontSize: 500,
-        reProcess: reProcess,
-      });
+      textFit(document.getElementsByClassName("clock_frame"), { minFontSize: 4, maxFontSize: 500, reProcess: reProcess });
+      textFit(document.getElementsByClassName("day_frame"), { minFontSize: 3, maxFontSize: 500, reProcess: reProcess });
     } catch (e) { console.error("resize_text clock_frame/day_frame:", e); }
   }
   // Tableau nur Anpassen wenn sichtbar
   if ($("#waiptableau").is(":visible")) {
     try {
-      textFit(document.getElementsByClassName("tf_singleline"), {
-        minFontSize: 3,
-        maxFontSize: 700,
-        reProcess: reProcess,
-      });
+      textFit(document.getElementsByClassName("tf_singleline"), { minFontSize: 3, maxFontSize: 700, reProcess: reProcess });
     } catch (e) { console.error("resize_text tf_singleline:", e); }
     try {
-      textFit(document.getElementsByClassName("tf_multiline"), {
-        minFontSize: 3,
-        maxFontSize: 500,
-        multiLine: true,
-        reProcess: reProcess,
-      });
+      textFit(document.getElementsByClassName("tf_multiline"), { minFontSize: 3, maxFontSize: 500, multiLine: true, reProcess: reProcess });
     } catch (e) { console.error("resize_text tf_multiline:", e); }
     // Karte neu setzen
     map.invalidateSize();
@@ -344,9 +353,13 @@ function start_inactivtimer() {
   timeoutID = window.setTimeout(do_on_Inactive, 3000);
 }
 
+// Zustand: true = Navbar sichtbar (aktiv), false = ausgeblendet (inaktiv)
+let _ui_active = true;
+
 // bei Inaktivitaet Header/Footer ausblenden
 function do_on_Inactive() {
-  // do something
+  if (!_ui_active) return; // bereits inaktiv – kein erneuter Reflow
+  _ui_active = false;
   $(".navbar").fadeOut("slow");
   $(".footer").fadeOut("slow");
   $(".fullheight").css({
@@ -357,13 +370,15 @@ function do_on_Inactive() {
     paddingTop: "1rem",
     margin: 0,
   });
-  resize_text(true);
+  // resize nach abgeschlossenem fadeOut, nicht sofort – sonst misst textFit falsche Größen
+  setTimeout(function () { resize_text(true); }, 650);
 }
 
 // bei Activitaet Header/Footer einblenden
 function do_on_Active() {
   start_inactivtimer();
-  // do something
+  if (_ui_active) return; // bereits aktiv – kein erneuter Reflow bei jeder Mausbewegung
+  _ui_active = true;
   $(".navbar").fadeIn("slow");
   $(".footer").fadeIn("slow");
   $("body").css({
@@ -375,7 +390,8 @@ function do_on_Active() {
     height: "calc(100vh - 60px - 5rem)",
     cursor: "auto",
   });
-  resize_text(true);
+  // resize nach abgeschlossenem fadeIn, nicht sofort
+  setTimeout(function () { resize_text(true); }, 650);
 }
 
 // bei Event (Aktiviaet) alles zuruecksetzen
@@ -438,6 +454,10 @@ let map = L.map("map", {
   attributionControl: false,
 }).setView([51.733005, 14.338048], 13);
 
+// Eigener Pane für den Zielmarker, damit er immer über Routen-Tooltips liegt
+map.createPane("zielPane");
+map.getPane("zielPane").style.zIndex = 700;
+
 AddMapLayer();
 
 // Attribution für Optionen anzeigen (nebeneinander)
@@ -480,10 +500,15 @@ let redIcon = new L.Icon({
 // Icon setzen
 let marker = L.marker(new L.LatLng(0, 0), {
   icon: redIcon,
+  pane: "zielPane",
 }).addTo(map);
 
 // GeoJSON vordefinieren
 let geojson = L.geoJSON().addTo(map);
+
+// OSRM-Routen-Layer und Inset-Map
+let routeLayers = [];
+let insetMap = null;
 
 /* ########################### */
 /* ######## SOCKET.IO ######## */
@@ -595,8 +620,12 @@ socket.on("io.standby", function (data) {
   $("#besonderheiten").text("");
   $("#em_alarmiert").empty();
   $("#em_weitere").text("");
+  $("#rueckmeldung").addClass("d-none");
   reset_rmld();
   recount_rmld();
+  // Routen und Inset-Karte aufräumen
+  destroy_inset_map();
+  clear_route_layers();
   // Leaflet-Reset: alle Layer entfernen und Basis-Kacheln + Platzhalter neu anlegen
   map.eachLayer(function (layer) { map.removeLayer(layer); });
   AddMapLayer();
@@ -803,6 +832,9 @@ socket.on("io.new_waip", function (data) {
   Object.keys(counter_rmld).forEach(function(id) { clearInterval(counter_rmld[id]); });
   counter_rmld = {};
 
+  // Routen und Inset-Karte aus vorherigem Einsatz löschen
+  destroy_inset_map();
+  clear_route_layers();
   // Karte leeren
   map.removeLayer(marker);
   map.removeLayer(geojson);
@@ -827,8 +859,12 @@ socket.on("io.new_waip", function (data) {
   if (data.wgs84_x && data.wgs84_y) {
     const lat = data.wgs84_x;
     const lng = data.wgs84_y;
-    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(map);
+    marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon, pane: "zielPane" }).addTo(map);
     map.setView(new L.LatLng(lat, lng), initialZoom);
+    // Inset-Karte nur bei Punkt-Einsatz mit Vollberechtigung
+    if (data.permissions) {
+      create_inset_map(lat, lng);
+    }
   } else {
     try {
       const gjData = JSON.parse(data.geometry);
@@ -845,6 +881,11 @@ socket.on("io.new_waip", function (data) {
   }
 
   resize_text(true);
+});
+
+// OSRM-Routen empfangen und auf der Karte zeichnen
+socket.on("io.routes", function (routes) {
+  draw_routes(routes);
 });
 
 socket.on("io.new_rmld", function (data) {
@@ -1265,7 +1306,11 @@ function set_clock() {
   if ($("#clock-hhmm").text() !== element_time) {
     $("#clock-hhmm").text(element_time);
     $("#day").text(element_day);
-    resize_text(true);
+    // resize_text nur wenn Uhr sichtbar ist – während Alarm (waiptableau sichtbar) ist
+    // ein vollständiges textFit-Reprocessing jede Minute unnötige CPU-Last
+    if ($("#waipclock").is(":visible")) {
+      resize_text(true);
+    }
   }
 }
 
@@ -1367,10 +1412,11 @@ function updateRandomPosition() {
   const randomX = Math.floor(Math.random() * maxX);
   const randomY = Math.floor(Math.random() * maxY);
 
-  // Position setzen
+  // Position via transform – löst keinen Layout-Reflow aus (Compositor-Thread)
   clockDay.style.position = "absolute";
-  clockDay.style.left = `${randomX}px`;
-  clockDay.style.top = `${randomY}px`;
+  clockDay.style.left = "0";
+  clockDay.style.top = "0";
+  clockDay.style.transform = `translate(${randomX}px, ${randomY}px)`;
 }
 
 /* ############################ */
@@ -1392,4 +1438,127 @@ function alterClass(elementId, removeClassPattern, addClass) {
     // Neue Klasse hinzufügen
     element.classList.add(addClass);
   }
+}
+
+/* ########################### */
+/* ######## OSRM Routen ###### */
+/* ########################### */
+
+function clear_route_layers() {
+  routeLayers.forEach(function (l) { map.removeLayer(l); });
+  routeLayers = [];
+}
+
+function draw_routes(routes) {
+  clear_route_layers();
+  if (!routes || !routes.length) return;
+
+  const allBounds = [];
+
+  routes.forEach(function (route) {
+    if (!route.geometry) return;
+
+    // Schatten
+    const shadow = L.geoJSON(route.geometry, {
+      style: { color: "#000000", weight: 10, opacity: 0.18, lineCap: "round", lineJoin: "round" },
+    }).addTo(map);
+    routeLayers.push(shadow);
+
+    // Halo (weißer Hintergrund) für besseren Kontrast
+    const halo = L.geoJSON(route.geometry, {
+      style: { color: "#ffffff", weight: 5, opacity: 0.65, lineCap: "round", lineJoin: "round" },
+    }).addTo(map);
+    routeLayers.push(halo);
+
+    // Farbige Linie
+    const layer = L.geoJSON(route.geometry, {
+      style: { color: route.color, weight: 4, opacity: 1.0, lineCap: "round", lineJoin: "round" },
+    }).addTo(map);
+    routeLayers.push(layer);
+
+    // Startpunkt-Marker (Wache)
+    const coords = route.geometry.coordinates;
+    if (coords && coords.length) {
+      const start = coords[0]; // GeoJSON: [lng, lat]
+      const startMarker = L.circleMarker([start[1], start[0]], {
+        radius: 8,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: route.color,
+        fillOpacity: 1.0,
+      }).addTo(map);
+      if (route.name_wache) startMarker.bindTooltip(route.name_wache, { permanent: true, direction: "top", offset: [0, -10], className: "route-label" });
+      routeLayers.push(startMarker);
+    }
+
+    try {
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) allBounds.push(bounds);
+    } catch (_) {}
+  });
+
+  if (allBounds.length) {
+    let combined = allBounds[0];
+    for (let i = 1; i < allBounds.length; i++) combined = combined.extend(allBounds[i]);
+    // Marker-Position einbeziehen falls vorhanden
+    try {
+      const mPos = marker.getLatLng();
+      if (mPos.lat !== 0 || mPos.lng !== 0) combined = combined.extend(mPos);
+    } catch (_) {}
+
+    const insetEl = document.getElementById("map-inset");
+    const insetVisible = insetEl && !insetEl.classList.contains("d-none");
+
+    if (insetVisible) {
+      // Inset in den Quadranten verschieben, der dem Routenstart (Wache) gegenüberliegt
+      const firstCoords = routes.length && routes[0].geometry && routes[0].geometry.coordinates;
+      const startCoord = firstCoords && firstCoords.length ? firstCoords[0] : null; // [lng, lat]
+      const center = combined.getCenter();
+      const stationSouth = startCoord ? startCoord[1] < center.lat : true;
+      const stationWest  = startCoord ? startCoord[0] < center.lng : true;
+
+      // Inset gegenüber der Wache positionieren
+      insetEl.style.top    = stationSouth ? "auto" : "10px";
+      insetEl.style.bottom = stationSouth ? "10px" : "auto";
+      insetEl.style.left   = stationWest  ? "auto" : "10px";
+      insetEl.style.right  = stationWest  ? "10px" : "auto";
+
+      // fitBounds-Padding aus tatsächlicher Inset-Größe lesen, damit responsive CSS-Änderungen
+      // (min(260px, 38%)) automatisch berücksichtigt werden.
+      const insetPad = insetEl.offsetWidth + 12; // Breite + 10px Rand + 2px Border
+      const ptl = [stationWest ? 15 : insetPad, stationSouth ? 15 : insetPad];
+      const pbr = [stationWest ? insetPad : 15, stationSouth ? insetPad : 15];
+      map.fitBounds(combined, { paddingTopLeft: ptl, paddingBottomRight: pbr });
+    } else {
+      map.fitBounds(combined, { padding: [15, 15] });
+    }
+  }
+}
+
+function create_inset_map(lat, lng) {
+  destroy_inset_map();
+  const el = document.getElementById("map-inset");
+  if (!el) return;
+  el.classList.remove("d-none");
+  insetMap = L.map("map-inset", {
+    zoomControl: false,
+    attributionControl: false,
+    dragging: false,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    keyboard: false,
+    touchZoom: false,
+  }).setView([lat, lng], 17);
+  AddMapLayer(insetMap);
+  L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(insetMap);
+}
+
+function destroy_inset_map() {
+  if (insetMap) {
+    insetMap.remove();
+    insetMap = null;
+  }
+  const el = document.getElementById("map-inset");
+  if (el) el.classList.add("d-none");
 }

@@ -20,10 +20,8 @@ const favicon = require("serve-favicon");
 const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
 const passport = require("passport");
-const { v4: uuidv4 } = require("uuid");
-
 // generische App-UUID erzeugen
-app_cfg.global.app_id = uuidv4();
+app_cfg.global.app_id = crypto.randomUUID();
 app_cfg.public.version = require("./package.json").version;
 
 // Express-Einstellungen definieren

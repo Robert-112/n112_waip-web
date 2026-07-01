@@ -14,6 +14,16 @@ module.exports = (app_cfg, sql, waip, logger) => {
             waip_json.einsatzdaten.uuid = waip_uuid;
           }
 
+          // Alarmdaten auf aktive Wachen filtern
+          if (waip_json.alarmdaten && waip_json.alarmdaten.length > 0) {
+            waip_json.alarmdaten = await sql.db_alarmdaten_filter_aktiv(waip_json.alarmdaten);
+            if (waip_json.alarmdaten.length === 0) {
+              logger.log("log", `Einsatz von ${remote_addr} verworfen: keine aktive Wache beteiligt.`);
+              resolve(false);
+              return;
+            }
+          }
+
           // Einsatzdaten in Datenbank speichern und ID des Einsatzes zurückbekommen
           const waip_id = await sql.db_einsatz_speichern(waip_json);
           logger.log(

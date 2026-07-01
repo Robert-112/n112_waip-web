@@ -1,6 +1,8 @@
 const e = require("express");
 
 module.exports = (io, sql, fs, logger, app_cfg) => {
+  const { tts_erstellen } = require("./tts.js")(fs, logger, sql, app_cfg);
+  const osrm = app_cfg.osrm.enabled ? require("./osrm.js")(app_cfg, logger) : null;
   const waip_verteilen_socket = (einsatzdaten, socket, wachen_nr, reset_timestamp) => {
     return new Promise(async (resolve, reject) => {
       try {
@@ -51,7 +53,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           sql.db_client_update_status(socket, data.id);
 
           // Sound erstellen und an Client senden
-          const tts = await tts_erstellen(app_cfg, data, wachen_nr);
+          const tts = await tts_erstellen(data, wachen_nr);
           if (tts) {
             // Sound-Link senden
             socket.emit("io.playtts", tts);
@@ -81,12 +83,17 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           // FIXME db_einsatz_loeschen liefert die Anzahl der gelöschten Daten zurück, hier beachten
           sql.db_einsatz_loeschen(waip_id);
         } else {
+          let basis_einsatzdaten = null;
+
           // Einsatzdaten an alle beteiligten Wachen (Websocket-Raum) verteilen
           for (const rooms of socket_rooms) {
             const wachen_nr = rooms.room;
 
             // Einsatzdaten passend pro Wache aus Datenbank laden
             const einsatzdaten = await sql.db_einsatz_get_for_wache(waip_id, wachen_nr);
+
+            // Basis-Einsatzdaten (mit Koordinaten) für OSRM merken
+            if (!basis_einsatzdaten && einsatzdaten) basis_einsatzdaten = einsatzdaten;
 
             // alles Sockets der Wache ermitteln
             const sockets = await io.of("/waip").in(wachen_nr.toString()).fetchSockets();
@@ -119,6 +126,13 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
                 }
               }
             }
+          }
+
+          // OSRM-Routen asynchron berechnen und verteilen (non-blocking nach Alarmausgabe)
+          if (osrm && basis_einsatzdaten) {
+            osrm_routen_berechnen(waip_id, basis_einsatzdaten).catch((err) =>
+              logger.log("error", `OSRM Routenberechnung für Einsatz ${waip_id} fehlgeschlagen: ${err.message}`)
+            );
           }
         }
       } catch (error) {
@@ -280,6 +294,8 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           socket.emit("io.Einsatz", einsatzdaten);
           // Rueckmeldungen verteilen
           rmld_arr_verteilen_socket(einsatzdaten.id, socket);
+          // Routen senden (wenn OSRM aktiviert)
+          if (osrm) routen_verteilen_socket(einsatzdaten.id, socket);
           const logMessage = `Einsatzdaten für Dashboard ${dbrd_uuid} an Socket ${socket.id} gesendet`;
           logger.log("log", logMessage);
           sql.db_client_update_status(socket, einsatzdaten.id);
@@ -293,198 +309,117 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
     });
   };
 
-  // TODO WAIP: Funktion um Clients remote "neuzustarten" (Seite neu laden), niedrige Prioritaet
-
-  // Konstanten für TTS-Konfiguration
-  const TTS_CONFIG = {
-    audio: {
-      sampleRate: 44100,
-      channels: 2,
-      bitrate: "128k",
-    },
-    fileExtensions: {
-      wav: ".wav",
-      mp3: ".mp3",
-      tmp: "_tmp.mp3",
-    },
-  };
-
-  // Plattform-spezifische TTS-Implementierungen
-  const ttsImplementations = {
-    win32: {
-      createTTS: async (tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell) => {
-        const pwshell_commands = [
-          `
-          Add-Type -AssemblyName System.speech;
-          $speak = New-Object System.Speech.Synthesis.SpeechSynthesizer;
-          $speak.SetOutputToWaveFile("${wav_tts}");
-          $speak.Speak("${tts_text}");
-          $speak.Dispose();
-          ffmpeg -nostats -hide_banner -loglevel 0 -y -i ${wav_tts} -vn -ar ${TTS_CONFIG.audio.sampleRate} -ac ${TTS_CONFIG.audio.channels} -ab ${TTS_CONFIG.audio.bitrate} -f mp3 ${mp3_tmp};
-          ffmpeg -nostats -hide_banner -loglevel 0 -y -i "concat:${mp3_bell}|${mp3_tmp}" -acodec copy ${mp3_tts};
-          rm ${wav_tts};
-          rm ${mp3_tmp};
-          `,
-        ];
-
-        return new Promise((resolve, reject) => {
-          const proc = require("child_process");
-          const pwshell_childD = proc.spawn("powershell", pwshell_commands, { shell: true });
-
-          pwshell_childD.stderr.on("data", (data) => {
-            reject(new Error(`Fehler beim Erstellen der TTS-Datei (win32): ${data}`));
-          });
-
-          pwshell_childD.on("exit", (code) => {
-            if (code === 0) {
-              resolve();
-            } else {
-              reject(new Error(`Powershell-Prozess beendet mit Code ${code}`));
-            }
-          });
-
-          pwshell_childD.stdin.end();
-        });
-      },
-    },
-    linux: {
-      createTTS: async (tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell) => {
-        const lxshell_commands = [
-          "-c",
-          `
-          pico2wave --lang=de-DE --wave=${wav_tts} "${tts_text}"
-          ffmpeg -nostats -hide_banner -loglevel 0 -y -i ${wav_tts} -vn -ar ${TTS_CONFIG.audio.sampleRate} -ac ${TTS_CONFIG.audio.channels} -ab ${TTS_CONFIG.audio.bitrate} -f mp3 ${mp3_tmp}
-          ffmpeg -nostats -hide_banner -loglevel 0 -y -i "concat:${mp3_bell}|${mp3_tmp}" -acodec copy ${mp3_tts}
-          rm ${wav_tts}
-          rm ${mp3_tmp}`,
-        ];
-
-        const proc = require("child_process");
-
-        const maxAttempts = 3;
-        const retryDelayMs = 500;
-
-        const runOnce = () => {
-          return new Promise((resolve, reject) => {
-            const lxshell_childD = proc.spawn("/bin/sh", lxshell_commands, { shell: true });
-            let stderr = "";
-
-            lxshell_childD.stderr.on("data", (data) => {
-              stderr += data.toString();
-            });
-
-            lxshell_childD.on("error", (err) => {
-              reject(err);
-            });
-
-            lxshell_childD.on("exit", (code) => {
-              if (code === 0) {
-                resolve();
-              } else {
-                reject(new Error(`Linux TTS-Prozess beendet mit Code ${code}. ${stderr}`));
-              }
-            });
-
-            lxshell_childD.stdin.end();
-          });
-        };
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          try {
-            if (attempt > 1) logger.log("log", `TTS-Versuch ${attempt}/${maxAttempts} für ${wav_tts}`);
-            await runOnce();
-            if (attempt > 1) logger.log("log", `TTS erfolgreich nach ${attempt} Versuch(en) für ${wav_tts}`);
-            return;
-          } catch (err) {
-            logger.log("warn", `TTS-Versuch ${attempt}/${maxAttempts} fehlgeschlagen: ${err.message}`);
-            if (attempt < maxAttempts) {
-              await new Promise((r) => setTimeout(r, retryDelayMs));
-            } else {
-              throw new Error(`Linux TTS-Prozess nach ${maxAttempts} Versuchen fehlgeschlagen: ${err.message}`);
-            }
-          }
-        }
-      },
-    },
-  };
-
-  const tts_erstellen = async (app_cfg, einsatzdaten, wachen_nr) => {
+  // Routen für einen Socket senden – wählt route_full oder route_half je nach Berechtigung
+  const routen_verteilen_socket = async (waip_id, socket) => {
     try {
-      let full_half = "";
-      if (einsatzdaten.permissions) {
-        // Berechtigungen vorhanden, volle Einsatzdaten verwenden
-        full_half = "full";
-      } else {
-        // Berechtigungen nicht vorhanden, reduzierte Einsatzdaten verwenden
-        full_half = "half";
-      }
+      const routen = sql.db_routen_get(waip_id);
+      if (!routen || !routen.length) return;
 
-      // Einsatz-UUID inkl. Wachennummer und Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
-      const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr + "_" + full_half;
-      const soundPath = process.cwd() + app_cfg.global.soundpath;
-      const mediaPath = app_cfg.global.mediapath;
+      const permissions = await sql.db_user_check_permission_for_waip(socket, waip_id);
 
-      // Pfade der Sound-Dateien definieren
-      const wav_tts = soundPath + id + TTS_CONFIG.fileExtensions.wav;
-      const mp3_tmp = soundPath + id + TTS_CONFIG.fileExtensions.tmp;
-      const mp3_tts = soundPath + id + TTS_CONFIG.fileExtensions.mp3;
-      const mp3_url = mediaPath + id + TTS_CONFIG.fileExtensions.mp3;
+      // Routen auf Wachen der eigenen Wachennummer begrenzen (em_alarmiert-Filter).
+      // Dashboard-Sockets (kein wachen_nr) und Leitstellen-Sockets (1–5) sehen alle Routen.
+      const wachen_nr = socket.data.wachen_nr;
+      const wachen_nr_int = wachen_nr ? parseInt(wachen_nr) : 0;
+      const filterByWache = wachen_nr && wachen_nr_int !== 0 && (wachen_nr_int < 1 || wachen_nr_int > 5);
 
-      // Prüfen ob mp3 bereits existiert
-      if (fs.existsSync(mp3_tts)) {
-        return mp3_url;
-      }
+      const payload = routen
+        .filter((r) => !filterByWache || String(r.nr_wache).startsWith(wachen_nr))
+        .map((r) => {
+          const geometry_str = permissions ? r.em_wgs84_route_full : r.em_wgs84_route_half;
+          if (!geometry_str) return null;
+          return {
+            nr_wache: r.nr_wache,
+            name_wache: r.name_wache,
+            color: osrm.wachen_color(r.nr_wache),
+            geometry: JSON.parse(geometry_str),
+          };
+        })
+        .filter(Boolean);
 
-      // Alarmgong basierend auf Einsatzart wählen
-      const mp3_bell =
-        soundPath +
-        (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" ? "bell_long.mp3" : "bell_short.mp3");
-
-      // Sprachansage Text erstellen
-      let tts_text = `${einsatzdaten.einsatzart}, ${einsatzdaten.stichwort}. `;
-      // Orts-/Objekt-Text zusammensetzen ohne 'null' oder leere Teile
-      const locParts = [];
-      if (einsatzdaten.objektteil) locParts.push(einsatzdaten.objektteil);
-      if (einsatzdaten.objekt) locParts.push(einsatzdaten.objekt);
-      if (einsatzdaten.ort) locParts.push(einsatzdaten.ort);
-      // Ortsteil nur anhängen, wenn vorhanden und nicht identisch zu Ort (case-insensitive)
-      if (einsatzdaten.ortsteil && (!einsatzdaten.ort || einsatzdaten.ortsteil.toLowerCase() !== einsatzdaten.ort.toLowerCase())) {
-        locParts.push(einsatzdaten.ortsteil);
-      }
-      tts_text += locParts.join(", ");
-
-      // Textersetzungen aus Datenbank laden in TTS-Text durchführen
-      tts_text = await sql.db_tts_ortsdaten(tts_text);
-
-      // Einsatzmittel TTS-Text verarbeiten
-      await Promise.all(einsatzdaten.em_alarmiert.map((em) => sql.db_tts_einsatzmittel(em)));
-      const tts_text_em_alarmiert = einsatzdaten.em_alarmiert.map((em) => em.tts_text).join(", ");
-      tts_text += `. Für ${tts_text_em_alarmiert}`;
-
-      // Sondersignal hinzufügen
-      tts_text += einsatzdaten.sondersignal == 1 ? ", mit Sondersignal" : ", ohne Sonderrechte";
-      tts_text += ". Ende der Durchsage!";
-
-      // Ungewollte Zeichen entfernen
-      tts_text = tts_text.replace(/[:/-]/g, " ");
-
-      // Plattform-spezifische TTS-Erstellung
-      const platform = process.platform;
-      if (!ttsImplementations[platform]) {
-        throw new Error(`TTS für das Betriebssystem ${platform} nicht verfügbar!`);
-      }
-
-      await ttsImplementations[platform].createTTS(tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell);
-      return mp3_url;
-    } catch (error) {
-      // Fallback: Standard-Gong zurückgeben, wenn TTS-Erstellung fehlschlägt
-      const bkp_mp3_bell =
-        app_cfg.global.mediapath +
-        (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" ? "bell_long.mp3" : "bell_short.mp3");
-      logger.log("warn", `TTS-Erstellung fehlgeschlagen, sende nur Gong. Fehler: ${error.message}`);
-      return bkp_mp3_bell;
+      if (payload.length) socket.emit("io.routes", payload);
+    } catch (err) {
+      logger.log("error", `Fehler beim Senden von Routen an Socket ${socket.id}: ${err.message}`);
     }
   };
+
+  // Routen an alle verbundenen Sockets eines Einsatzes verteilen
+  const routen_verteilen_rooms = async (waip_id) => {
+    try {
+      const socket_rooms = await sql.db_einsatz_get_waip_rooms(waip_id);
+      for (const room of socket_rooms) {
+        const sockets = await io.of("/waip").in(room.room.toString()).fetchSockets();
+        for (const socket of sockets) {
+          if (socket.data.waip_id === waip_id) {
+            routen_verteilen_socket(waip_id, socket);
+          }
+        }
+      }
+
+      // Dashboard-Sockets mit Routen versorgen
+      const waip_uuid = sql.db_einsatz_get_uuid_by_id(waip_id);
+      if (waip_uuid) {
+        const dbrd_sockets = await io.of("/dbrd").in(waip_uuid).fetchSockets();
+        for (const socket of dbrd_sockets) {
+          routen_verteilen_socket(waip_id, socket);
+        }
+      }
+    } catch (err) {
+      logger.log("error", `Fehler beim Verteilen von Routen für Einsatz ${waip_id}: ${err.message}`);
+    }
+  };
+
+  // OSRM-Routen berechnen, in DB speichern und an alle verbundenen Clients senden
+  const osrm_routen_berechnen = async (waip_id, einsatzdaten) => {
+    const stationen = sql.db_routen_stationen_get(waip_id);
+    if (!stationen || !stationen.length) {
+      logger.log("log", `OSRM: Keine alarmierten Wachen mit Koordinaten für Einsatz ${waip_id}.`);
+      return;
+    }
+
+    const hat_geometry = !!einsatzdaten.geometry;
+
+    for (const station of stationen) {
+      try {
+        // Genaue Route von Wache zum Einsatzort
+        const route_full = await osrm.get_route(
+          station.wgs84_x, station.wgs84_y,
+          einsatzdaten.wgs84_x, einsatzdaten.wgs84_y
+        );
+
+        let route_half;
+        if (hat_geometry) {
+          if (osrm.station_inside_boundary(station.wgs84_x, station.wgs84_y, einsatzdaten.geometry)) {
+            // Wache liegt im Einsatzbereich: jede Route würde den echten Einsatzort verraten.
+            // Für eingeschränkte Nutzer wird deshalb gar keine Route gespeichert.
+            route_half = null;
+            logger.log("log", `OSRM: Wache ${station.nr_wache} liegt im Einsatzbereich – route_half nicht berechnet.`);
+          } else {
+            // Route zum Schwerpunkt des Bereichs, am Rand abgeschnitten
+            const centroid = osrm.get_centroid(einsatzdaten.geometry);
+            const route_to_centroid = await osrm.get_route(
+              station.wgs84_x, station.wgs84_y,
+              centroid.lat, centroid.lng
+            );
+            route_half = osrm.clip_route_at_boundary(route_to_centroid, einsatzdaten.geometry);
+          }
+        } else {
+          // Kein Bereich vorhanden – half = full (kein Sicherheitsrisiko, da kein Bereich)
+          route_half = route_full;
+        }
+
+        sql.db_route_speichern(waip_id, station.station_id, route_full, route_half);
+        logger.log("log", `OSRM Route für Wache ${station.nr_wache} (Einsatz ${waip_id}) gespeichert.`);
+      } catch (err) {
+        logger.log("warn", `OSRM Route für Wache ${station.nr_wache} fehlgeschlagen: ${err.message}`);
+      }
+    }
+
+    // Routen an alle aktuell verbundenen Clients senden
+    await routen_verteilen_rooms(waip_id);
+  };
+
+  // TODO WAIP: Funktion um Clients remote "neuzustarten" (Seite neu laden), niedrige Prioritaet
 
   // Funktion die alle xxx Sekunden ausgeführt wird
   const system_cleanup = async () => {
@@ -589,5 +524,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
     rmld_arr_verteilen_socket: rmld_arr_verteilen_socket,
     rmld_verteilen_rooms: rmld_verteilen_rooms,
     dbrd_verteilen_socket: dbrd_verteilen_socket,
+    routen_verteilen_socket: routen_verteilen_socket,
   };
 };

@@ -1,3 +1,6 @@
+const fs = require("fs");
+const path = require("path");
+
 module.exports = (bcrypt, app_cfg) => {
   // Datenbank einrichten
   const Database = require("better-sqlite3");
@@ -197,7 +200,7 @@ module.exports = (bcrypt, app_cfg) => {
     `;
 
     // weitere Standardwerte für ersten Start hinzufügen
-    sqlInit = sqlInit + app_cfg.sqlite.startup;
+    sqlInit = sqlInit + fs.readFileSync(path.resolve(__dirname, "../sql_seed.sql"), "utf8");
 
     // Datenbank mit Tabellen und Inhalten erstellen
     db.exec(sqlInit);
@@ -255,6 +258,21 @@ module.exports = (bcrypt, app_cfg) => {
     try {
       db.exec("ALTER TABLE waip_einsatzmittel ADD COLUMN em_zeitstempel_ausgerueckt_iso TEXT");
       console.log("START - Migration: Spalte 'em_zeitstempel_ausgerueckt_iso' zur Tabelle waip_einsatzmittel hinzugefuegt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
+
+    // Migration: Routen-Spalten zu waip_einsatzmittel hinzufügen (falls noch nicht vorhanden)
+    try {
+      db.exec("ALTER TABLE waip_einsatzmittel ADD COLUMN em_wgs84_route_full TEXT");
+      console.log("START - Migration: Spalte 'em_wgs84_route_full' zur Tabelle waip_einsatzmittel hinzugefuegt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
+
+    try {
+      db.exec("ALTER TABLE waip_einsatzmittel ADD COLUMN em_wgs84_route_half TEXT");
+      console.log("START - Migration: Spalte 'em_wgs84_route_half' zur Tabelle waip_einsatzmittel hinzugefuegt.");
     } catch (e) {
       // Spalte existiert bereits, kein Handlungsbedarf
     }
