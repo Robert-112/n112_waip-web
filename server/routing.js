@@ -413,31 +413,48 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     }
   });
 
-  // Alarmmonitor aufrufen /waip/<wachennummer>
+  // Alarmmonitor aufrufen /waip/<wachennummer>[,<wachennummer>,...]
+  // Mehrere, kommagetrennte Wachennummern zeigen alle betroffenen Wachen gleichzeitig
+  // auf einem Alarmmonitor an (Multi-Wache-Alarmmonitor). Keine Negation vorgesehen.
   app.get("/waip/:wachen_id", async (req, res, next) => {
     try {
       const parameter_id = req.params.wachen_id;
+
+      // Liste der einzelnen Wachennummern ermitteln (Duplikate entfernen, leere Teile ignorieren)
+      const wachen_ids = [...new Set(parameter_id.split(",").map((id) => id.trim()).filter(Boolean))];
+
+      const MAX_WACHEN_PRO_ALARMMONITOR = 50;
+      if (wachen_ids.length === 0 || wachen_ids.length > MAX_WACHEN_PRO_ALARMMONITOR) {
+        const err = new Error(`Ungültige Anzahl an Wachennummern (${wachen_ids.length}) für /waip/${parameter_id}.`);
+        err.status = 400;
+        next(err);
+        return;
+      }
+
       const rmldOff = req.query.rmld === "off"; // optionaler Parameter zum Deaktivieren der Rückmeldungen
       const soundOff = req.query.sound === "off"; // optionaler Parameter zum Deaktivieren der Audio-Blockadeprüfung
-      const wache = await sql.db_wache_vorhanden(parameter_id);
-      if (wache) {
-        res.render("waip", {
-          public: app_cfg.public,
-          title: "Alarmmonitor - " + wache.name,
-          wachen_id: parameter_id,
-          data_wache: wache.name,
-          map_service: app_cfg.public.map_service,
-          app_id: app_cfg.global.app_id,
-          user: req.user,
-          session_max_age: app_cfg.global.session_cookie_max_age,
-          rmld_off: rmldOff,
-          sound_off: soundOff,
-        });
-      } else {
-        const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);
-        err.status = 404;
-        next(err);
-      }
+
+      // jede Wachennummer einzeln validieren (wirft bei ungültiger Nummer, siehe catch unten)
+      const wachen_liste = await Promise.all(wachen_ids.map((id) => sql.db_wache_vorhanden(id)));
+
+      // Wachennummer -> Name, damit der Client (Cycling-Anzeige bei mehreren Wachen)
+      // die Namen ohne erneute Server-Anfrage anzeigen kann
+      const wachen_namen = {};
+      wachen_ids.forEach((id, i) => { wachen_namen[id] = wachen_liste[i].name; });
+
+      res.render("waip", {
+        public: app_cfg.public,
+        title: "Alarmmonitor - " + wachen_liste.map((w) => w.name).join(", "),
+        wachen_id: wachen_ids.join(","),
+        wachen_namen: wachen_namen,
+        data_wache: wachen_liste.map((w) => w.name).join(", "),
+        map_service: app_cfg.public.map_service,
+        app_id: app_cfg.global.app_id,
+        user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
+        rmld_off: rmldOff,
+        sound_off: soundOff,
+      });
     } catch (error) {
       const err = new Error(`Fehler beim Laden der Seite /waip/${req.params.wachen_id}. ` + error);
       logger.log("error", err);

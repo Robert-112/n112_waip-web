@@ -34,6 +34,10 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
         // Ablaufzeit zum Einsatz hinzufuegen, damit diese auf der Seite ausgewertet werden kann
         data.ablaufzeit = reset_timestamp;
 
+        // Wachennummer mitschicken, damit ein Client, der mehrere Wachen gleichzeitig
+        // anzeigt (Multi-Wache-Alarmmonitor), den Einsatz der richtigen Wache zuordnen kann
+        data.wachen_nr = wachen_nr;
+
         // pruefen ob Einsatz bereits genau so beim Client angezeigt wurde (Doppelalarmierung)
         const doppelalarm = await sql.db_einsatz_check_history(data, socket);
 
@@ -42,15 +46,17 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
           logger.log("waip", `Einsatz ${data.id} für Wache ${wachen_nr} nicht an Socket ${socket.id} gesendet, Doppelalarmierung.`);
           resolve(false);
         } else {
-          // Einsatz-ID dem Socket zuweisen, fuer spaetere Abgleiche
-          socket.data.waip_id = data.id;
+          // Einsatz-ID pro Wache im Socket vermerken, fuer spaetere Abgleiche
+          // (ein Socket kann mehrere Wachen gleichzeitig anzeigen, daher Map statt Einzelwert)
+          if (!socket.data.waip_ids) socket.data.waip_ids = {};
+          socket.data.waip_ids[wachen_nr] = data.id;
 
           // Einsatzdaten an Client senden
           socket.emit("io.new_waip", data);
           logger.log("waip", `Einsatz ${data.id} für Wache ${wachen_nr} an ${socket.id} gesendet.`);
 
           // Client-Status mit Wachennummer aktualisieren
-          sql.db_client_update_status(socket, data.id);
+          sql.db_client_update_status(socket, data.id, wachen_nr);
 
           // Sound erstellen und an Client senden
           const tts = await tts_erstellen(data, wachen_nr);
@@ -118,7 +124,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
             for (const socket of sockets) {
               if (keineAktivenEinsatzmittel) {
                 // Standby senden, da keine Einsatzmittel aktiver Wachen vorhanden
-                standby_verteilen_socket(socket);
+                standby_verteilen_socket(socket, wachen_nr);
                 logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr} verworfen: keine Einsatzmittel aktiver Wachen, sende Standby.`);
                 resolve(false);
               } else {
@@ -127,7 +133,7 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
                 if (!einsatzdaten || !reset_timestamp) {
                   // Standby senden
-                  standby_verteilen_socket(socket);
+                  standby_verteilen_socket(socket, wachen_nr);
                   logger.log("waip", `Kein anzuzeigender Einsatz für ${wachen_nr} vorhanden, sende keine Einsatzdaten, sondern Standby.`);
                   resolve(false);
                 } else {
@@ -152,17 +158,21 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
     });
   };
 
-  const standby_verteilen_socket = (socket) => {
+  // wachen_nr: welche Wache in Standby geht. Ein Socket kann mehrere Wachen gleichzeitig
+  // anzeigen (Multi-Wache-Alarmmonitor), daher darf hier nicht der ganze Client zurückgesetzt
+  // werden, sondern nur der Zustand der betroffenen Wache.
+  const standby_verteilen_socket = (socket, wachen_nr) => {
     return new Promise(async (resolve, reject) => {
       try {
-        // die Einsatz-ID aus dem Websocket entfernen
-        socket.data.waip_id = null;
+        // die Einsatz-ID dieser Wache aus dem Websocket entfernen
+        if (socket.data.waip_ids) delete socket.data.waip_ids[wachen_nr];
 
-        // Standby ohne Daten senden senden
-        socket.emit("io.standby", null);
+        // Standby für diese Wache senden, Client entscheidet anhand wachen_nr,
+        // ob noch andere Wachen aktive Einsätze haben
+        socket.emit("io.standby", { wachen_nr: wachen_nr });
 
-        // Client-Status mit Standby aktualisieren
-        sql.db_client_update_status(socket, "Standby");
+        // Client-Status für diese Wache mit Standby aktualisieren
+        sql.db_client_update_status(socket, "Standby", wachen_nr);
       } catch (error) {
         reject(new Error(`Fehler senden des Standby-Befehls für einen Client ${socket.id}. ` + error));
       }
@@ -196,8 +206,9 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
             // an jeden Socket entsprechende Daten senden
             for (const waip_socket of waip_sockets) {
-              // wenn socket.data.waip_id dem aktuellen Einsatz entspricht
-              if (waip_socket.data.waip_id === waip_id) {
+              // wenn der Socket für GENAU DIESE Wache aktuell den passenden Einsatz anzeigt
+              // (ein Socket kann mehrere Wachen gleichzeitig anzeigen, daher pro-Wache-Abgleich)
+              if (waip_socket.data.waip_ids && waip_socket.data.waip_ids[wachen_nr] === waip_id) {
                 // Rückmeldungen an Socket versenden
                 rmld_arr_verteilen_socket(rmld_waip_arr, waip_socket);
               } else {
@@ -320,8 +331,10 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
     });
   };
 
-  // Routen für einen Socket senden – wählt route_full oder route_half je nach Berechtigung
-  const routen_verteilen_socket = async (waip_id, socket) => {
+  // Routen für einen Socket senden – wählt route_full oder route_half je nach Berechtigung.
+  // wachen_nr wird explizit übergeben (nicht aus socket.data gelesen), da ein Socket bei
+  // Multi-Wache-Alarmmonitoren mehrere Wachen gleichzeitig anzeigen kann.
+  const routen_verteilen_socket = async (waip_id, socket, wachen_nr) => {
     try {
       const routen = sql.db_routen_get(waip_id);
       if (!routen || !routen.length) return;
@@ -330,7 +343,6 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
       // Routen auf Wachen der eigenen Wachennummer begrenzen (em_alarmiert-Filter).
       // Dashboard-Sockets (kein wachen_nr) und Leitstellen-Sockets (1–5) sehen alle Routen.
-      const wachen_nr = socket.data.wachen_nr;
       const wachen_nr_int = wachen_nr ? parseInt(wachen_nr) : 0;
       const filterByWache = wachen_nr && wachen_nr_int !== 0 && (wachen_nr_int < 1 || wachen_nr_int > 5);
 
@@ -358,18 +370,18 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       for (const room of socket_rooms) {
         const sockets = await io.of("/waip").in(room.room.toString()).fetchSockets();
         for (const socket of sockets) {
-          if (socket.data.waip_id === waip_id) {
-            routen_verteilen_socket(waip_id, socket);
+          if (socket.data.waip_ids && socket.data.waip_ids[room.room] === waip_id) {
+            routen_verteilen_socket(waip_id, socket, room.room);
           }
         }
       }
 
-      // Dashboard-Sockets mit Routen versorgen
+      // Dashboard-Sockets mit Routen versorgen (kein wachen_nr, siehe routen_verteilen_socket)
       const waip_uuid = sql.db_einsatz_get_uuid_by_id(waip_id);
       if (waip_uuid) {
         const dbrd_sockets = await io.of("/dbrd").in(waip_uuid).fetchSockets();
         for (const socket of dbrd_sockets) {
-          routen_verteilen_socket(waip_id, socket);
+          routen_verteilen_socket(waip_id, socket, undefined);
         }
       }
     } catch (err) {
@@ -456,17 +468,15 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
             // TODO hier wäre es besser, das standby an den Raum zu senden, nicht an jeden Socket
 
             for (const socket of room_sockets) {
-              // Standby senden
-              const same_id = await sql.db_client_check_waip_id(socket.id, waip.id);
+              // Standby senden, aber nur für DIESE Wache (room_to_standby.room) —
+              // ein Socket kann noch andere Wachen mit weiterhin aktivem Einsatz anzeigen
+              const same_id = await sql.db_client_check_waip_id(socket.id, waip.id, room_to_standby.room);
               if (same_id) {
-                // Einsatz-ID aus dem Websocket entfernen
-                socket.data.waip_id = null;
-                // Standby senden
-                standby_verteilen_socket(socket);
+                // Standby für diese Wache senden (entfernt intern auch die Einsatz-ID aus dem Websocket)
+                standby_verteilen_socket(socket, room_to_standby.room);
                 // Audio stoppen
                 socket.emit("io.stopaudio", null);
-                logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet.`);
-                sql.db_client_update_status(socket, null);
+                logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} (Wache ${room_to_standby.room}) gesendet.`);
               }
             }
           });
@@ -487,20 +497,19 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
       });
     }
 
-    // alle User-Einstellungen prüfen und ggf. Standby senden, z.B. wenn Reset_Timestamp erreicht ist
-    const socket_ids = await sql.db_socket_get_all_to_standby();
-    if (socket_ids) {
-      for (const row of socket_ids) {
+    // alle User-Einstellungen prüfen und ggf. Standby senden, z.B. wenn Reset_Timestamp erreicht ist.
+    // Liefert (socket_id, wachen_nr)-Paare, da ein Socket mehrere Wachen mit unterschiedlichem
+    // Reset-Zeitpunkt gleichzeitig anzeigen kann.
+    const rooms_to_reset = await sql.db_socket_get_all_to_standby();
+    if (rooms_to_reset) {
+      for (const row of rooms_to_reset) {
         const sockets = await io.of("/waip").in(row.socket_id).fetchSockets();
         for (const socket of sockets) {
-          // Einsatz-ID aus dem Websocket entfernen
-          socket.data.waip_id = null;
-          // Standby senden
-          standby_verteilen_socket(socket);
+          // Standby für diese Wache senden (entfernt intern auch die Einsatz-ID aus dem Websocket)
+          standby_verteilen_socket(socket, row.wachen_nr);
           // Audio stoppen
           socket.emit("io.stopaudio", null);
-          logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet`);
-          sql.db_client_update_status(socket, null);
+          logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} (Wache ${row.wachen_nr}) gesendet`);
         }
       }
     }

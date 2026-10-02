@@ -532,13 +532,112 @@ let socket = io("/waip", {
   withCredentials: true,
 });
 
-// Wachen-ID bei Connect an Server senden
+// Wachen-IDs bei Connect an Server senden (mehrere, kommagetrennte IDs möglich -> Array)
 socket.on("connect", function () {
-  socket.emit("WAIP", wachen_id);
+  socket.emit("WAIP", wachen_id.split(","));
   $("#waipModal").modal("hide");
   // TODO: bei Reconnect des Clients durch Verbindungsabbruch, erneut Daten anfordern
   console.log("Socket-Verbindung hergestellt, WAIP:", wachen_id);
   startNetzkopplungCheck();
+});
+
+/* ################################# */
+/* ##### MULTI-WACHE / CYCLING ##### */
+/* ################################# */
+
+// Aktuell aktive Einsätze pro Wache: { [wachen_nr]: { name, einsaetze: [dataObjekt, ...] } }.
+// einsaetze ist bewusst schon jetzt ein Array (auch wenn der Server aktuell immer nur einen
+// Einsatz pro Wache gleichzeitig liefert), damit eine spätere Erweiterung um mehrere
+// gleichzeitige Einsätze EINER Wache ohne erneuten Umbau hier andocken kann.
+let active_einsaetze = {};
+let cycling_index = 0;
+let cycling_timer = null;
+const CYCLING_INTERVAL_MS = 30000;
+
+// flache Liste aller aktuell aktiven Einsätze über alle angezeigten Wachen hinweg
+function get_cycling_queue() {
+  let queue = [];
+  Object.keys(active_einsaetze).forEach(function (wnr) {
+    const eintrag = active_einsaetze[wnr];
+    eintrag.einsaetze.forEach(function (einsatz, idx) {
+      queue.push({
+        wachen_nr: wnr,
+        wachen_name: eintrag.name,
+        einsatz: einsatz,
+        index_in_wache: idx,
+        anzahl_in_wache: eintrag.einsaetze.length,
+      });
+    });
+  });
+  return queue;
+}
+
+// Vor/Zurück-Buttons + Indikator nur einblenden, wenn mehr als ein Eintrag aktiv ist
+function update_cycling_ui(queue, current) {
+  const nav = $("#waip_cycling_nav");
+  if (!nav.length) return;
+  if (queue.length > 1) {
+    nav.removeClass("d-none");
+    let label = current ? current.wachen_name : "";
+    if (current && current.anzahl_in_wache > 1) {
+      label += " — Einsatz " + (current.index_in_wache + 1) + "/" + current.anzahl_in_wache;
+    }
+    $("#waip_cycling_label").text(label + " (" + (cycling_index + 1) + "/" + queue.length + ")");
+  } else {
+    nav.addClass("d-none");
+  }
+}
+
+// zeigt den Eintrag an Position `index` der Cycling-Queue an (mit Wraparound)
+function show_cycling_index(index) {
+  const queue = get_cycling_queue();
+  if (queue.length === 0) {
+    render_standby();
+    update_cycling_ui(queue);
+    return;
+  }
+  cycling_index = ((index % queue.length) + queue.length) % queue.length;
+  const eintrag = queue[cycling_index];
+  render_einsatz(eintrag.einsatz);
+  update_cycling_ui(queue, eintrag);
+}
+
+function restart_cycling_timer() {
+  if (cycling_timer) clearInterval(cycling_timer);
+  cycling_timer = setInterval(function () {
+    show_cycling_index(cycling_index + 1);
+  }, CYCLING_INTERVAL_MS);
+}
+
+// manueller Wechsel per Button, setzt den Auto-Timer zurück
+function cycling_step(direction) {
+  show_cycling_index(cycling_index + direction);
+  restart_cycling_timer();
+}
+
+$(document).on("click", "#waip_cycling_prev", function () { cycling_step(-1); });
+$(document).on("click", "#waip_cycling_next", function () { cycling_step(1); });
+
+// Neuer Einsatz für eine Wache: sofort anzeigen (auch während manueller Navigation,
+// sicherheitskritisch — ein neuer Alarm hat immer Vorrang) und Auto-Timer zurücksetzen
+socket.on("io.new_waip", function (data) {
+  active_einsaetze[data.wachen_nr] = {
+    name: (wachen_namen && wachen_namen[data.wachen_nr]) || data.wachen_nr,
+    einsaetze: [data],
+  };
+  const queue = get_cycling_queue();
+  const neuer_index = queue.findIndex(function (e) { return e.wachen_nr === data.wachen_nr; });
+  show_cycling_index(neuer_index >= 0 ? neuer_index : 0);
+  restart_cycling_timer();
+});
+
+// Eine Wache geht in Standby: aus der lokalen Liste entfernen; falls noch andere Wachen
+// aktive Einsätze haben, zu diesen wechseln, sonst Standby-Anzeige
+socket.on("io.standby", function (data) {
+  const wachen_nr = data && data.wachen_nr;
+  if (wachen_nr != null) delete active_einsaetze[wachen_nr];
+  show_cycling_index(cycling_index);
+  restart_cycling_timer();
 });
 
 /* ################################# */
@@ -686,9 +785,9 @@ socket.on("io.playtts", function (data) {
   }
 });
 
-// Daten löschen, Uhr anzeigen
-socket.on("io.standby", function (data) {
-  console.log("Standby", data);
+// Daten löschen, Uhr anzeigen (reine DOM-Darstellung, unabhängig davon welche/wie viele Wachen betroffen sind)
+function render_standby() {
+  console.log("Standby");
   waip_id = null;
   clearInterval(counter_ID);
   counter_ID = 0;
@@ -719,23 +818,16 @@ socket.on("io.standby", function (data) {
   // Tableau ausblenden
   $("#waiptableau").addClass("d-none");
   $("#waipclock").removeClass("d-none");
-  // Art der Standbyanzeige bestimmen
-  if (data) {
-    // statt der Uhr ein iFrame anzeigen
-    $("#clock_day").addClass("d-none");
-    $("#frame_web").removeClass("d-none");
-  }
   // 200ms warten
   setTimeout(function () {
     resize_text(true);
     updateWachennameAnimation();
     updateRandomPosition();
   }, 200);
+}
 
-});
-
-// Einsatzdaten laden, Wachalarm anzeigen
-socket.on("io.new_waip", function (data) {
+// Einsatzdaten laden, Wachalarm anzeigen (reine DOM-Darstellung eines Einsatzes)
+function render_einsatz(data) {
   console.log("Neuer Einsatz:", data);
   start_inactivtimer();
   // Einsatz-ID speichern
@@ -971,7 +1063,7 @@ socket.on("io.new_waip", function (data) {
   }
 
   resize_text(true);
-});
+}
 
 // OSRM-Routen empfangen und auf der Karte zeichnen
 socket.on("io.routes", function (routes) {

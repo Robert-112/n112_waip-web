@@ -1183,7 +1183,11 @@ module.exports = (db, app_cfg) => {
   };
 
   // Client-Status aktualisieren / speichern
-  const db_client_update_status = (socket, client_status) => {
+  // wachen_nr: optional. Wird von /waip-Sockets übergeben, die (bei Multi-Wache-
+  // Alarmmonitoren) mehrere Wachen gleichzeitig anzeigen können — deren Status wird dann
+  // zusätzlich pro Wache in waip_client_rooms gepflegt statt nur einmal pro Socket.
+  // /dbrd-Sockets (Dashboards) übergeben kein wachen_nr, Verhalten dort unverändert.
+  const db_client_update_status = (socket, client_status, wachen_nr) => {
     return new Promise(async (resolve, reject) => {
       try {
         // Socket ID
@@ -1218,11 +1222,16 @@ module.exports = (db, app_cfg) => {
         // Namespace ermitteln, im dem sich der Socket aktuelle befindet
         let client_nsp = socket.nsp.name;
 
-        // Raum ermitteln, in dem sich der Socket aktuell befindet
+        // Raum ermitteln, in dem sich der Socket aktuell befindet. Nur relevant für /dbrd
+        // (ein Dashboard-Socket ist immer in genau einem Raum). /waip-Sockets können bei
+        // Multi-Wache-Alarmmonitoren mehrere Räume gleichzeitig joinen, deren Status wird
+        // stattdessen unten pro Wache in waip_client_rooms gespeichert.
         let client_room = null;
-        let roomKeys = Array.from(socket.rooms);
-        if (roomKeys.length > 1) {
-          client_room = roomKeys[1];
+        if (!wachen_nr) {
+          let roomKeys = Array.from(socket.rooms);
+          if (roomKeys.length > 1) {
+            client_room = roomKeys[1];
+          }
         }
 
         // Standby wenn Client-Status keine Nummer oder Null
@@ -1280,17 +1289,20 @@ module.exports = (db, app_cfg) => {
           }
         }
 
-        // Client-Status in DB speichern
+        // Basis-Verbindungsdaten des Clients speichern (IP, Namespace, User, ...).
+        // Bei /waip-Sockets mit wachen_nr bleiben client_room/client_status/reset_timestamp
+        // hier leer, der eigentliche Status wird unten pro Wache in waip_client_rooms
+        // gespeichert (siehe Kommentar oben an der Funktion).
         const stmt2 = db.prepare(`
           INSERT OR REPLACE INTO waip_clients (
-            id, 
-            socket_id, 
+            id,
+            socket_id,
             client_ips,
-            client_nsp, 
+            client_nsp,
             client_room,
             client_status,
-            user_name, 
-            user_permissions, 
+            user_name,
+            user_permissions,
             user_agent,
             reset_timestamp
           ) VALUES (
@@ -1304,20 +1316,41 @@ module.exports = (db, app_cfg) => {
             ?,
             ?,
             ?
-          );        
+          );
         `);
         const info = stmt2.run(
           socket_id,
           socket_id,
           client_ips,
           client_nsp,
-          client_room,
-          client_status,
+          wachen_nr ? null : client_room,
+          wachen_nr ? null : client_status,
           user_name,
           user_permissions,
           user_agent,
-          reset_timestamp
+          wachen_nr ? null : reset_timestamp
         );
+
+        // Status pro Wache speichern (Multi-Wache-Alarmmonitor)
+        if (wachen_nr) {
+          const stmt3 = db.prepare(`
+            INSERT OR REPLACE INTO waip_client_rooms (
+              id,
+              socket_id,
+              wachen_nr,
+              client_status,
+              reset_timestamp
+            ) VALUES (
+              (SELECT id FROM waip_client_rooms WHERE socket_id = ? AND wachen_nr = ?),
+              ?,
+              ?,
+              ?,
+              ?
+            );
+          `);
+          stmt3.run(socket_id, wachen_nr, socket_id, wachen_nr, client_status, reset_timestamp);
+        }
+
         resolve(info.changes);
       } catch (error) {
         reject(new Error("Fehler bei Aktualisierung des Clientstatus. Status:" + client_status + error));
@@ -1326,11 +1359,31 @@ module.exports = (db, app_cfg) => {
   };
 
   // Verbundene Clients ermitteln
+  // Ein Client (Socket) kann bei Multi-Wache-Alarmmonitoren mehrere Wachen gleichzeitig
+  // anzeigen -> LEFT JOIN gegen waip_client_rooms liefert dann eine Zeile pro (Client, Wache).
+  // Clients ohne Eintrag dort (z.B. /dbrd-Dashboards) fallen auf die Basis-Spalten aus
+  // waip_clients zurück (unverändertes Verhalten).
   const db_client_get_connected = () => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT * FROM waip_clients;
+          SELECT
+            c.id,
+            c.connect_time,
+            c.socket_id,
+            c.client_ips,
+            c.client_nsp,
+            COALESCE(r.wachen_nr, c.client_room) AS client_room,
+            COALESCE(r.client_status, c.client_status) AS client_status,
+            COALESCE(r.reset_timestamp, c.reset_timestamp) AS reset_timestamp,
+            c.user_name,
+            c.user_permissions,
+            c.user_agent,
+            c.netzkopplung,
+            c.netzkopplung_checked_at
+          FROM waip_clients c
+          LEFT JOIN waip_client_rooms r ON r.socket_id = c.socket_id
+          ORDER BY c.socket_id;
         `);
         const rows = stmt.all();
         if (rows.length === 0) {
@@ -1391,6 +1444,13 @@ module.exports = (db, app_cfg) => {
           DELETE FROM waip_clients WHERE socket_id = ?
         `);
         const info = stmt.run(socket.id);
+
+        // pro-Wache-Status des Clients (Multi-Wache-Alarmmonitor) ebenfalls entfernen
+        const stmtRooms = db.prepare(`
+          DELETE FROM waip_client_rooms WHERE socket_id = ?
+        `);
+        stmtRooms.run(socket.id);
+
         resolve(info.changes);
       } catch (error) {
         reject(new Error("Fehler beim löschen eines Clients. " + socket + error));
@@ -1399,13 +1459,15 @@ module.exports = (db, app_cfg) => {
   };
 
   // Pruefen ob für einen Client ein Einsatz vorhanden ist
-  const db_client_check_waip_id = (socket_id, waip_id) => {
+  // wachen_nr: prüft den Status für GENAU DIESE Wache (Multi-Wache-Alarmmonitor-tauglich),
+  // statt wie zuvor einen einzelnen Status pro Socket.
+  const db_client_check_waip_id = (socket_id, waip_id, wachen_nr) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT client_status id FROM waip_clients WHERE socket_id LIKE ?;
+          SELECT client_status id FROM waip_client_rooms WHERE socket_id LIKE ? AND wachen_nr LIKE ?;
         `);
-        const row = stmt.get(socket_id);
+        const row = stmt.get(socket_id, wachen_nr);
         if (row === undefined) {
           resolve(null);
         } else {
@@ -1501,11 +1563,14 @@ module.exports = (db, app_cfg) => {
   };
 
   // Sockets (Clients) finden, die in den Standby gehen sollen
+  // Liefert (socket_id, wachen_nr)-Paare statt nur socket_id, da ein Socket bei
+  // Multi-Wache-Alarmmonitoren mehrere Wachen mit unterschiedlichem Reset-Zeitpunkt
+  // gleichzeitig anzeigen kann.
   const db_socket_get_all_to_standby = () => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT socket_id FROM waip_clients
+          SELECT socket_id, wachen_nr FROM waip_client_rooms
           WHERE reset_timestamp < DATETIME('now', 'localtime');
         `);
         const rows = stmt.all();

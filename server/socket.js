@@ -66,14 +66,22 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
     // bei jedem Connect die Server-Version senden, damit der Client diese prueft und die Seite ggf. neu laedt
     socket.emit("io.version", app_cfg.global.app_id);
 
-    // Aufruf des Alarmmonitors einer bestimmten Wache verarbeiten
-    socket.on("WAIP", async (wachen_nr) => {
+    // Aufruf des Alarmmonitors einer oder mehrerer Wachen verarbeiten (Multi-Wache-Alarmmonitor).
+    // wachen_nr_liste: Array von Wachennummern. Wird direkt vom Client emittiert und daher
+    // unabhängig von der /waip/:wachen_id-Route erneut vollständig validiert (ein Client
+    // könnte sich auch ohne den HTTP-Seitenaufruf direkt per Socket.IO verbinden).
+    socket.on("WAIP", async (wachen_nr_liste) => {
+      const MAX_WACHEN_PRO_ALARMMONITOR = 50;
+      const wachen_liste = Array.isArray(wachen_nr_liste) ? wachen_nr_liste : [wachen_nr_liste];
+      const wachen_ids = [...new Set(wachen_liste.map((id) => String(id).trim()).filter(Boolean))];
+
       try {
-        // prüfen ob Wachenummer in der Datenbank hinterlegt ist
-        const result = await sql.db_wache_vorhanden(wachen_nr);
-        if (!result) {
-          throw `Abfrage der Wache ${wachen_nr} lieferte kein Ergebnis!`;
+        if (wachen_ids.length === 0 || wachen_ids.length > MAX_WACHEN_PRO_ALARMMONITOR) {
+          throw `Ungültige Anzahl an Wachennummern (${wachen_ids.length})!`;
         }
+
+        // jede Wachennummer einzeln prüfen ob in der Datenbank hinterlegt (wirft sonst)
+        await Promise.all(wachen_ids.map((wachen_nr) => sql.db_wache_vorhanden(wachen_nr)));
 
         // User frisch aus der DB laden und in socket.data.user speichern.
         // Passport setzt socket.request.user nur einmalig beim Handshake (Snapshot).
@@ -86,51 +94,46 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         socket.data.user = fresh_user || { id: null, user: "Gast", permissions: null };
         logger.log("debug", `WAIP: User fuer Socket ${socket.id} geladen: ${socket.data.user.user} (Rechte: ${socket.data.user.permissions}).`);
 
-        // Permissions jetzt schon in waip_clients schreiben (Standby), damit
-        // db_user_check_permission_for_waip sie bei einem sofort eingehenden Alarm findet.
-        // Muss VOR socket.join() passieren, damit kein Alarm ohne Permissions durchrutscht.
-        await sql.db_client_update_status(socket, "Standby");
+        // pro Wache: Permissions/Standby-Status schreiben (VOR dem Room-Join, damit
+        // db_user_check_permission_for_waip sie bei einem sofort eingehenden Alarm findet),
+        // Raum beitreten, aktuellen Einsatz ermitteln und ggf. senden.
+        for (const wachen_nr of wachen_ids) {
+          await sql.db_client_update_status(socket, "Standby", wachen_nr);
 
-        // Raum der Wache beitreten
-        socket.data.wachen_nr = String(wachen_nr);
-        socket.join(wachen_nr);
-        logger.log("waip", `Alarmmonitor Nr. ${wachen_nr} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);
+          socket.join(wachen_nr);
+          logger.log("waip", `Alarmmonitor Nr. ${wachen_nr} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);
 
-        // anzuzeigenden Einsatz für die aktuelle Wache und den aktuellen User abfragen
-        const waip_data = await sql.db_einsatz_for_client_ermitteln(socket, wachen_nr);
+          // anzuzeigenden Einsatz für die aktuelle Wache und den aktuellen User abfragen
+          const waip_data = await sql.db_einsatz_for_client_ermitteln(socket, wachen_nr);
 
-        if (waip_data == null) {
-          var einsatzdaten = null;
-        } else {
-          // Einsatzdaten abfragen
-          var einsatzdaten = await sql.db_einsatz_get_for_wache(waip_data.id, wachen_nr);
-        }
+          const einsatzdaten = waip_data == null ? null : await sql.db_einsatz_get_for_wache(waip_data.id, wachen_nr);
 
-        // wenn Einsatz vorhanden, dann diesen senden, sonst Standby senden
-        if (einsatzdaten) {
-          // Einsatz senden, falls vorhanden
-          logger.log("log", `Einsatz ${einsatzdaten.id} für Wache ${wachen_nr} vorhanden, wird jetzt an Client ${socket.id} gesendet.`);
+          // wenn Einsatz vorhanden, dann diesen senden, sonst Standby senden
+          if (einsatzdaten) {
+            // Einsatz senden, falls vorhanden
+            logger.log("log", `Einsatz ${einsatzdaten.id} für Wache ${wachen_nr} vorhanden, wird jetzt an Client ${socket.id} gesendet.`);
 
-          // letzten Einsatz an Alarmmonitor senden
-          waip.waip_verteilen_socket(einsatzdaten, socket, wachen_nr, waip_data.reset_time);
+            // letzten Einsatz an Alarmmonitor senden
+            waip.waip_verteilen_socket(einsatzdaten, socket, wachen_nr, waip_data.reset_time);
 
-          // alle vorhanden Rückmeldungen zur Wache aus Datenbank laden
-          const rmld_waip_arr = await sql.db_rmlds_get_for_wache(wachen_nr, einsatzdaten.id, null);
+            // alle vorhanden Rückmeldungen zur Wache aus Datenbank laden
+            const rmld_waip_arr = await sql.db_rmlds_get_for_wache(wachen_nr, einsatzdaten.id, null);
 
-          // vorhandene Rückmeldungen an Alarmmonitor senden
-          if (rmld_waip_arr) {
-            waip.rmld_arr_verteilen_socket(rmld_waip_arr, socket);
+            // vorhandene Rückmeldungen an Alarmmonitor senden
+            if (rmld_waip_arr) {
+              waip.rmld_arr_verteilen_socket(rmld_waip_arr, socket);
+            }
+
+            // Routen senden (wenn OSRM aktiviert)
+            waip.routen_verteilen_socket(einsatzdaten.id, socket, wachen_nr);
+          } else {
+            // Standby an Alarmmonitor senden
+            waip.standby_verteilen_socket(socket, wachen_nr);
+            logger.log("log", `Kein Einsatz für Wache ${wachen_nr} vorhanden, gehe in Standby.`);
           }
-
-          // Routen senden (wenn OSRM aktiviert)
-          waip.routen_verteilen_socket(einsatzdaten.id, socket);
-        } else {
-          // Standby an Alarmmonitor senden
-          waip.standby_verteilen_socket(socket);
-          logger.log("log", `Kein Einsatz für Wache ${wachen_nr} vorhanden, gehe in Standby.`);
         }
       } catch (error) {
-        const logMessage = `Fehler beim Aufruf des Alarmmonitors Nr. ${wachen_nr} von ${remote_ip} (${socket.id})! ${error}`;
+        const logMessage = `Fehler beim Aufruf des Alarmmonitors (${wachen_ids.join(",")}) von ${remote_ip} (${socket.id})! ${error}`;
         logger.log("error", logMessage);
 
         // Fehlermeldung senden und Verbindung trennen

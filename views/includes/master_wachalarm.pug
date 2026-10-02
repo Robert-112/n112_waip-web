@@ -1,5 +1,13 @@
 // BUG: Darstellung in Safari-Mobil fehlerhaft (generell Mobil, ggf. extra Darstellung)
 #waiptableau
+  // Manuelle Vor/Zurück-Navigation zwischen mehreren gleichzeitig aktiven Einsätzen
+  // (Multi-Wache-Alarmmonitor / Multi-Einsatz-Cycling). Absolut positioniert, damit das
+  // bestehende prozentuale Grid-Layout unangetastet bleibt. Standardmäßig ausgeblendet,
+  // wird nur eingeblendet wenn mehr als ein Einsatz gleichzeitig aktiv ist.
+  #waip_cycling_nav.d-none(style='position:absolute; z-index:1500; bottom:8px; right:8px;')
+    button#waip_cycling_prev.btn.btn-sm.btn-secondary(type='button') ‹
+    span#waip_cycling_label.mx-2.text-light.small
+    button#waip_cycling_next.btn.btn-sm.btn-secondary(type='button') ›
   .fullheight
     #einsatz_art.row.no-gutters.h-12-5_ls.h-7_p.w-100.mb-2.bg-dark.rounded
       .col-8.d-flex.align-items-center.font-weight-bold.h-100.px-3.tf_singleline

@@ -199,6 +199,16 @@ module.exports = (bcrypt, app_cfg) => {
         log_text TEXT
       );
 
+      -- Tabelle für den Anzeige-Status eines Clients pro gejointer Wache (Multi-Wache-Alarmmonitor)
+      CREATE TABLE IF NOT EXISTS waip_client_rooms (
+        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
+        socket_id TEXT,
+        wachen_nr TEXT,
+        client_status TEXT,
+        reset_timestamp DATETIME,
+        UNIQUE(socket_id, wachen_nr)
+      );
+
     `;
 
     // weitere Standardwerte für ersten Start hinzufügen
@@ -232,6 +242,19 @@ module.exports = (bcrypt, app_cfg) => {
     const info = stmt.run();
 
     console.log("START - Datenbank existiert bereits, keine Erstellung notwendig. Temporäre Daten in Waip_clients wurden gelöscht:", info.changes);
+
+    // Migration: Tabelle 'waip_client_rooms' anlegen (falls noch nicht vorhanden, Multi-Wache-Alarmmonitor)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS waip_client_rooms (
+        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
+        socket_id TEXT,
+        wachen_nr TEXT,
+        client_status TEXT,
+        reset_timestamp DATETIME,
+        UNIQUE(socket_id, wachen_nr)
+      );
+    `);
+    db.prepare("DELETE FROM waip_client_rooms").run();
 
     // Migration: Spalte 'aktiv' zu waip_wachen hinzufügen (falls noch nicht vorhanden)
     try {

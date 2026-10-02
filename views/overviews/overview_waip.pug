@@ -41,7 +41,9 @@ block content
                 .dropdown-menu
                   each item in list_wachen
                     if item.typ == 'leitstelle'
-                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
+                      a.dropdown-item.d-flex.justify-content-between.align-items-center(href='/waip/'+ item.nr data-nr=item.nr data-name=item.name)
+                        span= item.name
+                        span.waip-add-chip.ion-md-add-circle.text-success.ml-2(title='Zur Mehrfachauswahl hinzufügen')
         .col-12.col-md-4.d-flex.align-self-stretch.p-3
           .card.w-100.h-100
             .card-header
@@ -55,7 +57,9 @@ block content
                 .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen
                     if item.typ == 'wache'
-                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
+                      a.dropdown-item.d-flex.justify-content-between.align-items-center(href='/waip/'+ item.nr data-nr=item.nr data-name=item.name)
+                        span= item.name
+                        span.waip-add-chip.ion-md-add-circle.text-success.ml-2(title='Zur Mehrfachauswahl hinzufügen')
         .col-12.col-md-4.d-flex.align-self-stretch.p-3
           .card.w-100.h-100
             .card-header            
@@ -69,7 +73,9 @@ block content
                 .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen
                     if item.typ == 'traeger'
-                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
+                      a.dropdown-item.d-flex.justify-content-between.align-items-center(href='/waip/'+ item.nr data-nr=item.nr data-name=item.name)
+                        span= item.name
+                        span.waip-add-chip.ion-md-add-circle.text-success.ml-2(title='Zur Mehrfachauswahl hinzufügen')
         .col-12.col-md-4.d-flex.align-self-stretch.p-3
           .card.w-100.h-100
             .card-header
@@ -83,7 +89,26 @@ block content
                 .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen
                     if item.typ == 'kreis'
-                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
+                      a.dropdown-item.d-flex.justify-content-between.align-items-center(href='/waip/'+ item.nr data-nr=item.nr data-name=item.name)
+                        span= item.name
+                        span.waip-add-chip.ion-md-add-circle.text-success.ml-2(title='Zur Mehrfachauswahl hinzufügen')
+        .col-12
+          div.border-top.mx-3.my-2
+      // Mehrfachauswahl-Composer: mehrere Wachen/Träger/Kreise per Klick auf das
+      // grüne Plus-Symbol oben sammeln und als eine gemeinsame Alarmmonitor-URL
+      // zusammenstellen (Multi-Wache-Alarmmonitor, kommagetrennt, keine Negation).
+      .row
+        .col-12.p-3
+          .card.border-primary.w-100.h-100
+            .card-header
+              h3.text-primary Mehrfachauswahl (mehrere Wachen gleichzeitig anzeigen)
+            .card-body
+              p.text-muted Klicken Sie bei den Wachen/Trägern/Kreisen oben auf das grüne Plus-Symbol, um sie hier zu sammeln. Daraus wird eine gemeinsame Alarmmonitor-Adresse erzeugt, die Sie kopieren und z.B. als Lesezeichen speichern können.
+              #waipSelectionChips.d-flex.flex-wrap(style='gap:.5rem;')
+                span#waipSelectionEmpty.text-muted noch keine Auswahl
+            .card-footer.text-right
+              button#waipCopyUrl.btn.btn-primary(type='button' disabled) URL kopieren
+              span#waipCopyUrlFeedback.text-success.ml-2
         .col-12
           div.border-top.mx-3.my-2
       .row
@@ -123,10 +148,15 @@ block content
           if(!results.length){ list.style.display='none'; return; }
             results.forEach(function(item){
               var li = document.createElement('li');
-              li.className = 'list-group-item list-group-item-action';
+              li.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
               li.setAttribute('role','option');
-              li.innerHTML = '<strong>'+ sanitize(item.name) + '</strong> <small class="text-muted">(' + sanitize(item.nr) + ', ' + sanitize(item.typ) + ')</small>';
-              li.addEventListener('click', function(){ window.location.href = buildUrl('/waip/' + item.nr); });
+              li.innerHTML =
+                '<span><strong>'+ sanitize(item.name) + '</strong> <small class="text-muted">(' + sanitize(item.nr) + ', ' + sanitize(item.typ) + ')</small></span>' +
+                '<span class="waip-add-chip ion-md-add-circle text-success ml-2" data-nr="' + sanitize(item.nr) + '" data-name="' + sanitize(item.name) + '" title="Zur Mehrfachauswahl hinzufügen"></span>';
+              li.addEventListener('click', function(ev){
+                if(ev.target.closest('.waip-add-chip')) return;
+                window.location.href = buildUrl('/waip/' + item.nr);
+              });
               list.appendChild(li);
             });
           list.style.display='block';
@@ -154,4 +184,60 @@ block content
             }
           });
         });
+
+        // Mehrfachauswahl-Composer: gesammelte Wachen zu einer gemeinsamen
+        // Alarmmonitor-URL zusammenstellen (kommagetrennt, keine Negation)
+        var selection = []; // [{nr, name}, ...]
+        var chipsEl = document.getElementById('waipSelectionChips');
+        var emptyEl = document.getElementById('waipSelectionEmpty');
+        var copyBtn = document.getElementById('waipCopyUrl');
+        var copyFeedback = document.getElementById('waipCopyUrlFeedback');
+
+        function renderChips(){
+          if(!chipsEl) return;
+          chipsEl.querySelectorAll('.waip-chip').forEach(function(el){ el.remove(); });
+          emptyEl.style.display = selection.length ? 'none' : '';
+          copyBtn.disabled = selection.length === 0;
+          copyFeedback.textContent = '';
+          selection.forEach(function(item){
+            var chip = document.createElement('span');
+            chip.className = 'waip-chip badge badge-primary p-2';
+            chip.innerHTML = sanitize(item.name) + ' <span class="ion-md-close-circle ml-1" style="cursor:pointer" title="Entfernen"></span>';
+            chip.querySelector('.ion-md-close-circle').addEventListener('click', function(){
+              selection = selection.filter(function(s){ return s.nr !== item.nr; });
+              renderChips();
+            });
+            chipsEl.appendChild(chip);
+          });
+        }
+
+        function addToSelection(nr, name){
+          if(!nr || selection.some(function(s){ return s.nr === nr; })) return;
+          selection.push({ nr: nr, name: name });
+          renderChips();
+        }
+
+        // Delegierter Klick-Handler, da Suchergebnisse dynamisch erzeugt werden
+        document.addEventListener('click', function(e){
+          var addIcon = e.target.closest ? e.target.closest('.waip-add-chip') : null;
+          if(!addIcon) return;
+          e.preventDefault();
+          e.stopPropagation();
+          addToSelection(addIcon.getAttribute('data-nr'), addIcon.getAttribute('data-name'));
+        });
+
+        if(copyBtn){
+          copyBtn.addEventListener('click', function(){
+            var nrList = selection.map(function(s){ return s.nr; }).join(',');
+            var url = buildUrl(window.location.origin + '/waip/' + nrList);
+            var done = function(){ copyFeedback.textContent = 'kopiert!'; };
+            if(navigator.clipboard && navigator.clipboard.writeText){
+              navigator.clipboard.writeText(url).then(done).catch(function(){
+                window.prompt('URL kopieren:', url);
+              });
+            } else {
+              window.prompt('URL kopieren:', url);
+            }
+          });
+        }
       })();
