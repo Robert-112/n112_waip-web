@@ -38,6 +38,11 @@ app_cfg.global = {
   saltRounds: Number(process.env.SALT_ROUNDS) || 10,
   sessionsecret: process.env.SESSION_SECRET || "0987654321abcdef#xyz",
   jwtsecret: process.env.JWT_SECRET || "1234567890abcdef#xyz",
+  // Pruefung, ob ein /waip-Socket zuvor die Seite /waip/<nr> in derselben Session geladen hat
+  // (erschwert reines Mitlesen auf Socket-Ebene durch Skripte/Bots).
+  // "log"   = nur kennzeichnen und protokollieren (Spalte "Seite geladen" in der Client-Uebersicht)
+  // "block" = zusaetzlich Verbindung ablehnen
+  waip_page_load_check: process.env.WAIP_PAGE_LOAD_CHECK === "block" ? "block" : "log",
   session_cookie_max_age: Number(process.env.SESSION_COOKIE_MAX_AGE) || 60000,
   authRegex: process.env.AUTH_REGEX || "(\\d+)[\\.\\-](\\d+)[\\.\\-](\\w+)",
   rightsRegex: process.env.RIGHTS_REGEX || "\\.(\\d+)[.-]",

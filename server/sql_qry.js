@@ -1280,21 +1280,34 @@ module.exports = (db, app_cfg) => {
           }
         }
 
+        // Kennzeichen fuer vorherigen Seitenaufruf (wird beim WAIP-Event gesetzt, bei /dbrd nicht geprueft)
+        let page_loaded = null;
+        if (socket.data && typeof socket.data.page_loaded === "boolean") {
+          page_loaded = socket.data.page_loaded ? 1 : 0;
+        }
+
         // Client-Status in DB speichern
+        // INSERT OR REPLACE ersetzt die komplette Zeile, daher Verbindungszeit und
+        // Netzkopplungs-Ergebnis aus der bestehenden Zeile uebernehmen
         const stmt2 = db.prepare(`
           INSERT OR REPLACE INTO waip_clients (
-            id, 
-            socket_id, 
+            id,
+            connect_time,
+            socket_id,
             client_ips,
-            client_nsp, 
+            client_nsp,
             client_room,
             client_status,
-            user_name, 
-            user_permissions, 
+            user_name,
+            user_permissions,
             user_agent,
-            reset_timestamp
+            reset_timestamp,
+            netzkopplung,
+            netzkopplung_checked_at,
+            page_loaded
           ) VALUES (
             (SELECT id FROM waip_clients WHERE socket_id = ?),
+            COALESCE((SELECT connect_time FROM waip_clients WHERE socket_id = ?), DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')),
             ?,
             ?,
             ?,
@@ -1303,10 +1316,14 @@ module.exports = (db, app_cfg) => {
             ?,
             ?,
             ?,
+            ?,
+            (SELECT netzkopplung FROM waip_clients WHERE socket_id = ?),
+            (SELECT netzkopplung_checked_at FROM waip_clients WHERE socket_id = ?),
             ?
-          );        
+          );
         `);
         const info = stmt2.run(
+          socket_id,
           socket_id,
           socket_id,
           client_ips,
@@ -1316,7 +1333,10 @@ module.exports = (db, app_cfg) => {
           user_name,
           user_permissions,
           user_agent,
-          reset_timestamp
+          reset_timestamp,
+          socket_id,
+          socket_id,
+          page_loaded
         );
         resolve(info.changes);
       } catch (error) {
@@ -2221,18 +2241,29 @@ module.exports = (db, app_cfg) => {
   };
 
   // einen Nutzer in der Datenbank bearbeiten
-  const auth_editUser = (query) => {
+  const auth_editUser = (user_id, fields) => {
     return new Promise((resolve, reject) => {
       try {
-        const stmt = db.prepare(query);
-        const row = stmt.run();
+        // nur bekannte Spalten zulassen, Werte werden als Parameter gebunden
+        const allowed_columns = ["password", "description", "permissions", "ip_address"];
+        const columns = Object.keys(fields).filter((col) => allowed_columns.includes(col));
+        if (columns.length === 0) {
+          resolve(null);
+          return;
+        }
+        const stmt = db.prepare(`
+          UPDATE waip_user SET ${columns.map((col) => col + " = @" + col).join(", ")} WHERE id = @id;
+        `);
+        const params = { id: user_id };
+        columns.forEach((col) => (params[col] = fields[col] ?? null));
+        const row = stmt.run(params);
         if (row === undefined) {
           resolve(null);
         } else {
           resolve(row);
         }
       } catch (error) {
-        reject(new Error("Fehler bei auth_editUser. " + id + error));
+        reject(new Error("Fehler bei auth_editUser. " + user_id + error));
       }
     });
   };
@@ -2244,7 +2275,7 @@ module.exports = (db, app_cfg) => {
         const stmt = db.prepare(`
           SELECT id, user, description FROM waip_user WHERE id = ?;
         `);
-        const row = stmt.run(user_id);
+        const row = stmt.get(user_id);
         if (row === undefined) {
           resolve(null);
         } else {

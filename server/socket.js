@@ -75,6 +75,22 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
           throw `Abfrage der Wache ${wachen_nr} lieferte kein Ergebnis!`;
         }
 
+        // pruefen, ob in dieser Session zuvor die Seite /waip/<wachen_nr> geladen wurde.
+        // Reine Socket-Clients (Skripte/Bots) ueberspringen den Seitenaufruf.
+        const waip_access = socket.request.session && socket.request.session.waip_access;
+        socket.data.page_loaded = !!(waip_access && waip_access[String(wachen_nr)]);
+        if (!socket.data.page_loaded) {
+          const user_agent = socket.request.headers["user-agent"] || "unbekannt";
+          if (app_cfg.global.waip_page_load_check === "block") {
+            logger.log("warn", `Alarmmonitor Nr. ${wachen_nr} von ${remote_ip} (${socket.id}, ${user_agent}) abgelehnt: Seite wurde in dieser Session nicht geladen.`);
+            // echter Browser (z.B. nach Ablauf der Session): Seite neu laden, damit der Nachweis neu gesetzt wird
+            socket.emit("io.page_reload_required");
+            socket.disconnect(true);
+            return;
+          }
+          logger.log("warn", `Alarmmonitor Nr. ${wachen_nr} von ${remote_ip} (${socket.id}, ${user_agent}) ohne vorherigen Seitenaufruf verbunden (moegliches Skript/Bot).`);
+        }
+
         // User frisch aus der DB laden und in socket.data.user speichern.
         // Passport setzt socket.request.user nur einmalig beim Handshake (Snapshot).
         // Durch Race Conditions kann dieser Snapshot beim Eintreffen eines Alarms

@@ -128,7 +128,8 @@ module.exports = (bcrypt, app_cfg) => {
         user_permissions TEXT,
         user_agent TEXT,
         netzkopplung INTEGER,             -- neu: 1 = Internet-Testadressen erreichbar (Verdacht auf Netzkopplung)
-        netzkopplung_checked_at DATETIME  -- neu: Zeitpunkt der letzten Pruefung
+        netzkopplung_checked_at DATETIME, -- neu: Zeitpunkt der letzten Pruefung
+        page_loaded INTEGER               -- neu: 1 = Seite /waip/<nr> in der Session geladen, 0 = nur Socket (Verdacht Skript/Bot)
       );
 
       -- Tabelle für einzelne Rückmeldungen
@@ -290,6 +291,14 @@ module.exports = (bcrypt, app_cfg) => {
     try {
       db.exec("ALTER TABLE waip_clients ADD COLUMN netzkopplung_checked_at DATETIME");
       console.log("START - Migration: Spalte 'netzkopplung_checked_at' zur Tabelle waip_clients hinzugefuegt.");
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
+
+    // Migration: Kennzeichen fuer vorherigen Seitenaufruf zu waip_clients hinzufügen (falls noch nicht vorhanden)
+    try {
+      db.exec("ALTER TABLE waip_clients ADD COLUMN page_loaded INTEGER");
+      console.log("START - Migration: Spalte 'page_loaded' zur Tabelle waip_clients hinzugefuegt.");
     } catch (e) {
       // Spalte existiert bereits, kein Handlungsbedarf
     }

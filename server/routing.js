@@ -331,6 +331,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       const netzkopplung_count = clients.filter((c) => c.netzkopplung === 1).length;
       lines.push(`0 waip_netzkopplung count=${netzkopplung_count};;;0; ${netzkopplung_count} Client(s) mit erreichbaren Internet-Testadressen (moegliche Netzkopplung)`);
 
+      // Service 1c: Alarmmonitore ohne vorherigen Seitenaufruf (reine Info, kein Warning/Error)
+      const no_page_load_count = clients.filter((c) => c.page_loaded === 0).length;
+      lines.push(`0 waip_no_page_load count=${no_page_load_count};;;0; ${no_page_load_count} Client(s) ohne vorherigen Aufruf der Seite /waip (moegliches Skript/Bot)`);
+
       // Service 2: Einsätze in der Datenbank
       const einsatz_total = stats.einsatz.total ?? 0;
       const last_min      = stats.einsatz.last_min;
@@ -421,6 +425,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       const soundOff = req.query.sound === "off"; // optionaler Parameter zum Deaktivieren der Audio-Blockadeprüfung
       const wache = await sql.db_wache_vorhanden(parameter_id);
       if (wache) {
+        // Seitenaufruf in der Session vermerken (ohne Ablauf, damit Reconnects von
+        // Dauer-Displays nicht abgewiesen werden). Wird beim WAIP-Socket-Event geprueft.
+        req.session.waip_access = { ...(req.session.waip_access || {}), [String(parameter_id)]: Date.now() };
         res.render("waip", {
           public: app_cfg.public,
           title: "Alarmmonitor - " + wache.name,

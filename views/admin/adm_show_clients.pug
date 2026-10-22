@@ -31,6 +31,8 @@ block content
                 th Reset-Zeitstempel
                 th Netzkopplung
                 th Netzkopplung geprüft am
+                th Seite geladen
+                th User-Agent
 
   script.
     let datasets = !{JSON.stringify(dataSet).replace(/<\//g, '<\\/')}
@@ -54,7 +56,13 @@ block content
               return data === 1 ? "Ja" : (data === 0 ? "Nein" : "unbekannt");
             }
           },
-          { "data": "netzkopplung_checked_at", "defaultContent": "-" }
+          { "data": "netzkopplung_checked_at", "defaultContent": "-" },
+          // "Nein" = Socket ohne vorherigen Aufruf von /waip/<nr> in der Session (Verdacht Skript/Bot)
+          { "data": "page_loaded", "render": function(data) {
+              return data === 1 ? "Ja" : (data === 0 ? '<span class="text-danger font-weight-bold">Nein</span>' : "-");
+            }
+          },
+          { "data": "user_agent", "defaultContent": "-", "render": $.fn.dataTable.render.text() }
         ]
       });
     });

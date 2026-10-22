@@ -69,6 +69,8 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
           // Verschlüsseltes Passwort aus DB abfragen
           const row = await sql.auth_localstrategy_cryptpassword(user);
           if (!row) return done(null, false);
+          // Nutzer ohne Passwort (z.B. Zertifikats-Nutzer) duerfen sich nicht lokal anmelden
+          if (!row.password || !password) return done(null, false);
           // Passwort-Hash mit dem aus der DB vergleichen
           const res = await bcrypt.compare(password, row.password);
           if (!res) return done(null, false);
@@ -77,6 +79,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
           return done(null, userRow);
         } catch (error) {
           logger.log("error", "Fehler bei der Benutzer-Authentifizierung: " + error);
+          return done(error);
         }
       }
     )
@@ -106,6 +109,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         return done(null, false);
       } catch (error) {
         logger.log("error", "Fehler bei der Authentifizierung mit Client-Zertifikat: " + error);
+        return done(error);
       }
     })
   );
@@ -113,12 +117,17 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   // JWT-Authentifizierung
   passport.use(
     new JwtStrategy(jwtOptions, async (jwt_payload, done) => {
-      // User anhand der ID aus dem Token holen
-      let user_id = await sql.auth_getUser(jwt_payload.id);
-      if (user_id) {
-        return done(null, user_id);
+      try {
+        // User anhand der ID aus dem Token holen
+        let user_id = await sql.auth_getUser(jwt_payload.id);
+        if (user_id) {
+          return done(null, user_id);
+        }
+        return done(null, false);
+      } catch (error) {
+        logger.log("error", "Fehler bei der JWT-Authentifizierung: " + error);
+        return done(error);
       }
-      return done(null, false);
     })
   );
 
@@ -138,6 +147,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
       }
     } catch (error) {
       logger.log("error", "Fehler bei passport.deserializeUser: " + error);
+      return done(error);
     }
   });
 
@@ -240,44 +250,44 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
 
   const editUser = async (req, res) => {
     try {
-      let runquery = false;
-      let query = "UPDATE waip_user SET ";
       let messages = [];
 
-      if (req.body.password && req.body.password.length > 0) {
-        const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
-        messages.push("Passwort geändert.");
-        query += "password = '" + hash + "', ";
-        runquery = true;
-      }
-
-      if (req.user.id == req.body.modal_id && req.body.permissions != "admin") {
-        return res.redirect(
-          "/adm_edit_users?error=" +
-            encodeURIComponent("Sie können Ihr Recht als Administrator nicht selbst ändern!")
-        );
-      } else {
-        query += "description = '" + (req.body.description || "").replace(/'/g, "''") + "', permissions = '" + req.body.permissions + "', ip_address ='" + req.body.ip + "'";
-        runquery = true;
-      }
-
-      if (runquery) {
-        query += " WHERE id = " + req.body.modal_id;
-        logger.log("debug", "Edit User Query: " + query);
-        const result = await sql.auth_editUser(query);
-        if (result) {
-          const successMsg = messages.concat(["Benutzer aktualisiert."]).join(" ");
-          return res.redirect(
-            "/adm_edit_users?success=" + encodeURIComponent(successMsg)
-          );
-        } else {
-          throw new Error("Fehler beim Ändern eines Benutzers.");
-        }
-      } else {
+      // User-ID muss eine Zahl sein
+      const user_id = Number(req.body.modal_id);
+      if (!Number.isInteger(user_id)) {
         return res.redirect(
           "/adm_edit_users?error=" +
             encodeURIComponent("Fehler beim Ändern eines Benutzers.")
         );
+      }
+
+      if (req.user.id == user_id && req.body.permissions != "admin") {
+        return res.redirect(
+          "/adm_edit_users?error=" +
+            encodeURIComponent("Sie können Ihr Recht als Administrator nicht selbst ändern!")
+        );
+      }
+
+      // Felder werden ausschliesslich als Parameter an die Datenbank uebergeben
+      const fields = {
+        description: req.body.description || "",
+        permissions: req.body.permissions,
+        ip_address: req.body.ip,
+      };
+
+      if (req.body.password && req.body.password.length > 0) {
+        fields.password = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
+        messages.push("Passwort geändert.");
+      }
+
+      const result = await sql.auth_editUser(user_id, fields);
+      if (result) {
+        const successMsg = messages.concat(["Benutzer aktualisiert."]).join(" ");
+        return res.redirect(
+          "/adm_edit_users?success=" + encodeURIComponent(successMsg)
+        );
+      } else {
+        throw new Error("Fehler beim Ändern eines Benutzers.");
       }
     } catch (error) {
       logger.log("error", "Fehler beim Ändern eines Benutzers: " + error);

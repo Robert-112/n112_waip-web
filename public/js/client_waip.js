@@ -635,6 +635,14 @@ socket.on("io.version", function (server_id) {
   }
 });
 
+// Server verlangt erneuten Seitenaufruf (z.B. Session abgelaufen), verzoegert um Reload-Schleifen zu vermeiden
+socket.on("io.page_reload_required", function () {
+  console.log("Server verlangt erneuten Seitenaufruf, lade in 10 Sekunden neu.");
+  setTimeout(function () {
+    location.reload();
+  }, 10000);
+});
+
 // ggf. Fehler ausgeben
 socket.on("io.error", function (data) {
   console.log("Error:", data);
