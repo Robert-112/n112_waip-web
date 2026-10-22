@@ -1280,35 +1280,21 @@ module.exports = (db, app_cfg) => {
           }
         }
 
-        // Client-Status in DB speichern
-        const stmt2 = db.prepare(`
-          INSERT OR REPLACE INTO waip_clients (
-            id, 
-            socket_id, 
-            client_ips,
-            client_nsp, 
-            client_room,
-            client_status,
-            user_name, 
-            user_permissions, 
-            user_agent,
-            reset_timestamp
-          ) VALUES (
-            (SELECT id FROM waip_clients WHERE socket_id = ?),
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-          );        
+        // Client-Status in DB speichern. Bewusst kein INSERT OR REPLACE: das loescht die bestehende
+        // Zeile und setzt alle hier nicht aufgefuehrten Spalten zurueck (connect_time, Netzkopplung).
+        const stmt_update = db.prepare(`
+          UPDATE waip_clients SET
+            client_ips = ?,
+            client_nsp = ?,
+            client_room = ?,
+            client_status = ?,
+            user_name = ?,
+            user_permissions = ?,
+            user_agent = ?,
+            reset_timestamp = ?
+          WHERE socket_id = ?;
         `);
-        const info = stmt2.run(
-          socket_id,
-          socket_id,
+        let info = stmt_update.run(
           client_ips,
           client_nsp,
           client_room,
@@ -1316,8 +1302,43 @@ module.exports = (db, app_cfg) => {
           user_name,
           user_permissions,
           user_agent,
-          reset_timestamp
+          reset_timestamp,
+          socket_id
         );
+
+        // Client noch nicht in DB vorhanden, neu anlegen
+        if (info.changes === 0) {
+          const stmt_insert = db.prepare(`
+            INSERT INTO waip_clients (
+              socket_id,
+              client_ips,
+              client_nsp,
+              client_room,
+              client_status,
+              user_name,
+              user_permissions,
+              user_agent,
+              reset_timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+          `);
+          info = stmt_insert.run(
+            socket_id,
+            client_ips,
+            client_nsp,
+            client_room,
+            client_status,
+            user_name,
+            user_permissions,
+            user_agent,
+            reset_timestamp
+          );
+
+          // Ergebnis der Netzkopplungspruefung nachtragen, falls es schon vor dem Anlegen eintraf
+          // (z.B. direkt nach einem Reconnect, noch bevor das WAIP-Event verarbeitet wurde)
+          if (socket.data && socket.data.netzkopplung) {
+            await db_client_update_netzkopplung(socket);
+          }
+        }
         resolve(info.changes);
       } catch (error) {
         reject(new Error("Fehler bei Aktualisierung des Clientstatus. Status:" + client_status + error));
@@ -1344,16 +1365,17 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Ergebnis der Netzkopplungspruefung eines Clients speichern
-  const db_client_update_netzkopplung = (socket, netzkopplung) => {
+  // Ergebnis der Netzkopplungspruefung eines Clients (aus socket.data.netzkopplung) speichern
+  const db_client_update_netzkopplung = (socket) => {
     return new Promise((resolve, reject) => {
       try {
+        const netzkopplung = socket.data.netzkopplung;
         const stmt = db.prepare(`
           UPDATE waip_clients
-          SET netzkopplung = ?, netzkopplung_checked_at = DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')
+          SET netzkopplung = ?, netzkopplung_erreichbar = ?, netzkopplung_checked_at = DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME')
           WHERE socket_id = ?;
         `);
-        const info = stmt.run(netzkopplung ? 1 : 0, socket.id);
+        const info = stmt.run(netzkopplung.status, netzkopplung.erreichbar, socket.id);
         resolve(info.changes);
       } catch (error) {
         reject(new Error("Fehler beim Speichern der Netzkopplungspruefung: " + error));

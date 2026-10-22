@@ -142,10 +142,35 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
     // Ergebnis der clientseitigen Netzkopplungspruefung entgegennehmen
     socket.on("netzkopplung_check", async (data) => {
       try {
-        const netzkopplung = !!(data && data.netzkopplung);
-        await sql.db_client_update_netzkopplung(socket, netzkopplung);
-        if (netzkopplung) {
-          logger.log("warn", `Client ${remote_ip} (${socket.id}) meldet erreichbare Internet-Testadressen (Verdacht auf Netzkopplung).`);
+        if (!data || !Array.isArray(data.results)) {
+          logger.log("debug", `Ungueltige Netzkopplungspruefung von ${remote_ip} (${socket.id}) ignoriert.`);
+          return;
+        }
+
+        // Nur konfigurierte Testadressen werten, die Angaben des Clients sind nicht vertrauenswuerdig
+        const urls = app_cfg.public.netzkopplung_check_urls;
+        const erreichbar = urls.filter((url) => data.results.some((r) => r && r.url === url && r.reachable === true));
+        const hosts = erreichbar.map((url) => {
+          try {
+            return new URL(url).hostname;
+          } catch (e) {
+            return url;
+          }
+        });
+
+        // 0 = keine, 1 = alle, 2 = einzelne Testadressen erreichbar. Schon eine erreichbare
+        // Adresse bedeutet Internet-Zugriff (z.B. ueber einen Proxy mit Freigabeliste).
+        let status = 0;
+        if (erreichbar.length > 0) {
+          status = erreichbar.length === urls.length ? 1 : 2;
+        }
+
+        // Im Socket merken, damit db_client_update_status das Ergebnis uebernehmen kann,
+        // falls der Client-Eintrag noch nicht existiert (z.B. direkt nach einem Reconnect)
+        socket.data.netzkopplung = { status: status, erreichbar: hosts.length > 0 ? hosts.join(", ") : null };
+        await sql.db_client_update_netzkopplung(socket);
+        if (status > 0) {
+          logger.log("warn", `Client ${remote_ip} (${socket.id}) erreicht ${status === 1 ? "alle" : "einzelne"} Internet-Testadressen (${hosts.join(", ")}), Verdacht auf Netzkopplung.`);
         }
       } catch (error) {
         logger.log("error", `Fehler bei Verarbeitung der Netzkopplungspruefung von ${remote_ip} (${socket.id}): ${error.message}`);

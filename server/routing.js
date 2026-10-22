@@ -328,7 +328,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       lines.push(`0 waip_clients total=${total};;;0;|waip=${waip};;;0;|dbrd=${dbrd};;;0;|alarm=${alarm};;;0; ${total} Clients (${waip}x /waip, ${dbrd}x /dbrd, ${alarm}x im Einsatz)`);
 
       // Service 1b: Netzkopplung (reine Info, kein Warning/Error)
-      const netzkopplung_count = clients.filter((c) => c.netzkopplung === 1).length;
+      // 1 = alle, 2 = einzelne Internet-Testadressen erreichbar, beides gilt als Verdacht
+      const netzkopplung_count = clients.filter((c) => c.netzkopplung === 1 || c.netzkopplung === 2).length;
       lines.push(`0 waip_netzkopplung count=${netzkopplung_count};;;0; ${netzkopplung_count} Client(s) mit erreichbaren Internet-Testadressen (moegliche Netzkopplung)`);
 
       // Service 2: Einsätze in der Datenbank

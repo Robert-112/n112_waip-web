@@ -31,6 +31,8 @@ block content
                 th Reset-Zeitstempel
                 th Netzkopplung
                 th Netzkopplung geprüft am
+        .col-12.mt-2
+          small Netzkopplung: „Ja“ = alle Internet-Testadressen erreichbar, „Teilweise“ = nur einzelne erreichbar (ebenfalls Verdacht), „Nein“ = keine erreichbar, „unbekannt“ = noch nicht geprüft.
 
   script.
     let datasets = !{JSON.stringify(dataSet).replace(/<\//g, '<\\/')}
@@ -50,8 +52,13 @@ block content
           { "data": "client_room" },
           { "data": "client_status" },
           { "data": "reset_timestamp" },
-          { "data": "netzkopplung", "render": function(data) {
-              return data === 1 ? "Ja" : (data === 0 ? "Nein" : "unbekannt");
+          { "data": "netzkopplung", "render": function(data, type, row) {
+              // erreichbare Testadressen anhaengen (escapen, da DataTables den Inhalt als HTML einfuegt)
+              const hosts = row.netzkopplung_erreichbar ? " (" + $("<div>").text(row.netzkopplung_erreichbar).html() + ")" : "";
+              if (data === 1) return "Ja" + hosts;
+              if (data === 2) return "Teilweise" + hosts;
+              if (data === 0) return "Nein";
+              return "unbekannt";
             }
           },
           { "data": "netzkopplung_checked_at", "defaultContent": "-" }
