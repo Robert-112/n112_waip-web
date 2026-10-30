@@ -39,8 +39,11 @@ block content
     $(document).ready(function() {
       $('#table_active_user').DataTable( {
         "data": datasets,
-        "language": 
+        "language":
           { "url": "/js/datatables_german.json" },
+        // alle Werte als Text ausgeben (DataTables fügt Inhalte sonst als HTML ein).
+        // Eigene "render"-Funktionen unter "columns" haben Vorrang (Netzkopplung escapet selbst).
+        "columnDefs": [{ "targets": "_all", "render": $.fn.dataTable.render.text() }],
         "columns": [
           { "data": "id" },
           { "data": "connect_time" },

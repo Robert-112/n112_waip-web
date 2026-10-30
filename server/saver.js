@@ -72,7 +72,7 @@ module.exports = (app_cfg, sql, waip, logger) => {
 
                 if (waip_uuid) {
                   // jetzt einzelne Rückmeldung speichern
-                  const response_uuid = await sql.db_rmld_single_save(item);
+                  const response_uuid = await sql.db_rmld_single_save(item, waip_uuid);
 
                   // response_uuid in einem Array speichern, welches waip_uuid als Key hat
                   if (!obj_waip_uuid_mit_rmld_uuid[waip_uuid]) {

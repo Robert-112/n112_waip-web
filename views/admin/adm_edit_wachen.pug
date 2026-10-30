@@ -29,6 +29,7 @@ block content
           h3 Neue Wache anlegen
         .col-12
           form(action="/adm_edit_wachen/create" method="post")
+            input(type="hidden" name="_csrf" value=csrf_token)
             .form-row
               .form-group.col-md-2
                 label Nr Leitstelle
@@ -117,6 +118,7 @@ block content
                 tr
                   // Formular für Bearbeitung der Wache (eine Zeile = ein Formular)
                   form(action="/adm_edit_wachen/edit" method="post")
+                    input(type="hidden" name="_csrf" value=csrf_token)
                     input(type="hidden" name="id" value=w.id)
                     td= w.id
                     td

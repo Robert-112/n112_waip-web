@@ -416,8 +416,9 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
             route_half = osrm.clip_route_at_boundary(route_to_centroid, einsatzdaten.geometry);
           }
         } else {
-          // Kein Bereich vorhanden – half = full (kein Sicherheitsrisiko, da kein Bereich)
-          route_half = route_full;
+          // Kein Bereich vorhanden: die genaue Route würde den Einsatzort verraten,
+          // daher für eingeschränkte Nutzer keine Route speichern (nur Wachen-Label).
+          route_half = null;
         }
 
         sql.db_route_speichern(waip_id, station.station_id, route_full, route_half);

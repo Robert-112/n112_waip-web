@@ -29,6 +29,7 @@ block content
           h3 Neue Ersetzung anlegen
         .col-12
           form(action="/adm_edit_replace/create" method="post")
+            input(type="hidden" name="_csrf" value=csrf_token)
             .form-row
               .form-group.col-md-3
                 label Typ
@@ -62,6 +63,7 @@ block content
                 tr
                   // Formular für Bearbeitung der Ersetzung (eine Zeile = ein Formular)
                   form(action="/adm_edit_replace/edit" method="post")
+                    input(type="hidden" name="_csrf" value=csrf_token)
                     input(type="hidden" name="id" value=r.id)
                     td= r.id
                     td

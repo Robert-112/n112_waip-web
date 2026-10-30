@@ -741,25 +741,20 @@ module.exports = (db, app_cfg) => {
       throw "Einsatznummer oder WAIP-Uuid muss gesetzt sein!";
     }
 
-    let uuid_query;
-    // wenn Einsatznummer aber keiner WAIP-Uuid gesetzt ist, dann Einsatznummer für Abfrage verwenden
-    if (einsatzstatus_data.einsatznummer && !einsatzstatus_data.waip_uuid) {
-      uuid_query = `(SELECT uuid FROM waip_einsaetze WHERE els_einsatznummer = '${einsatzstatus_data.einsatznummer}')`;
-    }
-    // wenn WAIP-Uuid gesetzt ist, dann WAIP-Uuid für Abfrage verwenden
-    if (einsatzstatus_data.waip_uuid) {
-      uuid_query = `'${einsatzstatus_data.waip_uuid}'`;
-    }
-
     return new Promise((resolve, reject) => {
       try {
+        // WAIP-Uuid hat Vorrang, sonst den Einsatz über die Einsatznummer ermitteln
         const stmt = db.prepare(`
-          UPDATE waip_einsaetze SET 
-            ablaufzeit = DATETIME('now', 'localtime', '+${app_cfg.global.time_to_delete_waip} minutes')
-          WHERE 
-            waip_uuid LIKE ${uuid_query};
+          UPDATE waip_einsaetze SET
+            ablaufzeit = DATETIME('now', 'localtime', ?)
+          WHERE
+            uuid = COALESCE(?, (SELECT uuid FROM waip_einsaetze WHERE els_einsatznummer = ?)) COLLATE NOCASE;
         `);
-        const info = stmt.run();
+        const info = stmt.run(
+          `+${app_cfg.global.time_to_delete_waip} minutes`,
+          einsatzstatus_data.waip_uuid || null,
+          einsatzstatus_data.einsatznummer || null
+        );
         // Anzahl der aktualisierten Einsätze zurückgeben
         resolve(info.changes);
       } catch (error) {
@@ -1663,6 +1658,14 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // Berechtigungen als Liste von Wachen-, Kreis- oder Leitstellennummern. Nur rein numerische Einträge
+  // zählen, leere oder sonstige Einträge (z.B. durch ein Komma am Ende) dürfen nie greifen.
+  const permissions_to_list = (permissions) => {
+    return String(permissions)
+      .split(",")
+      .filter((p) => /^\d+$/.test(p));
+  };
+
   // Berechtigung eines Nutzers für einen Einsatz überpruefen
   const db_user_check_permission_for_waip = (socket, waip_id) => {
     return new Promise((resolve, reject) => {
@@ -1697,9 +1700,9 @@ module.exports = (db, app_cfg) => {
           if (row === undefined || row.wache === null || row.wache === undefined) {
             resolve(false);
           } else {
-            // Berechtigungen mit Wache vergleichen, wenn gefunden, dann true, sonst false
-            let permission_arr = permissions.split(",");
-            const found = permission_arr.some((r) => row.wache.search(RegExp("," + r + "|\\b" + r)) >= 0);
+            // Berechtigungen mit Wachen vergleichen (Präfix: "52" gilt für alle Wachen 52...), wenn gefunden, dann true, sonst false
+            const wachen = row.wache.split(",");
+            const found = permissions_to_list(permissions).some((p) => wachen.some((w) => w.startsWith(p)));
             if (found) {
               resolve(true);
             } else {
@@ -1751,9 +1754,8 @@ module.exports = (db, app_cfg) => {
               }
             }
 
-            // Berechtigungen mit Wache vergleichen, wenn gefunden, dann true, sonst false
-            let permission_arr = permissions.split(",");
-            const found = permission_arr.some((r) => wache_nr.toString().search(RegExp("," + r + "|\\b" + r)) >= 0);
+            // Berechtigungen mit Wache vergleichen (Präfix), wenn gefunden, dann true, sonst false
+            const found = permissions_to_list(permissions).some((p) => wache_nr.toString().startsWith(p));
             if (found) {
               resolve(true);
             } else {
@@ -1792,7 +1794,8 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  const db_rmld_single_save = (rmld_obj) => {
+  // einzelne Rückmeldung speichern, waip_uuid wurde vorher von db_rmld_check_einsatz ermittelt
+  const db_rmld_single_save = (rmld_obj, waip_uuid) => {
     return new Promise((resolve, reject) => {
       try {
         // wenn keine Einsatznummer WAIP-Uuid gesetzt ist, einen Fehler ausgeben
@@ -1867,16 +1870,6 @@ module.exports = (db, app_cfg) => {
           rmld_obj.wache_nr = rmld_obj.wache_nr.toString();
         }
 
-        let uuid_query;
-        // wenn Einsatznummer aber keiner WAIP-Uuid gesetzt ist, dann Einsatznummer für Abfrage verwenden
-        if (rmld_obj.einsatznummer && !rmld_obj.waip_uuid) {
-          uuid_query = `(SELECT uuid FROM waip_einsaetze WHERE els_einsatznummer = '${rmld_obj.einsatznummer}')`;
-        }
-        // wenn WAIP-Uuid gesetzt ist, dann WAIP-Uuid für Abfrage verwenden
-        if (rmld_obj.waip_uuid) {
-          uuid_query = `'${rmld_obj.waip_uuid}'`;
-        }
-
         // Abfrage für Insert / Replace vorbereiten
         const stmt = db.prepare(`
             INSERT OR REPLACE INTO waip_rueckmeldungen (
@@ -1885,7 +1878,7 @@ module.exports = (db, app_cfg) => {
               time_receive, type_decision, time_decision, time_arrival, wache_id, wache_nr, wache_name)
             VALUES (
               (SELECT id FROM waip_rueckmeldungen WHERE rmld_uuid = ?),
-              ${uuid_query},
+              ?,
               ?,
               ?,
               ?,
@@ -1907,6 +1900,7 @@ module.exports = (db, app_cfg) => {
         // Daten in Datenbank speichern
         const info = stmt.run(
           rmld_obj.response_uuid,
+          waip_uuid,
           rmld_obj.response_uuid,
           rmld_obj.response_alias,
           rmld_obj.response_address,
@@ -2242,17 +2236,20 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // einen Nutzer in der Datenbank bearbeiten
-  const auth_editUser = (query) => {
+  // einen Nutzer in der Datenbank bearbeiten (password_hash = null lässt das Passwort unverändert)
+  const auth_editUser = (id, password_hash, description, permissions, ip_address) => {
     return new Promise((resolve, reject) => {
       try {
-        const stmt = db.prepare(query);
-        const row = stmt.run();
-        if (row === undefined) {
-          resolve(null);
-        } else {
-          resolve(row);
-        }
+        const stmt = db.prepare(`
+          UPDATE waip_user SET
+            password = COALESCE(?, password),
+            description = ?,
+            permissions = ?,
+            ip_address = ?
+          WHERE id = ?;
+        `);
+        const info = stmt.run(password_hash, description, permissions, ip_address, id);
+        resolve(info.changes);
       } catch (error) {
         reject(new Error("Fehler bei auth_editUser. " + id + error));
       }

@@ -39,6 +39,7 @@ header
             a.text-nowrap.ion-md-settings.nav-link(href='/einstellungen') &nbsp;Einstellungen                 
           li.nav-item
             form(action='/logout', method='POST')
+              input(type="hidden" name="_csrf" value=csrf_token)
               button.btn.btn-dark.text-nowrap.ion-md-log-out(type='submit')=' \''+user.user +'\' abmelden'         
         else 
           // login nur anzeigen, wenn aktiviert

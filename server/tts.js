@@ -1,4 +1,5 @@
 const net = require("net");
+const crypto = require("crypto");
 const { spawnSync, spawn } = require("child_process");
 
 module.exports = (fs, logger, sql, app_cfg) => {
@@ -290,20 +291,27 @@ module.exports = (fs, logger, sql, app_cfg) => {
   // Laufende Synthesen: verhindert Doppel-Erstellung bei gleichzeitigen Verbindungen
   const _ttsInProgress = new Map();
 
+  // Zufälliger Schlüssel für die Dateinamen der Ansagen, neu bei jedem Start. Alte Dateien
+  // räumt system_cleanup nach Alter auf.
+  const tts_file_key = crypto.randomBytes(32);
+
   const tts_erstellen = async (einsatzdaten, wachen_nr) => {
     try {
       const full_half = einsatzdaten.permissions ? "full" : "half";
 
-      // Einsatz-UUID inkl. Wachennummer und Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
+      // Einsatz-UUID inkl. Wachennummer und Permissions als Kennung der Ansage verwenden und unnötige Zeichen entfernen
       const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr + "_" + full_half;
+      // Dateiname als HMAC der Kennung: die Dateien sind öffentlich unter /media abrufbar, der Name
+      // darf daher nicht aus UUID und Wachennummer ableitbar sein (sonst wäre die "full"-Ansage für jeden abrufbar)
+      const file_name = crypto.createHmac("sha256", tts_file_key).update(id).digest("hex");
       const soundPath = process.cwd() + app_cfg.global.soundpath;
       const mediaPath = app_cfg.global.mediapath;
 
       // Pfade der Sound-Dateien definieren
-      const wav_tts = soundPath + id + TTS_CONFIG.fileExtensions.wav;
-      const mp3_tmp = soundPath + id + TTS_CONFIG.fileExtensions.tmp;
-      const mp3_tts = soundPath + id + TTS_CONFIG.fileExtensions.mp3;
-      const mp3_url = mediaPath + id + TTS_CONFIG.fileExtensions.mp3;
+      const wav_tts = soundPath + file_name + TTS_CONFIG.fileExtensions.wav;
+      const mp3_tmp = soundPath + file_name + TTS_CONFIG.fileExtensions.tmp;
+      const mp3_tts = soundPath + file_name + TTS_CONFIG.fileExtensions.mp3;
+      const mp3_url = mediaPath + file_name + TTS_CONFIG.fileExtensions.mp3;
 
       // Prüfen ob mp3 bereits existiert
       if (fs.existsSync(mp3_tts)) {

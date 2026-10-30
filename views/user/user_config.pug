@@ -43,6 +43,7 @@ block content
                       p.text-info Wachalarme werden nach Ablauf der hier gesetzten Zeit automatisch ausgeblendet
                     .col-4
                       form(action="/einstellungen_zeit", method="POST")
+                        input(type="hidden" name="_csrf" value=csrf_token)
                         .form-group
                           label(for='ResetCounterSelect') Zeit in Minuten
                           select#ResetCounterSelect.form-control(name='set_reset_counter', onchange='this.form.submit()')
