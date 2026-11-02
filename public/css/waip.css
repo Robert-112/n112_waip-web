@@ -147,6 +147,13 @@ audio {
   }
 }
 
+/* Bootstrap animiert die Balkenbreite (transition: width .6s). Die Balken ändern sich nur einmal
+   pro Sekunde um höchstens 1 px, die Animation wäre unsichtbar, kostet aber auf schwacher Hardware
+   dauerhaft Rechenzeit (Layout in jedem Frame). */
+.progress-bar {
+  transition: none;
+}
+
 #rmld_progressbars .progress-bar,
 [id^="rmld-bars-"] .progress-bar {
   overflow: visible;

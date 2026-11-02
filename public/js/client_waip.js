@@ -1,5 +1,45 @@
 // TODO: Remote-Reload per Socket
 
+// optionaler Parameter ?anim=off: Animationen für leistungsschwache Geräte reduzieren
+const reduceAnimation = typeof anim_off !== "undefined" && anim_off === true;
+
+/* ############################ */
+/* ####### SEKUNDENTAKT ####### */
+/* ############################ */
+
+// Ein gemeinsamer Takt für Uhr, Ablauf-Timer und alle Rückmeldungsbalken: alle Änderungen einer
+// Sekunde landen im selben Frame (ein Layout pro Sekunde statt eines pro Timer)
+const sekundentakt = new Map();
+
+function takt_add(key, fn) {
+  sekundentakt.set(key, fn);
+}
+
+function takt_remove(key) {
+  sekundentakt.delete(key);
+}
+
+function takt_remove_prefix(prefix) {
+  Array.from(sekundentakt.keys()).forEach(function (key) {
+    if (key.indexOf(prefix) === 0) sekundentakt.delete(key);
+  });
+}
+
+function takt_run() {
+  sekundentakt.forEach(function (fn) {
+    try {
+      fn();
+    } catch (e) {
+      console.error("Sekundentakt:", e);
+    }
+  });
+}
+
+// auf den Sekundenwechsel ausrichten, damit die Uhr genau mit der Sekunde umspringt
+setTimeout(function () {
+  takt_run();
+  setInterval(takt_run, 1000);
+}, 1000 - (Date.now() % 1000));
 
 $(document).ready(function () {
   set_clock();
@@ -406,8 +446,6 @@ function resetActivTimer(e) {
 /* ####### Progressbar ####### */
 /* ############################ */
 
-let counter_ID = 0;
-
 function start_counter(zeitstempel, ablaufzeit) {
   // Split timestamp into [ Y, M, D, h, m, s ]
   let t1 = zeitstempel.split(/[- :]/),
@@ -416,10 +454,9 @@ function start_counter(zeitstempel, ablaufzeit) {
   let start = new Date(t1[0], t1[1] - 1, t1[2], t1[3], t1[4], t1[5]),
     end = new Date(t2[0], t2[1] - 1, t2[2], t2[3], t2[4], t2[5]);
 
-  clearInterval(counter_ID);
-  counter_ID = setInterval(function () {
+  takt_add("ablauf", function () {
     do_progressbar(start, end);
-  }, 1000);
+  });
 }
 
 function do_progressbar(start, end) {
@@ -427,8 +464,7 @@ function do_progressbar(start, end) {
   let current_progress = Math.round((100 / (end.getTime() - start.getTime())) * (end.getTime() - today.getTime()));
 
   if (current_progress <= 0) {
-    clearInterval(counter_ID);
-    counter_ID = 0;
+    takt_remove("ablauf");
     $("#standbytimer-bar").css("width", "0%").attr("aria-valuenow", 0);
     $("#standbytimer-text").text("");
     return;
@@ -455,6 +491,9 @@ function do_progressbar(start, end) {
 let map = L.map("map", {
   zoomControl: false,
   attributionControl: false,
+  // Zoom-Animation kostet auf schwacher Hardware spürbar Rechenzeit (Karte springt dann statt zu gleiten)
+  zoomAnimation: !reduceAnimation,
+  markerZoomAnimation: !reduceAnimation,
 }).setView([51.733005, 14.338048], 13);
 
 // Eigener Pane für den Zielmarker, damit er immer über Routen-Tooltips liegt
@@ -471,6 +510,9 @@ try {
   }
   if (typeof sound_off !== "undefined" && sound_off) {
     attrTexts.push("Soundprüfung deaktiviert");
+  }
+  if (reduceAnimation) {
+    attrTexts.push("Animationen reduziert");
   }
   if (typeof show_login !== "undefined" && show_login && typeof user_authenticated !== "undefined" && !user_authenticated) {
     attrTexts.push("nicht angemeldet");
@@ -700,8 +742,7 @@ socket.on("io.playtts", function (data) {
 socket.on("io.standby", function (data) {
   console.log("Standby", data);
   waip_id = null;
-  clearInterval(counter_ID);
-  counter_ID = 0;
+  takt_remove("ablauf");
 
   $("#einsatz_art").removeClass(function (index, className) {
     return (className.match(/(^|\s)bg-\S+/g) || []).join(" ");
@@ -923,8 +964,7 @@ socket.on("io.new_waip", function (data) {
   }
 
   // Rückmeldungs-Timer vollständig zurücksetzen
-  Object.keys(counter_rmld).forEach(function(id) { clearInterval(counter_rmld[id]); });
-  counter_rmld = {};
+  takt_remove_prefix("rmld-");
 
   // Routen und Inset-Karte aus vorherigem Einsatz löschen
   destroy_inset_map();
@@ -1086,11 +1126,19 @@ socket.on("io.new_rmld", function (data) {
   ); // Anzahl der Rückmeldung zählen
 
   recount_rmld(pg_waip_uuid);
-  // View anpassen
-  reset_view();
-  // Textgröße der Rückmeldungen anpassen – debounced, damit bei Batch-Eingang nur einmal läuft
+  // View anpassen; das ganze Tableau nur neu einpassen, wenn sich dadurch die Aufteilung geändert hat
+  // (meist nur bei der ersten Rückmeldung), sonst reichen die Zähler
+  if (reset_view()) _rmld_resize_full = true;
+  // debounced, damit bei Batch-Eingang nur einmal eingepasst wird
   clearTimeout(_rmld_resize_timer);
-  _rmld_resize_timer = setTimeout(() => resize_text(true), 150);
+  _rmld_resize_timer = setTimeout(function () {
+    if (_rmld_resize_full) {
+      resize_text(true);
+    } else {
+      resize_rmld_counter();
+    }
+    _rmld_resize_full = false;
+  }, 150);
 
   // Bing abspielen (nur wenn kein laufendes TTS überlagert wird)
   let audio = document.getElementById("audio");
@@ -1126,16 +1174,24 @@ socket.on("io.new_rmld", function (data) {
 /* ####### Rückmeldung ####### */
 /* ########################### */
 
-let counter_rmld = [];
 let _rmld_resize_timer = null;
+let _rmld_resize_full = false;
+
+// Nach einer Rückmeldung ändern sich nur die Zähler – nur diese neu einpassen
+function resize_rmld_counter() {
+  try {
+    textFit(document.querySelectorAll("#container_rmld .tf_singleline"), { minFontSize: 3, maxFontSize: 700, reProcess: true });
+  } catch (e) {
+    console.error("resize_rmld_counter:", e);
+  }
+}
 
 function reset_rmld() {
   const regex = /^pg-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
   $("#rmld_progressbars").children().each(function () {
     const match = regex.exec($(this).attr("id"));
     if (match) {
-      clearInterval(counter_rmld[match[1]]);
-      delete counter_rmld[match[1]];
+      takt_remove("rmld-" + match[1]);
       $(this).remove();
     }
   });
@@ -1228,16 +1284,14 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
   let _start_ms = p_start.getTime();
   let _end_ms = p_end.getTime();
 
-  clearInterval(counter_rmld[p_id]);
-  counter_rmld[p_id] = setInterval(function () {
+  takt_add("rmld-" + p_id, function () {
     let now = Date.now();
     let current_progress = Math.round((100 / (_start_ms - _end_ms)) * (_start_ms - now));
 
     if (current_progress >= 100) {
       _$bar.css("width", "100%").attr("aria-valuenow", 100);
       _$overlay.empty().removeClass("rmld-timer-running").text(_overlay_text).addClass("ion-md-checkmark-circle");
-      clearInterval(counter_rmld[p_id]);
-      delete counter_rmld[p_id];
+      takt_remove("rmld-" + p_id);
       _$bar = _$overlay = null; // DOM-Referenzen für GC freigeben
     } else {
       let diff = Math.abs(_end_ms - now);
@@ -1247,7 +1301,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
       // textContent direkt – kein jQuery-Overhead im 1-Sek-Takt
       _timeNode.textContent = min + ":" + (sec < 10 ? "0" + sec : sec);
     }
-  }, 1000);
+  });
 }
 
 function recount_rmld(p_uuid) {
@@ -1277,7 +1331,19 @@ function recount_rmld(p_uuid) {
   $("#med-counter").text($(".p_med").length);
 }
 
+// Aufteilung des Tableaus als vergleichbare Zeichenkette (Klassen sortiert, da alterClass sie neu anhängt)
+function view_signature() {
+  return ["#container_rmld", "#container_ortsdaten", "#container_einsatzmittel", "#container_weitere", "#container_besonderheiten"]
+    .map(function (id) {
+      const el = document.querySelector(id);
+      return el ? el.className.split(/\s+/).sort().join(" ") : "";
+    })
+    .join("|");
+}
+
+// passt die Aufteilung an; Rückgabe true, wenn sie sich dadurch geändert hat
 function reset_view() {
+  const vorher = view_signature();
   // Variablen
   let rmld_on = false;
   let em_weitere_on = false;
@@ -1355,6 +1421,7 @@ function reset_view() {
     alterClass("#container_weitere", "h-*", "h-5");
     alterClass("#container_besonderheiten", "h-*", "h-5");
   }
+  return view_signature() !== vorher;
 }
 
 /* ########################### */
@@ -1415,8 +1482,8 @@ function set_clock() {
   }
 }
 
-// Uhrzeit jede Sekunden anpassen
-setInterval(set_clock, 1000);
+// Uhrzeit jede Sekunde anpassen (im gemeinsamen Sekundentakt)
+takt_add("uhr", set_clock);
 
 /* ############################ */
 /* ####### WACHENNAME ####### */
