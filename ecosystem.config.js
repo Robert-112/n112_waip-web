@@ -6,7 +6,7 @@ module.exports = {
     restart_delay: 2000,
     combine_logs: true,
     watch: true,
-    ignore_watch: ["database.*","sessions*","node_modules","public","\\.git"],
+    ignore_watch: ["database.*","sessions*","node_modules","public","\\.git",".playwright-mcp"],
     log_file: "~/log/n112_waip-web.log"
   }]
 }
