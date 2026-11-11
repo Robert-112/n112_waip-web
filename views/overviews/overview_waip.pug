@@ -90,7 +90,7 @@ block content
         .col-12.p-3
           .card.w-100.h-100
             .card-body
-              .text-muted Beim Alarmmonitor können Sie optional die Anzeige von Rückmeldungen und Hinweise zur Audioausgabe deaktivieren.
+              .text-muted Beim Alarmmonitor können Sie optional die Anzeige von Rückmeldungen und Hinweise zur Audioausgabe deaktivieren sowie Animationen reduzieren.
               .text-muted Markieren Sie dazu die jeweilige Option und wählen Sie anschließend den gewünschten Alarmmonitor aus.
             .card-footer.text-center 
               // Checkbox zum Deaktivieren von Rückmeldungen
@@ -101,6 +101,10 @@ block content
               .form-check.mt-2
                 input#soundOff.form-check-input(type='checkbox')
                 label.form-check-label(for='soundOff') Hinweise zur Audioausgabe deaktivieren (z.B. wenn kein Lautsprecher angeschlossen ist)
+              // Checkbox zum Reduzieren von Animationen
+              .form-check.mt-2
+                input#animOff.form-check-input(type='checkbox')
+                label.form-check-label(for='animOff') Animationen reduzieren (für leistungsschwache Geräte, z.B. Raspberry Pi 3)
     // Client-seitige Suchlogik + rmld=off Handling
     script.
       (function(){
@@ -109,12 +113,14 @@ block content
         var list = document.getElementById('searchResults');
         var rmldToggle = document.getElementById('rmldOff');
         var soundToggle = document.getElementById('soundOff');
+        var animToggle = document.getElementById('animOff');
         if(!input || !list) return;
         function sanitize(str){return String(str).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]);});}
         function buildUrl(base){
           var params = [];
           if(rmldToggle && rmldToggle.checked){ params.push('rmld=off'); }
           if(soundToggle && soundToggle.checked){ params.push('sound=off'); }
+          if(animToggle && animToggle.checked){ params.push('anim=off'); }
           if(!params.length) return base;
           return base + (base.indexOf('?')===-1?'?':'&') + params.join('&');
         }
@@ -147,7 +153,7 @@ block content
         // Links der Karten / Dropdowns dynamisch anreichern
         document.querySelectorAll('a[href^="/waip/"]').forEach(function(a){
           a.addEventListener('click', function(ev){
-            if((rmldToggle && rmldToggle.checked) || (soundToggle && soundToggle.checked)){
+            if((rmldToggle && rmldToggle.checked) || (soundToggle && soundToggle.checked) || (animToggle && animToggle.checked)){
               ev.preventDefault();
               var url = buildUrl(a.getAttribute('href'));
               window.location.href = url;

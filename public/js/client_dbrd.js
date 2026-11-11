@@ -257,6 +257,13 @@ function drawRoutesOnMap(routes, targetMap, layerArr) {
 
 var counter_rmld = [];
 
+// Ticker der Rückmeldungen an geänderte Breiten anpassen
+var _rmld_resize_timer = null;
+$(window).on("resize", function () {
+  clearTimeout(_rmld_resize_timer);
+  _rmld_resize_timer = setTimeout(rmld_ticker_planen, 250);
+});
+
 var counter_ID = 0;
 
 function start_counter(zeitstempel, ablaufzeit) {
@@ -361,7 +368,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
     $("#pg-" + p_type + "-" + p_id).append(
       '<div id="pg-bar-' +
         p_id +
-        '" class="progress-bar progress-bar-striped ' +
+        '" class="progress-bar ' +
         bar_background +
         '" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>'
     );
@@ -383,10 +390,9 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
   var _$bar = $("#pg-bar-" + p_id);
   var _$overlay = $("#pg-text-" + p_id);
 
-  // Overlay-Spans einmalig anlegen
-  _$overlay.empty().addClass("rmld-timer-running");
-  var _timeNode = $("<span>").css({ position: "absolute", left: "4px" }).appendTo(_$overlay)[0];
-  if (_overlay_text) $("<span>").text(_overlay_text).appendTo(_$overlay);
+  // Beschriftung: Restzeit links, Name mittig, bei Überlänge als Ticker (siehe rmld_anzeige.js)
+  var _timeNode = rmld_beschriftung_anlegen(_$overlay[0], _overlay_text);
+  rmld_ticker_planen();
 
   var _start_ms = p_start.getTime();
   var _end_ms = p_end.getTime();
@@ -398,7 +404,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
 
     if (current_progress >= 100) {
       _$bar.css("width", "100%").attr("aria-valuenow", 100);
-      _$overlay.empty().removeClass("rmld-timer-running").text(_overlay_text).addClass("ion-md-checkmark-circle");
+      rmld_angekommen(_timeNode);
       clearInterval(counter_rmld[p_id]);
     } else {
       var diff = Math.abs(_end_ms - now);
@@ -847,6 +853,8 @@ socket.on("io.new_rmld", function (data) {
     item_content = data.rmld_alias || "Verbandsführer";
     item_type = "vf";
   }
+  // Anzeigename im Balken: Name, sonst Funktion (z.B. bei Gästen ohne Berechtigung entfernt der Server den Namen)
+  var anzeige_name = item_content;
   if (data.rmld_capability_agt > 0) item_content += " AGT";
   if (data.rmld_capability_fzf > 0) item_content += " FZF";
   if (data.rmld_capability_ma > 0) item_content += " MA";
@@ -865,7 +873,7 @@ socket.on("io.new_rmld", function (data) {
     data.waip_uuid,
     data.rmld_uuid,
     item_type,
-    data.rmld_alias,
+    anzeige_name,
     data.rmld_capability_agt,
     data.rmld_capability_fzf,
     data.rmld_capability_ma,

@@ -41,8 +41,13 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
       socket.request.session.reload(async (err) => {
         if (!err) {
           try {
-            socket.request.session.count++;
-            socket.request.session.save();
+            // Ablaufzeit verlängern: touch() setzt das Cookie wieder auf die volle Laufzeit, store.touch()
+            // schreibt nur das neue Ablaufdatum (und nur, solange die Session noch gültig ist).
+            // Kein save(): Das gespeicherte Session-JSON enthält das Cookie-Ablaufdatum vom Anlegen der
+            // Session (der HTTP-Keepalive aktualisiert per touch nur die Spalte "expired"). Ein save()
+            // schrieb dieses alte Datum zurück und ließ die Session sofort ablaufen -> Verbindungsabbruch.
+            socket.request.session.touch();
+            socket.request.sessionStore.touch(socket.request.session.id, socket.request.session, () => {});
 
             // User frisch aus DB laden, damit Berechtigungsaenderungen wirken
             const passport_id = socket.request.session && socket.request.session.passport

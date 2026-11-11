@@ -522,6 +522,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       const parameter_id = req.params.wachen_id;
       const rmldOff = req.query.rmld === "off"; // optionaler Parameter zum Deaktivieren der Rückmeldungen
       const soundOff = req.query.sound === "off"; // optionaler Parameter zum Deaktivieren der Audio-Blockadeprüfung
+      const animOff = req.query.anim === "off"; // optionaler Parameter zum Reduzieren von Animationen (leistungsschwache Geräte)
       const wache = await sql.db_wache_vorhanden(parameter_id);
       if (wache) {
         res.render("waip", {
@@ -535,6 +536,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           session_max_age: app_cfg.global.session_cookie_max_age,
           rmld_off: rmldOff,
           sound_off: soundOff,
+          anim_off: animOff,
         });
       } else {
         const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);
