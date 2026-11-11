@@ -342,6 +342,7 @@ function resize_text(reProcess) {
     try {
       textFit(document.getElementsByClassName("cl_em_alarmiert"), { minFontSize: 4, maxFontSize: 500, reProcess: reProcess });
     } catch (e) { console.error("resize_text cl_em_alarmiert:", e); }
+    layout_rmld();
   }
 }
 
@@ -890,7 +891,8 @@ socket.on("io.new_waip", function (data) {
   // wenn anzahl max 2 dann
   if (anzahl_em_alarmiert <= 2) {
     hight_em_alarmiert = "h-100";
-    col_em_alarmiert = "col-6";
+    // ein einzelnes Fahrzeug über die volle Breite, sonst bleibt neben der Kachel eine Lücke
+    col_em_alarmiert = anzahl_em_alarmiert === 1 ? "col-12" : "col-6";
   }
   // wenn anzahl zwischen 3 und 4 dann
   if (anzahl_em_alarmiert > 2 && anzahl_em_alarmiert <= 4) {
@@ -1092,6 +1094,9 @@ socket.on("io.new_rmld", function (data) {
     item_type = "vf";
   }
 
+  // Anzeigename im Balken: Alias, sonst Rollenname (Qualifikationen hängt add_resp_progressbar selbst an)
+  const anzeige_name = item_content;
+
   if (data.rmld_capability_agt > 0) {
     item_content += " AGT";
   }
@@ -1116,7 +1121,7 @@ socket.on("io.new_rmld", function (data) {
     data.waip_uuid,
     data.rmld_uuid,
     item_type,
-    data.rmld_alias,
+    anzeige_name,
     data.rmld_capability_agt,
     data.rmld_capability_fzf,
     data.rmld_capability_ma,
@@ -1129,6 +1134,8 @@ socket.on("io.new_rmld", function (data) {
   // View anpassen; das ganze Tableau nur neu einpassen, wenn sich dadurch die Aufteilung geändert hat
   // (meist nur bei der ersten Rückmeldung), sonst reichen die Zähler
   if (reset_view()) _rmld_resize_full = true;
+  // Spalten und Balkengröße an die neue Anzahl anpassen
+  layout_rmld();
   // debounced, damit bei Batch-Eingang nur einmal eingepasst wird
   clearTimeout(_rmld_resize_timer);
   _rmld_resize_timer = setTimeout(function () {
@@ -1186,6 +1193,33 @@ function resize_rmld_counter() {
   }
 }
 
+// Spalten und Balkenhöhe der Rückmeldungen aus Anzahl und verfügbarer Höhe berechnen. Alle Größen
+// hängen nur von der Containergröße ab, dadurch sieht die Anzeige auf 1080p und 4K gleich aus.
+// Wenige Rückmeldungen: 2 pro Reihe (breite Balken), bei vielen 3 und ab ca. 25 auch 4 pro Reihe.
+function layout_rmld() {
+  const box = document.getElementById("rmld_progressbars");
+  if (!box) return;
+  const anzahl = box.children.length;
+  const hoehe = box.clientHeight;
+  if (!anzahl || !hoehe) return;
+  const h_max = hoehe * 0.15; // höchstens 15 % der Bereichshöhe je Balken
+  const h_min = hoehe * 0.11; // darunter lieber eine Spalte mehr
+  let spalten = 4;
+  let balken_h = 0;
+  for (let s = 2; s <= 4; s++) {
+    const h = Math.min(h_max, hoehe / Math.ceil(anzahl / s) / 1.15); // 15 % Abstand zwischen den Reihen
+    if (h >= h_min || s === 4) {
+      spalten = s;
+      balken_h = h;
+      break;
+    }
+  }
+  box.style.setProperty("--rmld-spalten", spalten);
+  box.style.setProperty("--rmld-h", balken_h.toFixed(1) + "px");
+  // Ticker für überlange Texte (gemeinsam mit dem Dashboard, siehe rmld_anzeige.js)
+  rmld_ticker_aktualisieren(box);
+}
+
 function reset_rmld() {
   const regex = /^pg-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
   $("#rmld_progressbars").children().each(function () {
@@ -1227,7 +1261,8 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
   var pgbar = document.getElementById("pg-" + p_id);
   if (!pgbar) {
     // col-4 hinzufügen mit id
-    $("#rmld_progressbars").append('<div class="col-sm-4 col-6 px-1 pg-' + p_type + '" id="pg-' + p_id + '"></div>');
+    // Breite und Höhe der Balken setzt layout_rmld()
+    $("#rmld_progressbars").append('<div class="rmld-item px-1 pg-' + p_type + '" id="pg-' + p_id + '"></div>');
     // Progressbar hinzufügen mit id
     $("#pg-" + p_id).append(
       '<div class="progress rmld-bar position-relative ' + bar_border + " " + bar_uuid + '" id="pg-' + p_type + "-" + p_id + '"></div>'
@@ -1251,7 +1286,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
     $("#pg-" + p_type + "-" + p_id).append(
       '<div id="pg-bar-' +
         p_id +
-        '" class="progress-bar progress-bar-striped ' +
+        '" class="progress-bar ' +
         bar_background +
         '" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>'
     );
@@ -1275,10 +1310,8 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
   let _$bar = $("#pg-bar-" + p_id);
   let _$overlay = $("#pg-text-" + p_id);
 
-  // Overlay-Spans einmalig anlegen – kein Rebuild jede Sekunde
-  _$overlay.empty().addClass("rmld-timer-running");
-  let _timeNode = $("<span>").css({ position: "absolute", left: "4px" }).appendTo(_$overlay)[0];
-  if (_overlay_text) $("<span>").text(_overlay_text).appendTo(_$overlay);
+  // Beschriftung einmalig anlegen – kein Rebuild jede Sekunde (gemeinsam mit dem Dashboard, siehe rmld_anzeige.js)
+  let _timeNode = rmld_beschriftung_anlegen(_$overlay[0], _overlay_text);
 
   // Zeitstempel als Millisekunden cachen
   let _start_ms = p_start.getTime();
@@ -1290,7 +1323,7 @@ function add_resp_progressbar(p_uuid, p_id, p_type, p_content, p_agt, p_fzf, p_m
 
     if (current_progress >= 100) {
       _$bar.css("width", "100%").attr("aria-valuenow", 100);
-      _$overlay.empty().removeClass("rmld-timer-running").text(_overlay_text).addClass("ion-md-checkmark-circle");
+      rmld_angekommen(_timeNode);
       takt_remove("rmld-" + p_id);
       _$bar = _$overlay = null; // DOM-Referenzen für GC freigeben
     } else {

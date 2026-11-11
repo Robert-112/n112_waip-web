@@ -166,22 +166,103 @@ audio {
   z-index: 1;
 }
 
-[id^="pg-text-"].rmld-timer-running {
-  padding-left: 2.5em;
-  padding-right: 2.5em;
+/*** Rückmeldungen: Größe im Alarmmonitor ***/
+/* Spaltenzahl (--rmld-spalten) und Balkenhöhe (--rmld-h) setzt layout_rmld() passend zu Anzahl
+   und verfügbarer Höhe. Alle Maße hängen nur davon ab, dadurch sieht es auf 1080p und 4K gleich aus. */
+
+#rmld_progressbars {
+  align-content: flex-end; /* Balken kompakt unten neben den Zählern stapeln */
 }
 
-#rmld_progressbars [id^="pg-text-"] {
-  font-size: 0.85em;
-  letter-spacing: -0.03em;
+#rmld_progressbars > .rmld-item {
+  flex: 0 0 calc(100% / var(--rmld-spalten, 2));
+  max-width: calc(100% / var(--rmld-spalten, 2));
 }
 
-[id^="pg-text-"].ion-md-checkmark-circle::before {
-  margin-right: 4px;
+#rmld_progressbars .rmld-bar {
+  height: var(--rmld-h, 2rem);
+  font-size: calc(var(--rmld-h, 2rem) * 0.5);
+  line-height: 1.1;
+  margin-top: calc(var(--rmld-h, 2rem) * 0.15);
 }
+
+/*** Rückmeldungen: Beschriftung, gemeinsam für Alarmmonitor und Dashboard (rmld_anzeige.js) ***/
+/* Größen und Aufteilung legt jede Seite selbst fest; gemeinsam sind Umrandung, Restzeit/Name und Ticker */
+
+.rmld-text {
+  font-size: 1em;
+  line-height: 1.1; /* Bootstrap setzt in .progress line-height: 0, der Namensbereich wäre sonst 0 px hoch */
+  justify-content: flex-start !important;
+  /* Umrandung in der Farbe des Balkenhintergrunds (#444): hält die weiße Schrift auch auf
+     gefüllten, hellen Balken (z.B. Zugführer, hellgrau) lesbar, ohne kräftig zu wirken */
+  text-shadow:
+    -0.06em -0.06em 0 #444, 0.06em -0.06em 0 #444, -0.06em 0.06em 0 #444, 0.06em 0.06em 0 #444,
+    0 -0.06em 0 #444, 0 0.06em 0 #444, -0.06em 0 0 #444, 0.06em 0 0 #444;
+}
+
+/* Restzeit links (fett), nach Ankunft der Haken */
+.rmld-text .rmld-zeit {
+  flex: 0 0 auto;
+  font-weight: bold;
+  padding: 0 0.4em;
+}
+
+/* Dashboard (vorrangig Handy/iPad): keine Umrandung, sondern der bisherige weiche Schatten –
+   im kleinen 15-px-Balken ist die Umrandung schwer lesbar */
+[id^="rmld-bars-"] .rmld-text,
+#pg-container .rmld-text {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+/* Dashboard: Restzeit in normaler Schrift wie bisher */
+[id^="rmld-bars-"] .rmld-text .rmld-zeit,
+#pg-container .rmld-text .rmld-zeit {
+  font-weight: normal;
+}
+
+/* Name und Funktionen; passt der Text nicht, läuft er als Ticker durch (Klasse rmld-ticker) */
+.rmld-text .rmld-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: center;
+  padding-right: 0.4em;
+}
+
+.rmld-text .rmld-name > span {
+  display: inline-block;
+}
+
+.rmld-text .rmld-name.rmld-ticker {
+  text-align: left;
+  /* laufenden Text an den Rändern weich ausblenden statt hart abzuschneiden */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 0.6em, #000 calc(100% - 0.6em), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 0.6em, #000 calc(100% - 0.6em), transparent 100%);
+}
+
+.rmld-text .rmld-name.rmld-ticker > span {
+  animation: rmld-ticker var(--ticker-dauer, 8s) linear infinite;
+  will-change: transform;
+}
+
+/* Pause am Anfang, Text durchlaufen lassen, Pause am Ende, dann von vorn */
+@keyframes rmld-ticker {
+  0%,
+  20% {
+    transform: translateX(0);
+  }
+  80%,
+  100% {
+    transform: translateX(var(--ticker-weg, 0));
+  }
+}
+
 
 #standbytimer-text {
   text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+  /* wächst mit der Bildschirmhöhe, damit die Restzeit auch aus Entfernung lesbar bleibt */
+  font-size: clamp(0.75rem, 1.7vh, 1.3rem);
 }
 
 #rueckmeldung .list-group-item {
@@ -263,6 +344,10 @@ audio {
     height: 2.5% !important;
   }
 
+  .h-4_ls {
+    height: 4% !important;
+  }
+
   .h-12-5_ls {
     height: 12.5% !important;
   }
@@ -289,6 +374,10 @@ audio {
 
   .h-87-5_ls {
     height: 87.5% !important;
+  }
+
+  .h-96_ls {
+    height: 96% !important;
   }
 
   .h-97-5_ls {
