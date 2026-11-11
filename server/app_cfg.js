@@ -48,6 +48,13 @@ app_cfg.development = {
   dev_sqlite: (process.env.DEV_SQLITE ?? "true") === "true",
 };
 
+app_cfg.log = {
+  // Strukturiertes Log (JSON-Zeilen, Elastic Common Schema) z.B. für Filebeat/Elasticsearch, leer = aus
+  json_file: process.env.LOG_JSON_FILE || "",
+  // Intervall in Sekunden für Kennzahlen (Speicher, Event-Loop, Clients) im JSON-Log, 0 = aus
+  metrics_interval: Number(process.env.LOG_METRICS_INTERVAL ?? 60),
+};
+
 app_cfg.public = {
   url: process.env.PUBLIC_URL || "https://waip.nix.nix",
   app_name: process.env.APP_NAME || "Wachalarm IP-Web",

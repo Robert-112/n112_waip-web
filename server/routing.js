@@ -1,4 +1,31 @@
 module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
+  // HTTP-Antworten mit Fehlerstatus (401/403/404/5xx) strukturiert protokollieren
+  app.use(logger.http_error_middleware);
+
+  // Änderungen an der Konfiguration durch Administratoren protokollieren
+  const config_event = (req, message, action, type, wachalarm) => {
+    logger.event(message, {
+      ...logger.from_req(req),
+      action: action,
+      category: "configuration",
+      type: type,
+      outcome: "success",
+      wachalarm: wachalarm,
+    });
+  };
+
+  // Erfolgreiche Anmeldung protokollieren
+  const login_success = (req, user, methode) => {
+    logger.event(`Benutzer ${user.user} hat sich angemeldet (${methode}).`, {
+      ...logger.from_req(req),
+      user: { name: user.user, id: user.id },
+      action: "login",
+      category: "authentication",
+      type: "start",
+      outcome: "success",
+      wachalarm: { login_methode: methode, angemeldet_bleiben: methode === "passwort" ? Boolean(req.body.rememberme) : undefined },
+    });
+  };
   // Hilfsfunktion zum prüfen ob der Inhaltstyp JSON ist
   const checkContentType = (req, res, next) => {
     if (!req.is("application/json")) {
@@ -123,6 +150,15 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
     }),
     async (req, res) => {
       const new_token = await auth.ensureApi(req.user.id);
+      logger.event(`API-Token für ${req.user.user} ${new_token ? "ausgestellt" : "verweigert (keine API-Berechtigung)"}.`, {
+        ...logger.from_req(req),
+        level: new_token ? "info" : "warn",
+        action: "api-token",
+        category: ["authentication", "api"],
+        type: new_token ? "allowed" : "denied",
+        outcome: new_token ? "success" : "failure",
+        reason: new_token ? undefined : "keine-api-berechtigung",
+      });
       if (new_token) {
         res.json({ message: "Neues Zugangs-Token generiert", token: new_token });
       } else {
@@ -137,17 +173,33 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       // Client-IP ermitteln
       const remote_ip = getRemoteIp(req);
       // Einsatz speichern
-      await saver.save_einsatz(req.body, remote_ip);
-      // Protokollieren
+      const result = await saver.save_einsatz(req.body, remote_ip);
+      // Protokollieren (nur IDs und Zähler, keine Einsatzinhalte)
       const msg = "Einsatzdaten erfolgreich übermittelt und verarbeitet (/api/einsatzdaten).";
-      logger.log("log", msg);
+      logger.event(result ? `Einsatz ${result.waip_id} von ${remote_ip} empfangen und gespeichert.` : `Einsatz von ${remote_ip} empfangen, aber verworfen (keine aktive Wache beteiligt).`, {
+        ...logger.from_req(req),
+        action: result ? "einsatz-empfangen" : "einsatz-verworfen",
+        category: "api",
+        type: "creation",
+        outcome: "success",
+        reason: result ? undefined : "keine-aktive-wache",
+        wachalarm: result ? { einsatz_id: result.waip_id, anzahl_wachen: result.anzahl_wachen, anzahl_einsatzmittel: result.anzahl_einsatzmittel } : undefined,
+      });
       // OK zurücksenden
       res.status(200);
       res.send(msg);
     } catch (error) {
       // Fehler Protokollieren und Fehlermeldung senden
       const msg = "Fehler bei der Datenverarbeitung (/api/einsatzdaten).";
-      logger.log("error", msg + " " + error);
+      logger.event(msg + " " + error, {
+        ...logger.from_req(req),
+        level: "error",
+        action: "einsatz-empfangen",
+        category: "api",
+        type: "error",
+        outcome: "failure",
+        error: error,
+      });
       res.status(500);
       res.send(msg);
     }
@@ -182,14 +234,29 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       // Rückmeldungen speichern
       await saver.save_rmld(req.body, remote_ip);
       const msg = "Rückmeldungen erfolgreich übermittelt und verarbeitet (/api/rueckmeldung).";
-      logger.log("log", msg);
+      logger.event(msg, {
+        ...logger.from_req(req),
+        action: "rueckmeldung-empfangen",
+        category: "api",
+        type: "creation",
+        outcome: "success",
+        wachalarm: { anzahl_rueckmeldungen: Array.isArray(req.body) ? req.body.length : undefined },
+      });
       // OK zurücksenden
       res.status(200);
       res.send(msg);
     } catch (error) {
       // Fehler Protokollieren und Fehlermeldung senden
       const msg = "Fehler bei der Datenverarbeitung (/api/rueckmeldung).";
-      logger.log("error", msg + " " + error);
+      logger.event(msg + " " + error, {
+        ...logger.from_req(req),
+        level: "error",
+        action: "rueckmeldung-empfangen",
+        category: "api",
+        type: "error",
+        outcome: "failure",
+        error: error,
+      });
       res.status(500);
       res.send(msg);
     }
@@ -246,6 +313,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
           // der Benutzer muss sich fuer 5 Jahre nicht anmelden
           req.session.cookie.maxAge = 5 * 365 * 24 * 60 * 60 * 1000;
         }
+        login_success(req, user, "passwort");
         return res.redirect("/");
       });
     })(req, res, next);
@@ -254,9 +322,33 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.get("/login_cert", (req, res, next) => {
     passport.authenticate("trusted-header", (err, user, info) => {
       if (err) {
+        logger.event("Interner Fehler bei der Zertifikats-Authentifizierung: " + err, {
+          ...logger.from_req(req),
+          level: "error",
+          action: "login",
+          category: "authentication",
+          type: ["start", "error"],
+          outcome: "failure",
+          error: err,
+          wachalarm: { login_methode: "zertifikat" },
+        });
         return res.redirect("/login?error=" + encodeURIComponent("Interner Fehler bei der Zertifikats-Authentifizierung."));
       }
       if (!user) {
+        // CN aus dem vom Proxy gesetzten Header (Zertifikat wurde dort bereits geprüft)
+        const dn = req.headers["x-ssl-client-dn"];
+        const cn = dn ? String(dn).split(",")[0].split("=")[1] : null;
+        logger.event(`Anmeldung per Client-Zertifikat fehlgeschlagen (${dn ? "kein Benutzer für CN " + cn : "kein Zertifikat"}).`, {
+          ...logger.from_req(req),
+          user: cn ? { name: cn } : undefined,
+          level: "warn",
+          action: "login",
+          category: "authentication",
+          type: "start",
+          outcome: "failure",
+          reason: dn ? "zertifikat-unbekannt" : "kein-zertifikat",
+          wachalarm: { login_methode: "zertifikat" },
+        });
         return res.redirect(
           "/login?error=" +
             encodeURIComponent("Authentifizierung mittels Client-Zertifikat fehlgeschlagen! Bitte wenden Sie sich an den Administrator.")
@@ -268,6 +360,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
         }
         // der Benutzer muss sich fuer 1 Tag nicht anmelden
         req.session.cookie.maxAge = 1 * 24 * 60 * 60 * 1000;
+        login_success(req, user, "zertifikat");
         return res.redirect("/");
       });
     })(req, res, next);
@@ -275,6 +368,15 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
 
   // Logout verarbeiten
   app.post("/logout", function (req, res) {
+    if (req.user) {
+      logger.event(`Benutzer ${req.user.user} hat sich abgemeldet.`, {
+        ...logger.from_req(req),
+        action: "logout",
+        category: ["authentication", "session"],
+        type: "end",
+        outcome: "success",
+      });
+    }
     req.session.destroy(function (err) {
       res.redirect("/");
     });
@@ -328,7 +430,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
       lines.push(`0 waip_clients total=${total};;;0;|waip=${waip};;;0;|dbrd=${dbrd};;;0;|alarm=${alarm};;;0; ${total} Clients (${waip}x /waip, ${dbrd}x /dbrd, ${alarm}x im Einsatz)`);
 
       // Service 1b: Netzkopplung (reine Info, kein Warning/Error)
-      const netzkopplung_count = clients.filter((c) => c.netzkopplung === 1).length;
+      // 1 = alle, 2 = einzelne Internet-Testadressen erreichbar, beides gilt als Verdacht
+      const netzkopplung_count = clients.filter((c) => c.netzkopplung === 1 || c.netzkopplung === 2).length;
       lines.push(`0 waip_netzkopplung count=${netzkopplung_count};;;0; ${netzkopplung_count} Client(s) mit erreichbaren Internet-Testadressen (moegliche Netzkopplung)`);
 
       // Service 2: Einsätze in der Datenbank
@@ -621,6 +724,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_wachen/edit", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_wache_update(req.body);
+      config_event(req, `Wache ${req.body.nr_wache} (ID ${req.body.id}) wurde von ${req.user.user} bearbeitet (aktiv: ${req.body.aktiv ? "ja" : "nein"}).`, "wache-geaendert", "change", {
+        wache_nr: req.body.nr_wache,
+        ziel_id: req.body.id,
+      });
       res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich bearbeitet."));
     } catch (error) {
       res.redirect("/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Bearbeiten der Wache. " + error));
@@ -631,6 +738,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_wachen/delete", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_wache_delete(req.body.id);
+      config_event(req, `Wache mit ID ${req.body.id} wurde von ${req.user.user} gelöscht.`, "wache-geloescht", "deletion", {
+        ziel_id: req.body.id,
+      });
       res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich gelöscht."));
     } catch (error) {
       res.redirect("/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Löschen der Wache. " + error));
@@ -641,6 +751,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_wachen/create", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_wache_create(req.body);
+      config_event(req, `Wache ${req.body.nr_wache} wurde von ${req.user.user} angelegt.`, "wache-angelegt", "creation", {
+        wache_nr: req.body.nr_wache,
+      });
       res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich angelegt."));
     } catch (error) {
       res.redirect("/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Anlegen der Wache. " + error));
@@ -672,6 +785,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_replace/edit", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_replace_update(req.body);
+      config_event(req, `Ersetzung mit ID ${req.body.id} wurde von ${req.user.user} bearbeitet.`, "ersetzung-geaendert", "change", {
+        ziel_id: req.body.id,
+      });
       res.redirect("/adm_edit_replace?success=" + encodeURIComponent("Ersetzung erfolgreich bearbeitet."));
     } catch (error) {
       res.redirect("/adm_edit_replace?error=" + encodeURIComponent("Fehler beim Bearbeiten der Ersetzung. " + error));
@@ -682,6 +798,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_replace/delete", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_replace_delete(req.body.id);
+      config_event(req, `Ersetzung mit ID ${req.body.id} wurde von ${req.user.user} gelöscht.`, "ersetzung-geloescht", "deletion", {
+        ziel_id: req.body.id,
+      });
       res.redirect("/adm_edit_replace?success=" + encodeURIComponent("Ersetzung erfolgreich gelöscht."));
     } catch (error) {
       res.redirect("/adm_edit_replace?error=" + encodeURIComponent("Fehler beim Löschen der Ersetzung. " + error));
@@ -692,6 +811,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger) {
   app.post("/adm_edit_replace/create", auth.ensureAdmin, async (req, res) => {
     try {
       await sql.db_replace_create(req.body);
+      config_event(req, `Ersetzung wurde von ${req.user.user} angelegt.`, "ersetzung-angelegt", "creation");
       res.redirect("/adm_edit_replace?success=" + encodeURIComponent("Ersetzung erfolgreich angelegt."));
     } catch (error) {
       res.redirect("/adm_edit_replace?error=" + encodeURIComponent("Fehler beim Anlegen der Ersetzung. " + error));

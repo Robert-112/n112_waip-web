@@ -1,4 +1,5 @@
 const net = require("net");
+const crypto = require("crypto");
 const { spawnSync, spawn } = require("child_process");
 
 module.exports = (fs, logger, sql, app_cfg) => {
@@ -290,20 +291,27 @@ module.exports = (fs, logger, sql, app_cfg) => {
   // Laufende Synthesen: verhindert Doppel-Erstellung bei gleichzeitigen Verbindungen
   const _ttsInProgress = new Map();
 
+  // Zufälliger Schlüssel für die Dateinamen der Ansagen, neu bei jedem Start. Alte Dateien
+  // räumt system_cleanup nach Alter auf.
+  const tts_file_key = crypto.randomBytes(32);
+
   const tts_erstellen = async (einsatzdaten, wachen_nr) => {
     try {
       const full_half = einsatzdaten.permissions ? "full" : "half";
 
-      // Einsatz-UUID inkl. Wachennummer und Permissions als Dateinamen verwenden und unnötige Zeichen entfernen
+      // Einsatz-UUID inkl. Wachennummer und Permissions als Kennung der Ansage verwenden und unnötige Zeichen entfernen
       const id = einsatzdaten.uuid.replace(/\W/g, "") + "_" + wachen_nr + "_" + full_half;
+      // Dateiname als HMAC der Kennung: die Dateien sind öffentlich unter /media abrufbar, der Name
+      // darf daher nicht aus UUID und Wachennummer ableitbar sein (sonst wäre die "full"-Ansage für jeden abrufbar)
+      const file_name = crypto.createHmac("sha256", tts_file_key).update(id).digest("hex");
       const soundPath = process.cwd() + app_cfg.global.soundpath;
       const mediaPath = app_cfg.global.mediapath;
 
       // Pfade der Sound-Dateien definieren
-      const wav_tts = soundPath + id + TTS_CONFIG.fileExtensions.wav;
-      const mp3_tmp = soundPath + id + TTS_CONFIG.fileExtensions.tmp;
-      const mp3_tts = soundPath + id + TTS_CONFIG.fileExtensions.mp3;
-      const mp3_url = mediaPath + id + TTS_CONFIG.fileExtensions.mp3;
+      const wav_tts = soundPath + file_name + TTS_CONFIG.fileExtensions.wav;
+      const mp3_tmp = soundPath + file_name + TTS_CONFIG.fileExtensions.tmp;
+      const mp3_tts = soundPath + file_name + TTS_CONFIG.fileExtensions.mp3;
+      const mp3_url = mediaPath + file_name + TTS_CONFIG.fileExtensions.mp3;
 
       // Prüfen ob mp3 bereits existiert
       if (fs.existsSync(mp3_tts)) {
@@ -359,9 +367,19 @@ module.exports = (fs, logger, sql, app_cfg) => {
         throw new Error(`TTS nicht verfügbar (Provider: ${providerKey})`);
       }
 
+      const tts_start = Date.now();
       const synthesis = ttsProvider.createTTS(tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell)
         .then(() => {
           if (dev) logger.log("log", `TTS tts_erstellen: Erfolgreich abgeschlossen. URL=${mp3_url}`);
+          // Dauer der Sprachsynthese protokollieren (ohne Ansagetext)
+          logger.event(`Sprachansage für Einsatz ${einsatzdaten.id} (Wache ${wachen_nr}) in ${Date.now() - tts_start} ms erzeugt.`, {
+            action: "tts-erzeugt",
+            category: "process",
+            type: "creation",
+            outcome: "success",
+            duration_ms: Date.now() - tts_start,
+            wachalarm: { tts_provider: providerKey, einsatz_id: einsatzdaten.id, wache_nr: String(wachen_nr) },
+          });
           return mp3_url;
         })
         .finally(() => _ttsInProgress.delete(id));
@@ -373,7 +391,15 @@ module.exports = (fs, logger, sql, app_cfg) => {
       const bkp_mp3_bell =
         app_cfg.global.mediapath +
         (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" ? "bell_long.mp3" : "bell_short.mp3");
-      logger.log("warn", `TTS-Erstellung fehlgeschlagen, sende nur Gong. Fehler: ${error.message}`);
+      logger.event(`TTS-Erstellung fehlgeschlagen, sende nur Gong. Fehler: ${error.message}`, {
+        level: "warn",
+        action: "tts-erzeugt",
+        category: "process",
+        type: ["creation", "error"],
+        outcome: "failure",
+        error: error,
+        wachalarm: { tts_provider: app_cfg.tts && app_cfg.tts.provider, einsatz_id: einsatzdaten && einsatzdaten.id, wache_nr: String(wachen_nr) },
+      });
       return bkp_mp3_bell;
     }
   };

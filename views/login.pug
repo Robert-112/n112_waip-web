@@ -21,6 +21,7 @@ block content
             .card-body
               h5.card-title.text-center Benutzeranmeldung
               form(action='/login', method='POST')
+                input(type="hidden" name="_csrf" value=csrf_token)
                 .form-group
                   label(for='inputUser') Benutzername
                   input#login-user.form-control(type='text' name='user'  placeholder='Benutzername eingeben' required='' autofocus='')

@@ -32,6 +32,8 @@ block content
           [ 0, "desc" ]
         ],
         "iDisplayLength": 25,
+        // alle Werte als Text ausgeben (DataTables fügt Inhalte sonst als HTML ein)
+        "columnDefs": [{ "targets": "_all", "render": $.fn.dataTable.render.text() }],
         "columns": [
           { "data": "id" },
           { "data": "log_time" },

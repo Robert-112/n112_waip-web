@@ -53,4 +53,32 @@ let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, s
 // Server starten
 webserver.listen(app_cfg.global.http_port, () => {
   sql.db_log("Anwendung", "Wachalarm-IP-Webserver auf Port " + app_cfg.global.http_port + " gestartet");
+  logger.event(`Wachalarm-IP-Webserver ${app_cfg.public.version} auf Port ${app_cfg.global.http_port} gestartet.`, {
+    action: "anwendung-gestartet",
+    category: "process",
+    type: "start",
+    outcome: "success",
+    wachalarm: {
+      port: app_cfg.global.http_port,
+      node_version: process.version,
+      tts_provider: app_cfg.tts.provider,
+      osrm_aktiv: app_cfg.osrm.enabled,
+      dev_log: app_cfg.development.dev_log,
+    },
+  });
+
+  // Sicherheitsrelevante Standardwerte melden (Secrets nicht per .env/Umgebung gesetzt)
+  const unsichere_werte = ["SESSION_SECRET", "JWT_SECRET"].filter((key) => !process.env[key]);
+  if (unsichere_werte.length > 0) {
+    logger.event(`Unsichere Konfiguration: ${unsichere_werte.join(", ")} nicht gesetzt, es wird der Standardwert verwendet!`, {
+      level: "warn",
+      action: "unsichere-konfiguration",
+      kind: "alert",
+      category: "configuration",
+      type: "info",
+      wachalarm: { standardwerte: unsichere_werte },
+    });
+  }
+
+  logger.start_metrics(io);
 });

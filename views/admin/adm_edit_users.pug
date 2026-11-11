@@ -44,6 +44,7 @@ block content
                   td.text-right.text-nowrap
                     button.btn.btn-sm.btn-primary.mx-1.ion-md-create(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
                     form(action='/adm_edit_users', method='POST', style='display:inline-block;')
+                      input(type="hidden" name="_csrf" value=csrf_token)
                       input(type='hidden', name='modal_method', value='DELETE')
                       input(type='hidden', name='id', value=val.id)
                       input(type='hidden', name='username', value=val.user)
@@ -58,6 +59,7 @@ block content
             span(aria-hidden='true') ×
         .modal-body
           form#formModal(action="/adm_edit_users", method="POST", oninput='password2.setCustomValidity(password2.value != password.value ? "Passwörter stimmen nicht überein!" : "")')
+            input(type="hidden" name="_csrf" value=csrf_token)
             .form-group
               input#modal_method(type='hidden', name='modal_method', value='')
               input#modal_id(type='hidden', name='modal_id', value='')

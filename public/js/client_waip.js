@@ -551,6 +551,7 @@ const NETZKOPPLUNG_TIMEOUT_MS = 5000;
 const NETZKOPPLUNG_INTERVAL_MS = 8 * 60 * 60 * 1000; // ca. alle 8 Stunden (2-3x/Tag)
 const NETZKOPPLUNG_JITTER_MS = 60 * 60 * 1000; // +/- 1 Stunde, damit nicht alle Clients gleichzeitig pruefen
 let _netzkopplungStarted = false;
+let _netzkopplungConnectTimer = null;
 
 function checkUrlReachable(url) {
   return new Promise(function (resolve) {
@@ -583,31 +584,40 @@ function checkUrlReachable(url) {
 }
 
 function runNetzkopplungCheck(urls) {
-  Promise.all(urls.map(checkUrlReachable)).then(function (results) {
-    // Nur als Netzkopplung werten, wenn alle Testadressen erreichbar waren
-    // (reduziert False-Positives durch einzelne, unabhaengig blockierte Domains).
-    const netzkopplung = results.every(Boolean);
-    socket.emit("netzkopplung_check", { netzkopplung: netzkopplung });
-    console.log("Netzkopplungspruefung durchgefuehrt, Ergebnis:", netzkopplung, results);
+  Promise.all(urls.map(checkUrlReachable)).then(function (reachable) {
+    // Einzelergebnisse senden, die Auswertung (alle / einzelne / keine erreichbar) macht der Server
+    const results = urls.map(function (url, i) {
+      return { url: url, reachable: reachable[i] };
+    });
+    socket.emit("netzkopplung_check", { results: results });
+    console.log("Netzkopplungspruefung durchgefuehrt, Ergebnis:", results);
   });
 }
 
 function startNetzkopplungCheck() {
-  if (_netzkopplungStarted) return; // nur einmal pro Seitenaufruf starten (nicht bei jedem Reconnect)
   const urls = typeof netzkopplung_urls !== "undefined" ? netzkopplung_urls : [];
   if (!urls || urls.length === 0) return;
+
+  // Nach jedem Verbindungsaufbau zeitversetzt (30-90s) pruefen, um den Seitenaufbau nicht zu belasten.
+  // Auch nach einem Reconnect noetig: der Socket hat dann eine neue ID und auf dem Server einen neuen
+  // Eintrag ohne Ergebnis.
+  clearTimeout(_netzkopplungConnectTimer);
+  _netzkopplungConnectTimer = setTimeout(function () {
+    runNetzkopplungCheck(urls);
+  }, 30000 + Math.floor(Math.random() * 60000));
+
+  // periodische Pruefung nur einmal pro Seitenaufruf starten (nicht bei jedem Reconnect)
+  if (_netzkopplungStarted) return;
   _netzkopplungStarted = true;
 
-  const scheduleNext = function (delay_ms) {
+  const scheduleNext = function () {
+    const jitter = Math.floor(Math.random() * (2 * NETZKOPPLUNG_JITTER_MS + 1)) - NETZKOPPLUNG_JITTER_MS;
     setTimeout(function () {
       runNetzkopplungCheck(urls);
-      const jitter = Math.floor(Math.random() * (2 * NETZKOPPLUNG_JITTER_MS + 1)) - NETZKOPPLUNG_JITTER_MS;
-      scheduleNext(NETZKOPPLUNG_INTERVAL_MS + jitter);
-    }, delay_ms);
+      scheduleNext();
+    }, NETZKOPPLUNG_INTERVAL_MS + jitter);
   };
-
-  // erste Pruefung zeitversetzt (30-90s) nach Verbindungsaufbau, um Seitenaufbau nicht zu belasten
-  scheduleNext(30000 + Math.floor(Math.random() * 60000));
+  scheduleNext();
 }
 
 socket.on("connect_error", function (err) {

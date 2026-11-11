@@ -1,0 +1,41 @@
+# Filebeat-Konfiguration für das strukturierte Wachalarm-Log
+# Ziel: /etc/filebeat/filebeat.yml (Filebeat-Version passend zu Elasticsearch, hier 8.19.x)
+
+filebeat.inputs:
+  - type: filestream
+    id: wachalarm-json
+    paths:
+      # muss zu LOG_JSON_FILE in der .env des Wachalarms passen
+      - /var/log/wachalarm/wachalarm.ndjson
+    parsers:
+      - ndjson:
+          target: ""            # Felder auf oberster Ebene übernehmen (ECS)
+          overwrite_keys: true  # @timestamp, message usw. aus der Anwendung verwenden
+          expand_keys: true
+          add_error_key: true   # nicht lesbare Zeilen werden mit error.message markiert statt verworfen
+
+processors:
+  - add_host_metadata: ~      # host.name usw. des Wachalarm-Servers
+
+output.elasticsearch:
+  hosts: ["https://ES-SERVER:9200"]
+  # API-Key im Format "id:api_key", abgelegt im Filebeat-Keystore (siehe README.md)
+  api_key: "${WACHALARM_ES_API_KEY}"
+  # Data Stream nach dem Schema logs-<dataset>-<namespace>
+  index: "logs-wachalarm-default"
+  ssl:
+    # CA des Elasticsearch-Servers (bei ES 8 z.B. /etc/elasticsearch/certs/http_ca.crt)
+    certificate_authorities: ["/etc/filebeat/certs/http_ca.crt"]
+    verification_mode: full
+
+# Template und ILM werden einmalig in Elasticsearch angelegt (es-setup.txt), nicht durch Filebeat
+setup.template.enabled: false
+setup.ilm.enabled: false
+
+# Eigene Filebeat-Logs (bei Problemen: journalctl -u filebeat)
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  keepfiles: 7
+  permissions: 0640

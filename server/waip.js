@@ -39,7 +39,15 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
         if (doppelalarm) {
           // Log das Einsatz explizit nicht an Client gesendet wurde
-          logger.log("waip", `Einsatz ${data.id} für Wache ${wachen_nr} nicht an Socket ${socket.id} gesendet, Doppelalarmierung.`);
+          logger.event(`Einsatz ${data.id} für Wache ${wachen_nr} nicht an Socket ${socket.id} gesendet, Doppelalarmierung.`, {
+            ...logger.from_socket(socket),
+            db: "waip",
+            action: "einsatz-doppelalarm",
+            category: "process",
+            type: "info",
+            outcome: "success",
+            wachalarm: { einsatz_id: data.id, wache_nr: String(wachen_nr), socket_id: socket.id },
+          });
           resolve(false);
         } else {
           // Einsatz-ID dem Socket zuweisen, fuer spaetere Abgleiche
@@ -47,7 +55,16 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
 
           // Einsatzdaten an Client senden
           socket.emit("io.new_waip", data);
-          logger.log("waip", `Einsatz ${data.id} für Wache ${wachen_nr} an ${socket.id} gesendet.`);
+          // vollzugriff: Client hat die vollständigen Einsatzdaten erhalten (Berechtigung vorhanden)
+          logger.event(`Einsatz ${data.id} für Wache ${wachen_nr} an ${socket.id} gesendet.`, {
+            ...logger.from_socket(socket),
+            db: "waip",
+            action: "einsatz-gesendet",
+            category: "process",
+            type: "info",
+            outcome: "success",
+            wachalarm: { einsatz_id: data.id, wache_nr: String(wachen_nr), socket_id: socket.id, vollzugriff: data.permissions },
+          });
 
           // Client-Status mit Wachennummer aktualisieren
           sql.db_client_update_status(socket, data.id);
@@ -416,8 +433,9 @@ module.exports = (io, sql, fs, logger, app_cfg) => {
             route_half = osrm.clip_route_at_boundary(route_to_centroid, einsatzdaten.geometry);
           }
         } else {
-          // Kein Bereich vorhanden – half = full (kein Sicherheitsrisiko, da kein Bereich)
-          route_half = route_full;
+          // Kein Bereich vorhanden: die genaue Route würde den Einsatzort verraten,
+          // daher für eingeschränkte Nutzer keine Route speichern (nur Wachen-Label).
+          route_half = null;
         }
 
         sql.db_route_speichern(waip_id, station.station_id, route_full, route_half);

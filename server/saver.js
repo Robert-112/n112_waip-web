@@ -26,13 +26,17 @@ module.exports = (app_cfg, sql, waip, logger) => {
 
           // Einsatzdaten in Datenbank speichern und ID des Einsatzes zurückbekommen
           const waip_id = await sql.db_einsatz_speichern(waip_json);
-          logger.log(
-            "log",
-            `Neuer Einsatz von ${remote_addr} wurde mit der ID ${waip_id} gespeichert und wird jetzt weiter verarbeitet: ${JSON.stringify(waip_json)}`
-          );
+          // Einsatzinhalte nur im Debug-Modus ausgeben (Datenschutz)
+          logger.log("log", `Neuer Einsatz von ${remote_addr} wurde mit der ID ${waip_id} gespeichert und wird jetzt weiter verarbeitet.`);
+          logger.log("debug", `Inhalt des Einsatzes ${waip_id}: ${JSON.stringify(waip_json)}`);
 
-          // true zurückgeben
-          resolve(true);
+          // ID und Kennzahlen des Einsatzes zurückgeben (für das Protokoll)
+          const alarmdaten = waip_json.alarmdaten || [];
+          resolve({
+            waip_id: waip_id,
+            anzahl_einsatzmittel: alarmdaten.length,
+            anzahl_wachen: new Set(alarmdaten.map((item) => item.wachenname)).size,
+          });
 
           // TODO: an dieser Stelle für die Einsatzmittel die koordinaten der Heimatwachen ermitteln und für diese eine Anfrage beim Routing-Server machen
 
@@ -72,7 +76,7 @@ module.exports = (app_cfg, sql, waip, logger) => {
 
                 if (waip_uuid) {
                   // jetzt einzelne Rückmeldung speichern
-                  const response_uuid = await sql.db_rmld_single_save(item);
+                  const response_uuid = await sql.db_rmld_single_save(item, waip_uuid);
 
                   // response_uuid in einem Array speichern, welches waip_uuid als Key hat
                   if (!obj_waip_uuid_mit_rmld_uuid[waip_uuid]) {

@@ -1,0 +1,123 @@
+# Einmalige Einrichtung in Elasticsearch 8.19 – in Kibana unter "Dev Tools" ausführen
+# (alternativ per curl mit einem Admin-Zugang)
+
+# 1) Aufbewahrung: monatlich neuer Index, Löschung nach 90 Tagen (IP-Adressen und Benutzernamen
+#    sind personenbezogen – Frist mit dem Datenschutzbeauftragten abstimmen)
+PUT _ilm/policy/wachalarm-logs
+{
+  "policy": {
+    "phases": {
+      "hot": {
+        "actions": {
+          "rollover": { "max_age": "30d", "max_primary_shard_size": "10gb" }
+        }
+      },
+      "delete": {
+        "min_age": "90d",
+        "actions": { "delete": {} }
+      }
+    }
+  }
+}
+
+# 2) Mapping der anwendungsspezifischen Felder (wachalarm.*)
+PUT _component_template/wachalarm@custom
+{
+  "template": {
+    "settings": {
+      "index.lifecycle.name": "wachalarm-logs"
+    },
+    "mappings": {
+      "properties": {
+        "wachalarm": {
+          "properties": {
+            "einsatz_id":            { "type": "long" },
+            "einsatz_uuid":          { "type": "keyword" },
+            "wache_nr":              { "type": "keyword" },
+            "socket_id":             { "type": "keyword" },
+            "socket_fehlercode":     { "type": "keyword" },
+            "namespace":             { "type": "keyword" },
+            "rechte":                { "type": "keyword" },
+            "vollzugriff":           { "type": "boolean" },
+            "login_methode":         { "type": "keyword" },
+            "angemeldet_bleiben":    { "type": "boolean" },
+            "ziel_benutzer":         { "type": "keyword" },
+            "ziel_benutzer_id":      { "type": "keyword" },
+            "ziel_id":               { "type": "keyword" },
+            "passwort_geaendert":    { "type": "boolean" },
+            "anzahl_wachen":         { "type": "integer" },
+            "anzahl_einsatzmittel":  { "type": "integer" },
+            "anzahl_rueckmeldungen": { "type": "integer" },
+            "tts_provider":          { "type": "keyword" },
+            "port":                  { "type": "integer" },
+            "node_version":          { "type": "keyword" },
+            "osrm_aktiv":            { "type": "boolean" },
+            "dev_log":               { "type": "boolean" },
+            "standardwerte":         { "type": "keyword" },
+            "netzkopplung": {
+              "properties": {
+                "status":      { "type": "byte" },
+                "status_text": { "type": "keyword" },
+                "erreichbar":  { "type": "keyword" },
+                "geprueft":    { "type": "short" }
+              }
+            },
+            "metriken": {
+              "properties": {
+                "sockets_waip":                     { "type": "integer" },
+                "sockets_dbrd":                     { "type": "integer" },
+                "speicher_rss_bytes":               { "type": "long" },
+                "speicher_heap_bytes":              { "type": "long" },
+                "eventloop_verzoegerung_mittel_ms": { "type": "float" },
+                "eventloop_verzoegerung_p99_ms":    { "type": "float" },
+                "eventloop_verzoegerung_max_ms":    { "type": "float" },
+                "laufzeit_s":                       { "type": "long" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+# 3) Index-Template für den Data Stream logs-wachalarm-*
+#    Nutzt die mitgelieferten Bausteine für Logs und ECS, Priorität über dem Standard-Template "logs" (100)
+PUT _index_template/logs-wachalarm
+{
+  "index_patterns": ["logs-wachalarm-*"],
+  "data_stream": {},
+  "priority": 200,
+  "composed_of": ["logs@mappings", "logs@settings", "ecs@mappings", "wachalarm@custom"],
+  "_meta": { "description": "Sicherheits- und Stabilitätsereignisse Wachalarm IP-Web" }
+}
+
+# Hinweis Einzelknoten: Ohne zweiten Knoten bleibt das Replikat unzugewiesen (Status "yellow").
+# Dann in Schritt 2 unter "settings" zusätzlich "index.number_of_replicas": 0 eintragen.
+
+# 4) API-Key für Filebeat – darf nur in logs-wachalarm-* schreiben
+#    Aus der Antwort "id" und "api_key" als "id:api_key" in den Filebeat-Keystore übernehmen.
+POST _security/api_key
+{
+  "name": "filebeat-wachalarm",
+  "role_descriptors": {
+    "wachalarm_writer": {
+      "cluster": ["monitor", "read_ilm", "read_pipeline"],
+      "indices": [
+        {
+          "names": ["logs-wachalarm-*"],
+          "privileges": ["create_doc", "auto_configure", "view_index_metadata"]
+        }
+      ]
+    }
+  },
+  "metadata": { "application": "wachalarm" }
+}
+
+# 5) Kontrolle nach dem Start von Filebeat
+GET _data_stream/logs-wachalarm-default
+GET logs-wachalarm-default/_search
+{
+  "size": 5,
+  "sort": [{ "@timestamp": "desc" }]
+}
