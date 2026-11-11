@@ -367,9 +367,19 @@ module.exports = (fs, logger, sql, app_cfg) => {
         throw new Error(`TTS nicht verfügbar (Provider: ${providerKey})`);
       }
 
+      const tts_start = Date.now();
       const synthesis = ttsProvider.createTTS(tts_text, wav_tts, mp3_tmp, mp3_tts, mp3_bell)
         .then(() => {
           if (dev) logger.log("log", `TTS tts_erstellen: Erfolgreich abgeschlossen. URL=${mp3_url}`);
+          // Dauer der Sprachsynthese protokollieren (ohne Ansagetext)
+          logger.event(`Sprachansage für Einsatz ${einsatzdaten.id} (Wache ${wachen_nr}) in ${Date.now() - tts_start} ms erzeugt.`, {
+            action: "tts-erzeugt",
+            category: "process",
+            type: "creation",
+            outcome: "success",
+            duration_ms: Date.now() - tts_start,
+            wachalarm: { tts_provider: providerKey, einsatz_id: einsatzdaten.id, wache_nr: String(wachen_nr) },
+          });
           return mp3_url;
         })
         .finally(() => _ttsInProgress.delete(id));
@@ -381,7 +391,15 @@ module.exports = (fs, logger, sql, app_cfg) => {
       const bkp_mp3_bell =
         app_cfg.global.mediapath +
         (einsatzdaten.einsatzart === "Brandeinsatz" || einsatzdaten.einsatzart === "Hilfeleistungseinsatz" ? "bell_long.mp3" : "bell_short.mp3");
-      logger.log("warn", `TTS-Erstellung fehlgeschlagen, sende nur Gong. Fehler: ${error.message}`);
+      logger.event(`TTS-Erstellung fehlgeschlagen, sende nur Gong. Fehler: ${error.message}`, {
+        level: "warn",
+        action: "tts-erzeugt",
+        category: "process",
+        type: ["creation", "error"],
+        outcome: "failure",
+        error: error,
+        wachalarm: { tts_provider: app_cfg.tts && app_cfg.tts.provider, einsatz_id: einsatzdaten && einsatzdaten.id, wache_nr: String(wachen_nr) },
+      });
       return bkp_mp3_bell;
     }
   };

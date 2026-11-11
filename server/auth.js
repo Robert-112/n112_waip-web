@@ -59,7 +59,14 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     if (received.length === expected.length && crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected))) {
       return next();
     }
-    logger.log("warn", `Formular ${req.path} mit ungültigem CSRF-Token verworfen.`);
+    logger.event(`Formular ${req.path} mit ungültigem CSRF-Token verworfen.`, {
+      ...logger.from_req(req),
+      level: "warn",
+      action: "csrf-abgelehnt",
+      category: "web",
+      type: "denied",
+      outcome: "failure",
+    });
     const target = csrf_redirects[req.path] || csrf_redirects["/" + req.path.split("/")[1]] || "/";
     const msg = "Das Formular war nicht mehr gültig (z.B. nach längerer Wartezeit). Bitte erneut versuchen.";
     res.redirect(target + (target === "/" ? "" : "?error=" + encodeURIComponent(msg)));
@@ -95,20 +102,43 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     new LocalStrategy(
       {
         usernameField: "user",
+        passReqToCallback: true,
       },
-      async (user, password, done) => {
+      async (req, user, password, done) => {
+        // Fehlgeschlagene Anmeldung protokollieren. Ein unbekannter Benutzername wird nicht gespeichert,
+        // weil darin versehentlich ein Passwort stehen kann.
+        const login_failed = (reason, user_name) => {
+          logger.event(`Anmeldung fehlgeschlagen (${reason}) von ${logger.from_req(req).client_ip}.`, {
+            ...logger.from_req(req),
+            user: user_name ? { name: user_name } : undefined,
+            level: "warn",
+            action: "login",
+            category: "authentication",
+            type: "start",
+            outcome: "failure",
+            reason: reason,
+            wachalarm: { login_methode: "passwort" },
+          });
+        };
         try {
           // Verschlüsseltes Passwort aus DB abfragen
           const row = await sql.auth_localstrategy_cryptpassword(user);
-          if (!row) return done(null, false);
+          if (!row) {
+            login_failed("benutzer-unbekannt");
+            return done(null, false);
+          }
           // Passwort-Hash mit dem aus der DB vergleichen
           const res = await bcrypt.compare(password, row.password);
-          if (!res) return done(null, false);
+          if (!res) {
+            login_failed("passwort-falsch", user);
+            return done(null, false);
+          }
           // Benutzerdaten zurückgeben
           const userRow = await sql.auth_localstrategy_userid(user);
           return done(null, userRow);
         } catch (error) {
           logger.log("error", "Fehler bei der Benutzer-Authentifizierung: " + error);
+          return done(error);
         }
       }
     )
@@ -138,6 +168,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         return done(null, false);
       } catch (error) {
         logger.log("error", "Fehler bei der Authentifizierung mit Client-Zertifikat: " + error);
+        return done(error);
       }
     })
   );
@@ -170,6 +201,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
       }
     } catch (error) {
       logger.log("error", "Fehler bei passport.deserializeUser: " + error);
+      return done(error);
     }
   });
 
@@ -243,6 +275,18 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
 
   const invalid_permissions_msg = "Ungültige Berechtigungen! Erlaubt sind 'admin' oder Wachennummern, z.B. 52,6601.";
 
+  // Änderungen an Benutzern protokollieren (ausführender Admin steht in user.name)
+  const iam_event = (req, message, action, type, wachalarm) => {
+    logger.event(message, {
+      ...logger.from_req(req),
+      action: action,
+      category: "iam",
+      type: ["user", type],
+      outcome: "success",
+      wachalarm: wachalarm,
+    });
+  };
+
   const createUser = async (req, res) => {
     try {
       const permissions = normalize_permissions(req.body.permissions);
@@ -252,6 +296,10 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
       const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
       const result = await sql.auth_create_new_user(req.body.username, hash, req.body.description || "", permissions, req.body.ip);
       if (result) {
+        iam_event(req, `Benutzer ${req.body.username} wurde von ${req.user.user} angelegt (Rechte: ${permissions}).`, "user-angelegt", "creation", {
+          ziel_benutzer: req.body.username,
+          rechte: permissions,
+        });
         return res.redirect(
           "/adm_edit_users?success=" + encodeURIComponent("Neuer Benutzer wurde angelegt.")
         );
@@ -276,6 +324,10 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
       } else {
         const result = await sql.auth_deleteUser(req.body.id);
         if (result) {
+          iam_event(req, `Benutzer ${req.body.username} (ID ${req.body.id}) wurde von ${req.user.user} gelöscht.`, "user-geloescht", "deletion", {
+            ziel_benutzer: req.body.username,
+            ziel_benutzer_id: String(req.body.id),
+          });
           return res.redirect(
             "/adm_edit_users?success=" +
               encodeURIComponent("Benutzer '" + req.body.username + "' wurde gelöscht!")
@@ -323,6 +375,11 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
 
       const result = await sql.auth_editUser(id, hash, req.body.description || "", permissions, req.body.ip || "");
       if (result) {
+        iam_event(req, `Benutzer-ID ${id} wurde von ${req.user.user} geändert (Rechte: ${permissions}${hash ? ", Passwort geändert" : ""}).`, "user-geaendert", "change", {
+          ziel_benutzer_id: String(id),
+          rechte: permissions,
+          passwort_geaendert: hash !== null,
+        });
         const successMsg = messages.concat(["Benutzer aktualisiert."]).join(" ");
         return res.redirect(
           "/adm_edit_users?success=" + encodeURIComponent(successMsg)

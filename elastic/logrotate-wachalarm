@@ -1,0 +1,18 @@
+# Log-Rotation für das strukturierte Wachalarm-Log
+# Ziel: /etc/logrotate.d/wachalarm  (Benutzer/Gruppe an den Wachalarm-Dienst anpassen)
+#
+# copytruncate: Der Wachalarm hält die Datei offen und schreibt per O_APPEND weiter,
+# ein Neustart der Anwendung ist nicht nötig. Filebeat erkennt das Kürzen der Datei.
+# Die rotierten Dateien (*.ndjson.1, *.gz) liest Filebeat nicht erneut ein.
+
+/var/log/wachalarm/*.ndjson {
+    su wachalarm wachalarm
+    daily
+    maxsize 100M
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

@@ -112,3 +112,6 @@ views_new/*
 misc/*
 !misc/server.cert
 !misc/server.key
+
+# Claude
+.claude/

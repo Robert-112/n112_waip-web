@@ -1,6 +1,27 @@
 module.exports = (io, sql, app_cfg, logger, waip) => {
   // Socket.IO-Konfigurationen
 
+  // Fehlgeschlagene Verbindungsaufbauten (z.B. unbekannte Session-ID nach Neustart, ungültiger Transport)
+  io.engine.on("connection_error", (err) => {
+    const fields = err.req ? logger.from_req(err.req) : {};
+    logger.event(`Socket.IO-Verbindungsfehler von ${fields.client_ip}: ${err.message} (Code ${err.code})`, {
+      ...fields,
+      level: "warn",
+      action: "socket-verbindungsfehler",
+      category: "network",
+      type: ["connection", "error"],
+      outcome: "failure",
+      reason: err.message,
+      wachalarm: { socket_fehlercode: err.code },
+    });
+  });
+
+  // Gemeinsame Felder fuer Ereignisse eines Alarmmonitors/Dashboards
+  const socket_fields = (socket, remote_ip, extra) => ({
+    ...logger.from_socket(socket, remote_ip),
+    wachalarm: { socket_id: socket.id, namespace: socket.nsp.name, wache_nr: socket.data.wachen_nr, ...extra },
+  });
+
   // Wachalarm
   const nsp_waip = io.of("/waip");
   nsp_waip.on("connection", (socket) => {
@@ -11,6 +32,7 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
 
     // Client-IP ermitteln
     const remote_ip = getRemoteIp(socket);
+    const connected_at = Date.now();
 
     // Session-Reload: haelt die Session im Store am Leben damit sie nicht ablaeuft.
     // Aktualisiert zusaetzlich socket.data.user, damit Berechtigungsaenderungen
@@ -44,7 +66,15 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
           }
         } else {
           const user_name = socket.data.user ? socket.data.user.user : "Gast";
-          logger.log("debug", `Fehler beim Erneuern der Session fuer ${remote_ip} (${socket.id} ${user_name}): ${err.message}`);
+          logger.event(`Fehler beim Erneuern der Session fuer ${remote_ip} (${socket.id} ${user_name}), Verbindung wird zurueckgesetzt: ${err.message}`, {
+            ...socket_fields(socket, remote_ip),
+            level: "warn",
+            action: "session-erneuerung",
+            category: "session",
+            type: "error",
+            outcome: "failure",
+            error: err,
+          });
           socket.emit("io.error", `Fehler beim Erneuern der Session fuer (${socket.id}), Verbindung wird zurueckgesetzt!`);
           socket.conn.close();
         }
@@ -58,7 +88,15 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
 
     // trennen protokollieren und Client-Socket aus DB löschen
     socket.on("disconnect", (reason, details) => {
-      logger.log("log", `Alarmmonitor von ${remote_ip} (${socket.id}) geschlossen. (Grund: ${reason}, Details: ${details})`);
+      logger.event(`Alarmmonitor von ${remote_ip} (${socket.id}) geschlossen. (Grund: ${reason})`, {
+        ...socket_fields(socket, remote_ip),
+        action: "monitor-getrennt",
+        category: ["network", "session"],
+        type: ["connection", "end"],
+        outcome: "success",
+        reason: reason,
+        duration_ms: Date.now() - connected_at,
+      });
       sql.db_client_delete(socket);
       clearInterval(session_timer);
     });
@@ -94,7 +132,14 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         // Raum der Wache beitreten
         socket.data.wachen_nr = String(wachen_nr);
         socket.join(wachen_nr);
-        logger.log("waip", `Alarmmonitor Nr. ${wachen_nr} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);
+        logger.event(`Alarmmonitor Nr. ${wachen_nr} wurde von ${remote_ip} (${socket.id}) aufgerufen.`, {
+          ...socket_fields(socket, remote_ip, { rechte: socket.data.user.permissions }),
+          db: "waip",
+          action: "monitor-verbunden",
+          category: ["network", "session"],
+          type: ["connection", "start"],
+          outcome: "success",
+        });
 
         // anzuzeigenden Einsatz für die aktuelle Wache und den aktuellen User abfragen
         const waip_data = await sql.db_einsatz_for_client_ermitteln(socket, wachen_nr);
@@ -131,7 +176,15 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         }
       } catch (error) {
         const logMessage = `Fehler beim Aufruf des Alarmmonitors Nr. ${wachen_nr} von ${remote_ip} (${socket.id})! ${error}`;
-        logger.log("error", logMessage);
+        logger.event(logMessage, {
+          ...socket_fields(socket, remote_ip, { wache_nr: String(wachen_nr).slice(0, 64) }),
+          level: "warn",
+          action: "monitor-verbunden",
+          category: ["network", "session"],
+          type: ["connection", "start"],
+          outcome: "failure",
+          error: error,
+        });
 
         // Fehlermeldung senden und Verbindung trennen
         socket.emit("io.error", logMessage);
@@ -169,9 +222,24 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         // falls der Client-Eintrag noch nicht existiert (z.B. direkt nach einem Reconnect)
         socket.data.netzkopplung = { status: status, erreichbar: hosts.length > 0 ? hosts.join(", ") : null };
         await sql.db_client_update_netzkopplung(socket);
-        if (status > 0) {
-          logger.log("warn", `Client ${remote_ip} (${socket.id}) erreicht ${status === 1 ? "alle" : "einzelne"} Internet-Testadressen (${hosts.join(", ")}), Verdacht auf Netzkopplung.`);
-        }
+        // Jede Pruefung protokollieren, damit der Verlauf je Client nachvollziehbar ist
+        const status_text = ["nein", "ja", "teilweise"][status];
+        logger.event(
+          status > 0
+            ? `Client ${remote_ip} (${socket.id}) erreicht ${status === 1 ? "alle" : "einzelne"} Internet-Testadressen (${hosts.join(", ")}), Verdacht auf Netzkopplung.`
+            : `Netzkopplungspruefung von ${remote_ip} (${socket.id}): keine Internet-Testadresse erreichbar.`,
+          {
+            ...socket_fields(socket, remote_ip, {
+              netzkopplung: { status: status, status_text: status_text, erreichbar: hosts.length > 0 ? hosts : undefined, geprueft: urls.length },
+            }),
+            level: status > 0 ? "warn" : "info",
+            kind: status > 0 ? "alert" : "event",
+            action: "netzkopplung-pruefung",
+            category: ["network", "intrusion_detection"],
+            type: status > 0 ? ["connection", "indicator"] : "info",
+            outcome: "success",
+          }
+        );
       } catch (error) {
         logger.log("error", `Fehler bei Verarbeitung der Netzkopplungspruefung von ${remote_ip} (${socket.id}): ${error.message}`);
       }
@@ -186,6 +254,7 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
 
     // Client-IP ermitteln
     const remote_ip = getRemoteIp(socket);
+    const connected_at = Date.now();
 
     // Verbindungsfehler protokollieren
     socket.on("connection_error", (err) => {
@@ -194,7 +263,15 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
 
     // trennen protokollieren und Client-Socket aus DB löschen
     socket.on("disconnect", (reason, details) => {
-      logger.log("log", `Dashboard von ${remote_ip} (${socket.id}) geschlossen. (Grund: ${reason}, Details: ${details})`);
+      logger.event(`Dashboard von ${remote_ip} (${socket.id}) geschlossen. (Grund: ${reason})`, {
+        ...socket_fields(socket, remote_ip),
+        action: "dashboard-getrennt",
+        category: ["network", "session"],
+        type: ["connection", "end"],
+        outcome: "success",
+        reason: reason,
+        duration_ms: Date.now() - connected_at,
+      });
       sql.db_client_delete(socket);
     });
 
@@ -223,7 +300,14 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
 
           // Dashboard/Einsatz scheint vorhanden/plausibel, Socket-Room beitreten
           socket.join(dbrd.uuid);
-          logger.log("dbrd", `Dashboard mit der UUID ${uuid} wurde von ${remote_ip} (${socket.id}) aufgerufen.`);
+          logger.event(`Dashboard mit der UUID ${uuid} wurde von ${remote_ip} (${socket.id}) aufgerufen.`, {
+            ...socket_fields(socket, remote_ip, { einsatz_uuid: dbrd.uuid, einsatz_id: dbrd.id, rechte: socket.data.user.permissions }),
+            db: "dbrd",
+            action: "dashboard-verbunden",
+            category: ["network", "session"],
+            type: ["connection", "start"],
+            outcome: "success",
+          });
 
           // Einsatz an Dashboard senden
           waip.dbrd_verteilen_socket(dbrd.uuid, socket);
@@ -238,7 +322,15 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
         }
       } catch (error) {
         const logMessage = `Fehler beim Aufruf des Dashboards mit der UUID ${uuid} von ${remote_ip} (${socket.id})! ${error}`;
-        logger.log("error", logMessage);
+        logger.event(logMessage, {
+          ...socket_fields(socket, remote_ip, { einsatz_uuid: typeof uuid === "string" ? uuid.slice(0, 64) : undefined }),
+          level: "warn",
+          action: "dashboard-verbunden",
+          category: ["network", "session"],
+          type: ["connection", "start"],
+          outcome: "failure",
+          error: error,
+        });
 
         // Fehlermeldung senden und Verbindung trennen
         socket.emit("io.error", logMessage);
