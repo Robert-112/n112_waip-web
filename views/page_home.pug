@@ -2,87 +2,76 @@ extends layout
 
 block content
   main(role='main')
-    .px-3.py-4.p-sm-5.mb-4.bg-dark.rounded-3
-      .container      
-        h1.text-danger.display-4= public.app_name
-        h5.text-muted &copy; #{public.company}
-        hr
-        a Dieser Webdienst zeigt Wachalarme im Vollbild an (inkl. synthetischer Sprachdurchsage und Karte).
-        br
-        a Zusätzlich werden Rückmeldungen der Einsatzkräfte dargestellt, welche über eine App abgegeben wurden.
     .container
-      .row
-        if public.show_login
-          .col-12
-            .border-top.mx-3.mb-3
-          .col-12.p-3
-            if !user
-              .card.border-warning
-                .card-header
-                  h4.card-title.text-warning Sie sind nicht angemeldet 
-                .card-body
-                  p Auch ohne Anmeldung haben Sie Zugriff auf alle Funktionen, jedoch werden datenschutzrelevante Inhalte ausgeblendet.
-                  p.text-muted Um mehr Funktionen nutzen zu können, melden Sie sich bitte #[a(href="/login") hier] an, sofern Sie über Zugangsdaten verfügen.
-            else
-              .card.bg-primary
-                .card-header
-                  h4.card-title.text-info='Sie sind als Nutzer \"'+user.user+'\" angemeldet'
-                if user.permissions !== 'admin'
-                  .card-body
-                    if user_dbrds && user_dbrds.length > 0
-                      p Im Dashboard stehen Ihnen folgende Einsätze zur vollständigen Ansicht zur Verfügung:
-                      ul 
-                        each val in user_dbrds
-                            li
-                              a(href="/dbrd/" + val.uuid)= val.einsatzart + ' - ' + val.stichwort + ' - ' + val.ort + (val.ortsteil ? ', ' + val.ortsteil : '')
-                    else
-                      p Derzeit gibt es keine Einsätze im Dashboard, für die Sie zur vollständigen Ansicht berechtigt sind.
-                .card-footer.bg-dark
-                  if user.permissions == 'admin'
-                    p Sie sind Administrator und haben somit vollst&auml;ndigen Zugriff auf #[a(href="/waip/0") alle] Wachalarme
-                  else
-                    p Entsprechend Ihrer Berechtigungen haben Sie vollen Zugriff auf folgende Alarmmonitore:
-                    ul
+      //- Kopfbereich
+      .py-4.py-md-5
+        h1.display-5.fw-bold.text-danger.mb-3= public.app_name
+        p.lead.text-body-secondary.mb-0.col-lg-9
+          | Dieser Webdienst zeigt Wachalarme im Vollbild an (inkl. synthetischer Sprachdurchsage und Karte).
+          | Zusätzlich werden Rückmeldungen der Einsatzkräfte dargestellt, welche über eine App abgegeben wurden.
+
+      //- Anmeldestatus
+      if public.show_login
+        if !user
+          .card.border-0.border-start.border-4.border-warning.mb-4(role='status')
+            .card-body
+              h2.h5.card-title.text-warning.d-flex.align-items-center.gap-2
+                i.bi.bi-exclamation-triangle-fill(aria-hidden='true')
+                span Sie sind nicht angemeldet
+              p.card-text.mb-0
+                | Auch ohne Anmeldung haben Sie Zugriff auf alle Funktionen, jedoch werden datenschutzrelevante Inhalte ausgeblendet.
+                | Um mehr Funktionen nutzen zu können, #[a(href="/login") melden Sie sich bitte an], sofern Sie über Zugangsdaten verfügen.
+        else
+          .card.border-0.border-start.border-4.border-info.mb-4
+            .card-body
+              h2.h5.card-title.text-info.d-flex.align-items-center.gap-2
+                i.bi.bi-person-check-fill(aria-hidden='true')
+                span= 'Angemeldet als „' + user.user + '“'
+              if user.permissions == 'admin'
+                p.mb-0 Sie sind Administrator und haben somit vollst&auml;ndigen Zugriff auf #[a(href="/waip/0") alle Wachalarme].
+              else
+                .row.g-4
+                  .col-12.col-md-6
+                    p.text-body-secondary.mb-2 Alarmmonitore mit vollem Zugriff:
+                    ul.mb-0
                       each item in user_waips
                         if item.typ == 'leitstelle'
-                          li 
-                            a(href="/waip/" + item.nr)= item.name  
+                          li
+                            a(href="/waip/" + item.nr)= item.name
                         if item.typ == 'kreis'
-                          li 
-                            a(href="/waip/" + item.nr)='Landkreis ' + item.name 
+                          li
+                            a(href="/waip/" + item.nr)='Landkreis ' + item.name
                         if item.typ == 'traeger'
-                          li 
-                            a(href="/waip/" + item.nr)='Aufgabenträger ' + item.name 
+                          li
+                            a(href="/waip/" + item.nr)='Aufgabenträger ' + item.name
                         if item.typ == 'wache'
-                          li 
-                            a(href="/waip/" + item.nr)='Wache ' + item.name 
-          .col-12
-            .border-top.m-3
-        .col-12.col-md-4.d-flex.align-self-stretch.p-3
-          .card.w-100.h-100
-            .card-header.text-center
-              .display-2.ion-md-desktop
-              h4.text-danger Alarmmonitor
-            .card-body
-              p Zeigt Wachalarme inkl. eingehender Rückmeldungen im Vollbild an. Es können verschiedene Monitore ausgewählt werden.
-            .card-footer.text-center
-              a.btn.btn-outline-info.ion-md-arrow-round-forward(href='/waip/', role='button')  Alarmmonitor aufrufen                
-        .col-12.col-md-4.d-flex.align-self-stretch.p-3
-          .card.w-100.h-100.bg-dark
-            .card-header.text-center
-              .display-2.ion-md-clipboard
-              h4.text-danger Dashboard
-            .card-body
-              p Zeigt eine Gesamtübersicht pro Einsatz an und bietet detailierte Informationen über die alarmierten Kräfte inkl. deren Rückmeldungen.
-            .card-footer.text-center
-              a.btn.btn-outline-info.ion-md-arrow-round-forward(href='/dbrd/', role='button')  Dashboard aufrufen
-        .col-12.col-md-4.d-flex.align-self-stretch.p-3
-          .card.w-100.h-100
-            .card-header.text-center
-              .display-2.ion-md-paper-plane
-              h4.text-warning Rückmeldung
-            .card-body
-              p Mithilfe der Rückmeldefunktion (App) können Einsatzkräfte mitteilen ob und in welcher Funktion Sie am Einsatz teilnehmen.
-              p.text-muted Details zur Funktion können auf Anfrage bereitgestellt werden.  
-        
-        
+                          li
+                            a(href="/waip/" + item.nr)='Wache ' + item.name
+                  .col-12.col-md-6
+                    if user_dbrds && user_dbrds.length > 0
+                      p.text-body-secondary.mb-2 Einsätze im Dashboard mit vollständiger Ansicht:
+                      ul.mb-0
+                        each val in user_dbrds
+                          li
+                            a(href="/dbrd/" + val.uuid)= val.einsatzart + ' - ' + val.stichwort + ' - ' + val.ort + (val.ortsteil ? ', ' + val.ortsteil : '')
+                    else
+                      p.text-body-secondary.mb-0 Derzeit gibt es keine Einsätze im Dashboard, für die Sie zur vollständigen Ansicht berechtigt sind.
+
+      //- Funktionen
+      .row.g-4.mb-4
+        .col-12.col-md-4
+          +kachel('Alarmmonitor', 'danger', 'bi-display')
+            p.card-text Zeigt Wachalarme inkl. eingehender Rückmeldungen im Vollbild an. Es können verschiedene Monitore ausgewählt werden.
+            a.btn.btn-outline-info.mt-auto.align-self-start(href='/waip/', role='button')
+              | Alarmmonitor aufrufen
+              i.bi.bi-arrow-right.ms-2(aria-hidden='true')
+        .col-12.col-md-4
+          +kachel('Dashboard', 'danger', 'bi-clipboard')
+            p.card-text Zeigt eine Gesamtübersicht pro Einsatz an und bietet detaillierte Informationen über die alarmierten Kräfte inkl. deren Rückmeldungen.
+            a.btn.btn-outline-info.mt-auto.align-self-start(href='/dbrd/', role='button')
+              | Dashboard aufrufen
+              i.bi.bi-arrow-right.ms-2(aria-hidden='true')
+        .col-12.col-md-4
+          +kachel('Rückmeldung', 'warning', 'bi-send')
+            p.card-text Mithilfe der Rückmeldefunktion (App) können Einsatzkräfte mitteilen, ob und in welcher Funktion sie am Einsatz teilnehmen.
+            p.card-text.text-body-secondary.small.mt-auto.mb-0 Details zur Funktion können auf Anfrage bereitgestellt werden.

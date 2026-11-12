@@ -45,7 +45,7 @@
   // Ankunftszeit erreicht: Restzeit durch Haken ersetzen, Name (ggf. mit Ticker) bleibt stehen
   function rmld_angekommen(zeit) {
     zeit.textContent = "";
-    zeit.classList.add("ion-md-checkmark-circle");
+    zeit.classList.add("bi-check-circle-fill");
   }
 
   // Ticker für alle Namen unterhalb von bereich (Standard: ganze Seite) setzen oder entfernen.

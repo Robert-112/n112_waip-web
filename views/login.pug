@@ -3,49 +3,39 @@ extends layout
 block content
   main(role='main')
     .container
-      #info.row
-        .col-md-3
-        .col-md-6.col-xs-12
-          if error
-            .card.text-white.bg-danger.mb-3
-              .card-body
-                .row
-                  .col-9
-                    h5.card-title.ion-md-close-circle-outline  Fehler
-                    p.card-text=error
-                  .col-3.text-end
-                    button#close_info.btn.btn-info.ion-md-close
-      .row
-        .col-xs-12.col-md-6.mx-auto
-          .card.my-3
-            .card-body
-              h5.card-title.text-center Benutzeranmeldung
+      .row.justify-content-center
+        .col-12.col-sm-10.col-md-7.col-lg-5.col-xl-4
+          .text-center.mt-4.mb-4
+            .display-6.text-info.mb-2
+              i.bi.bi-person-circle(aria-hidden='true')
+            h1.h3.mb-1 Anmelden
+            p.text-body-secondary.mb-0 Die Zugangsdaten erhalten Sie von den Administratoren.
+          +meldungen(error, success)
+          .card.border-0
+            .card-body.p-4
               form(action='/login', method='POST')
                 input(type="hidden" name="_csrf" value=csrf_token)
                 .mb-3
                   label.form-label(for='login-user') Benutzername
-                  input#login-user.form-control(type='text' name='user'  placeholder='Benutzername eingeben' required='' autofocus='')
-                  .form-text.text-muted Der Benutzer wird Ihnen von den Administratoren mitgeteilt.
+                  input#login-user.form-control(type='text' name='user' autocomplete='username' placeholder='Benutzername eingeben' required='' autofocus='')
                 .mb-3
                   label.form-label(for='login-password') Passwort
-                  input#login-password.form-control(type='password' name='password' placeholder='Passwort' required='')  
-                .mb-3
-                  .form-check.form-switch
-                    input#rembemerme.form-check-input(type='checkbox' role='switch' name='rememberme' checked='')
-                    label.form-check-label.text-warning(for='rembemerme') Anmeldung dauerhaft speichern
-                button.btn.btn-lg.btn-primary.w-100.text-uppercase(type='submit') anmelden
-        .col-xs-12.col-md-6.mx-auto
-          .card.my-3
-            .card-body
-              h5.card-title.text-center Geräteanmeldung
-              form(action='/login_cert', method='GET')
-                .mb-3
-                  .form-text.text-muted Diese Anmeldung erlaubt Ihnen ein Login ohne Benutzername / Kennwort. 
-                    | Sie ist für Endgeräte gedacht, welche zentral über ein MDM (Mobile-Device-Management-System) verwaltet werden.
-                  .form-text.text-muted Die Berechtigung des Nutzers wird über das Zertifikat geprüft.
-                button.btn.btn-lg.btn-primary.w-100.text-uppercase(type='submit') anmelden
-
-  script.
-    $('#close_info').on('click', function(event) {
-      $('#info').addClass( 'd-none' )
-    });
+                  input#login-password.form-control(type='password' name='password' autocomplete='current-password' placeholder='Passwort' required='')
+                .form-check.form-switch.mb-4
+                  input#rembemerme.form-check-input(type='checkbox' role='switch' name='rememberme' checked='')
+                  label.form-check-label(for='rembemerme') Anmeldung dauerhaft speichern
+                button.btn.btn-primary.btn-lg.w-100(type='submit')
+                  i.bi.bi-box-arrow-in-right.me-2(aria-hidden='true')
+                  | Anmelden
+          // Geräteanmeldung per Zertifikat (MDM-verwaltete Endgeräte) als Alternative
+          .d-flex.align-items-center.gap-3.my-4.text-body-secondary
+            hr.flex-grow-1.my-0
+            span.small oder
+            hr.flex-grow-1.my-0
+          form(action='/login_cert', method='GET')
+            button.btn.btn-outline-light.w-100(type='submit')
+              i.bi.bi-shield-lock.me-2(aria-hidden='true')
+              | Mit Gerätezertifikat anmelden
+          p.form-text.text-center.mt-2.mb-4
+            | Für zentral per MDM (Mobile-Device-Management) verwaltete Endgeräte – ohne Benutzername und Kennwort.
+            | Die Berechtigung wird über das Zertifikat geprüft.

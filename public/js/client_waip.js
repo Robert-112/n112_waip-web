@@ -127,11 +127,11 @@ function indicateAudioBlocked() {
     if (typeof sound_off !== "undefined" && sound_off === true) {
       return; // still bleiben
     }
-    let icon = document.querySelector(".ion-md-volume-off") || document.querySelector(".ion-md-volume-high");
+    let icon = document.querySelector(".bi-volume-mute-fill") || document.querySelector(".bi-volume-up-fill");
     if (!icon) return;
-    if (icon.classList.contains("ion-md-volume-high")) {
-      icon.classList.remove("ion-md-volume-high");
-      icon.classList.add("ion-md-volume-off");
+    if (icon.classList.contains("bi-volume-up-fill")) {
+      icon.classList.remove("bi-volume-up-fill");
+      icon.classList.add("bi-volume-mute-fill");
     }
     // Blinken starten
     startBlink(icon);
@@ -145,16 +145,16 @@ function indicateAudioBlocked() {
 function resetAudioUi() {
   let tmp_element;
   // Pause-Symbol in Play-Symbol
-  tmp_element = document.querySelector(".ion-md-pause");
-  if (tmp_element && tmp_element.classList.contains("ion-md-pause")) {
-    tmp_element.classList.remove("ion-md-pause");
-    tmp_element.classList.add("ion-md-play-circle");
+  tmp_element = document.querySelector(".bi-pause-circle-fill");
+  if (tmp_element && tmp_element.classList.contains("bi-pause-circle-fill")) {
+    tmp_element.classList.remove("bi-pause-circle-fill");
+    tmp_element.classList.add("bi-play-circle-fill");
   }
   // Lautsprecher-Symbol in Leise-Symbol
-  tmp_element = document.querySelector(".ion-md-volume-high");
-  if (tmp_element && tmp_element.classList.contains("ion-md-volume-high")) {
-    tmp_element.classList.remove("ion-md-volume-high");
-    tmp_element.classList.add("ion-md-volume-off");
+  tmp_element = document.querySelector(".bi-volume-up-fill");
+  if (tmp_element && tmp_element.classList.contains("bi-volume-up-fill")) {
+    tmp_element.classList.remove("bi-volume-up-fill");
+    tmp_element.classList.add("bi-volume-mute-fill");
   }
   // Button Hintergrund entfernen, falls vorhanden
   tmp_element = document.querySelector("#volume");
@@ -224,7 +224,7 @@ function showAudioBlockedToast() {
     container.classList.remove("d-none");
     toast.classList.add("show");
     // Icon blinken lassen
-    const iconInToast = toast.querySelector(".ion-md-volume-off");
+    const iconInToast = toast.querySelector(".bi-volume-mute-fill");
     if (iconInToast) startBlink(iconInToast);
     audioBlockedToast = toast;
   } catch (e) {
@@ -271,16 +271,16 @@ waipAudio.addEventListener("play", function () {
   stopAllBlinks();
   audioBlocked = false; // Wiedergabe läuft
   // Pause-Symbol in Play-Symbol
-  tmp_element = document.querySelector(".ion-md-play-circle");
-  if (tmp_element && tmp_element.classList.contains("ion-md-play-circle")) {
-    tmp_element.classList.remove("ion-md-play-circle");
-    tmp_element.classList.add("ion-md-pause");
+  tmp_element = document.querySelector(".bi-play-circle-fill");
+  if (tmp_element && tmp_element.classList.contains("bi-play-circle-fill")) {
+    tmp_element.classList.remove("bi-play-circle-fill");
+    tmp_element.classList.add("bi-pause-circle-fill");
   }
   // Lautsprecher-Symbol in Leise-Symbol
-  tmp_element = document.querySelector(".ion-md-volume-off");
-  if (tmp_element && tmp_element.classList.contains("ion-md-volume-off")) {
-    tmp_element.classList.remove("ion-md-volume-off");
-    tmp_element.classList.add("ion-md-volume-high");
+  tmp_element = document.querySelector(".bi-volume-mute-fill");
+  if (tmp_element && tmp_element.classList.contains("bi-volume-mute-fill")) {
+    tmp_element.classList.remove("bi-volume-mute-fill");
+    tmp_element.classList.add("bi-volume-up-fill");
   }
   // Button Hintergrund entfernen, falls vorhanden
   tmp_element = document.querySelector("#volume");
@@ -291,8 +291,8 @@ waipAudio.addEventListener("play", function () {
   removeAudioBlockedToast();
 });
 
-// Play/Pause Steuerung: Button mit ID #playpause oder direkt Icon mit Klasse .ion-md-pause
-$(document).on("click", "#playpause, .ion-md-pause", function (e) {
+// Play/Pause Steuerung: Button mit ID #playpause oder direkt Icon mit Klasse .bi-pause-circle-fill
+$(document).on("click", "#playpause, .bi-pause-circle-fill", function (e) {
   // Falls Audio läuft -> stoppen & zurücksetzen
   if (!waipAudio.paused && !waipAudio.ended) {
     waipAudio.pause();
@@ -756,7 +756,7 @@ socket.on("io.playtts", function (data) {
       .then(function () {
         // Automatic playback started!
         audio.play();
-        //$('.ion-md-volume-high').toggleClass('ion-md-pause');
+        //$('.bi-volume-up-fill').toggleClass('bi-pause-circle-fill');
       })
       .catch(function (error) {
         console.log("Automatic playback failed");
@@ -767,10 +767,10 @@ socket.on("io.playtts", function (data) {
         /*if (!tmp_element.classList.contains('btn-danger')) {
         tmp_element.classList.add('btn-danger');
       };*/
-        tmp_element = document.querySelector(".ion-md-volume-high");
-        if (tmp_element && tmp_element.classList.contains("ion-md-volume-high")) {
-          tmp_element.classList.remove("ion-md-volume-high");
-          tmp_element.classList.add("ion-md-volume-off");
+        tmp_element = document.querySelector(".bi-volume-up-fill");
+        if (tmp_element && tmp_element.classList.contains("bi-volume-up-fill")) {
+          tmp_element.classList.remove("bi-volume-up-fill");
+          tmp_element.classList.add("bi-volume-mute-fill");
         }
         indicateAudioBlocked();
       });
@@ -853,35 +853,35 @@ socket.on("io.new_waip", function (data) {
   switch (data.einsatzart) {
     case "Brandeinsatz":
       $("#einsatz_art").addClass("bg-danger");
-      $("#einsatz_stichwort").addClass("ion-md-flame");
+      $("#einsatz_stichwort").addClass("bi-fire");
       $("#rueckmeldung").removeClass("d-none");
       break;
     case "Hilfeleistungseinsatz":
       $("#einsatz_art").addClass("bg-info");
-      $("#einsatz_stichwort").addClass("ion-md-construct");
+      $("#einsatz_stichwort").addClass("bi-tools");
       $("#rueckmeldung").removeClass("d-none");
       break;
     case "Rettungseinsatz":
       $("#einsatz_art").addClass("bg-warning");
-      $("#einsatz_stichwort").addClass("ion-md-medkit");
+      $("#einsatz_stichwort").addClass("bi-heart-pulse-fill");
       break;
     case "Krankentransport":
       $("#einsatz_art").addClass("bg-success");
-      $("#einsatz_stichwort").addClass("ion-md-medical");
+      $("#einsatz_stichwort").addClass("bi-asterisk");
       break;
     default:
       $("#einsatz_art").addClass("bg-secondary");
-      $("#einsatz_stichwort").addClass("ion-md-information-circle");
+      $("#einsatz_stichwort").addClass("bi-info-circle-fill");
   }
   $("#einsatz_stichwort").text(" " + data.stichwort);
   // Sondersignal setzen
   $("#sondersignal").removeClass();
   switch (data.sondersignal) {
     case 1:
-      $("#sondersignal").addClass("ion-md-notifications");
+      $("#sondersignal").addClass("bi-bell-fill");
       break;
     default:
-      $("#sondersignal").addClass("ion-md-notifications-off");
+      $("#sondersignal").addClass("bi-bell-slash-fill");
   }
   // Ortsdaten zusammenstellen und setzen
   let small_ortsdaten;

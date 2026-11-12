@@ -3,9 +3,8 @@ extends ../layout
 block content
   main(role='main')
     .container-fluid
+      +seitenkopf('Laufende Einsätze', 'Sortiert nach Art und Ort.', 'bi-list-ul')
       .row
-        .col-12
-          h3 Einsätze sortiert nach Art und Ort
         .col-12        
           ol
             if dataSet && dataSet.length > 0

@@ -3,45 +3,21 @@ extends ../layout
 block content
   main(role='main')
     .container
-      #info.row
-        .col-md-3
-        .col-md-6.col-xs-12
-          if error
-            .card.text-white.bg-danger.mb-3
-              .card-body
-                .row
-                  .col-9
-                    h5.card-title.ion-md-close-circle-outline  Fehler
-                    p.card-text=error
-                  .col-3.text-end
-                    button#close_info.btn.btn-info.ion-md-close
-          if success
-            .card.text-white.bg-success.mb-3
-              .card-body
-                .row
-                  .col-9
-                    h5.card-title.ion-md-checkmark-circle-outline  Erfolg
-                    p.card-text=success
-                  .col-3.text-end
-                    button#close_info.btn.btn-info.ion-md-close
+      +seitenkopf('Einstellungen', 'Persönliche Einstellungen für Ihr Benutzerkonto.', 'bi-gear-fill')
+      +meldungen(error, success)
       .row
-        .col-12.p-3
-          .card.bg-dark
-            .card-body.text-muted.text-center
-              h3 Einstellungen
         .col-12
-          div.border-top.m-3
-        .col-12.mt-3
           .row
-            .col-12.border-dark.w-100.pb-3
-              .card
-                .card-header Anzeigezeit
-                .card-body
-                  .row
-                    .col-8
-                      p persönliche Anzeigezeit für Wachalarme
-                      p.text-info Wachalarme werden nach Ablauf der hier gesetzten Zeit automatisch ausgeblendet
-                    .col-4
+            .col-12.w-100.pb-3
+              .card.border-0
+                .card-body.p-4
+                  .row.g-3.align-items-center
+                    .col-12.col-md-8
+                      h2.h5.card-title.d-flex.align-items-center.gap-2
+                        i.bi.bi-clock-history(aria-hidden='true')
+                        span Anzeigezeit für Wachalarme
+                      p.card-text.text-body-secondary.mb-0 Wachalarme werden nach Ablauf der hier gesetzten Zeit automatisch ausgeblendet.
+                    .col-12.col-md-4
                       form(action="/einstellungen_zeit", method="POST")
                         input(type="hidden" name="_csrf" value=csrf_token)
                         .mb-3
@@ -53,8 +29,3 @@ block content
                                 option(selected)= i+1
                               else
                                 option= i+1              
-
-  script.
-    $('#close_info').on('click', function(event) {
-      $('#info').addClass( 'd-none' )
-    });

@@ -12,9 +12,8 @@ append head
 block content
   main(role='main')
     .container-fluid
+      +seitenkopf('Verbundene PCs und Benutzer', 'Alle jetzt verbundenen Clients und deren Status.', 'bi-globe')
       .row
-        .col-12
-          h3 Zeigt alle jetzt verbundenen Clients und deren Status an
         .col-12
           .table-responsive
             table#table_active_user.table.table-striped.table-bordered.table-hover.table-sm.w-100

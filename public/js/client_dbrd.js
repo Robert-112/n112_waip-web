@@ -69,7 +69,7 @@ var FullscreenControl = L.Control.extend({
     var container = L.DomUtil.create("div", "leaflet-bar");
     var btn = L.DomUtil.create("button", "btn btn-dark", container);
     btn.type = "button";
-    btn.innerHTML = '<span class="ion-md-expand"></span>';
+    btn.innerHTML = '<span class="bi-arrows-fullscreen"></span>';
     btn.title = "Karte vergrößern";
     L.DomEvent.on(btn, "click", function (e) {
       L.DomEvent.stopPropagation(e);
@@ -629,33 +629,33 @@ socket.on("io.Einsatz", function (data) {
   switch (data.einsatzart) {
     case "Brandeinsatz":
       $("#einsatz_art").addClass("bg-danger");
-      $("#einsatz_stichwort").addClass("ion-md-flame");
+      $("#einsatz_stichwort").addClass("bi-fire");
       break;
     case "Hilfeleistungseinsatz":
       $("#einsatz_art").addClass("bg-info");
-      $("#einsatz_stichwort").addClass("ion-md-construct");
+      $("#einsatz_stichwort").addClass("bi-tools");
       break;
     case "Rettungseinsatz":
       $("#einsatz_art").addClass("bg-warning");
-      $("#einsatz_stichwort").addClass("ion-md-medkit");
+      $("#einsatz_stichwort").addClass("bi-heart-pulse-fill");
       break;
     case "Krankentransport":
       $("#einsatz_art").addClass("bg-success");
-      $("#einsatz_stichwort").addClass("ion-md-medical");
+      $("#einsatz_stichwort").addClass("bi-asterisk");
       break;
     default:
       $("#einsatz_art").addClass("bg-secondary");
-      $("#einsatz_stichwort").addClass("ion-md-information-circle");
+      $("#einsatz_stichwort").addClass("bi-info-circle-fill");
   }
   $("#einsatz_stichwort").html(" " + data.stichwort);
   // Sondersignal setzen
   $("#sondersignal").removeClass();
   switch (data.sondersignal) {
     case 1:
-      $("#sondersignal").addClass("ion-md-notifications");
+      $("#sondersignal").addClass("bi-bell-fill");
       break;
     default:
-      $("#sondersignal").addClass("ion-md-notifications-off");
+      $("#sondersignal").addClass("bi-bell-slash-fill");
   }
   // Ortsdaten zusammenstellen und setzen
   $("#einsatzort_list").empty();

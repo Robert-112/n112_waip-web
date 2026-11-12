@@ -3,30 +3,11 @@ extends ../layout
 block content
   main(role='main')
     .container
-      #info.row
-        .col-md-3
-        .col-md-6.col-xs-12
-          if error
-            .card.text-white.bg-danger.mb-3
-              .card-body
-                .row
-                  .col-9
-                    h5.card-title.ion-md-close-circle-outline  Fehler
-                    p.card-text=error
-                  .col-3.text-end
-                    button#close_info.btn.btn-info.ion-md-close
-          if success
-            .card.text-white.bg-success.mb-3
-              .card-body
-                .row
-                  .col-9
-                    h5.card-title.ion-md-checkmark-circle-outline  Erfolg
-                    p.card-text=success
-                  .col-3.text-end
-                    button#close_info.btn.btn-info.ion-md-close
+      +seitenkopf('Benutzer und Rechte', 'Benutzer anlegen, bearbeiten und löschen.', 'bi-people-fill')
+      +meldungen(error, success)
       .row.mt-2
         .col-12.mb-3
-          button.btn.btn-success.ion-md-add-circle(onclick='addUser();')  Benutzer hinzufügen
+          button.btn.btn-success.bi-plus-circle-fill(onclick='addUser();')  Benutzer hinzufügen
         .col-12
           table.table.table-striped.table-hover.table-sm
             thead.table-dark
@@ -42,13 +23,13 @@ block content
                   td.text-muted= val.description || ''
                   td= val.permissions
                   td.text-end.text-nowrap
-                    button.btn.btn-sm.btn-primary.mx-1.ion-md-create(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
+                    button.btn.btn-sm.btn-primary.mx-1.bi-pencil-square(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
                     form(action='/adm_edit_users', method='POST', style='display:inline-block;')
                       input(type="hidden" name="_csrf" value=csrf_token)
                       input(type='hidden', name='modal_method', value='DELETE')
                       input(type='hidden', name='id', value=val.id)
                       input(type='hidden', name='username', value=val.user)
-                      button.btn.btn-sm.btn-danger.mx-1.ion-md-trash(type='submit', value='submit')  Löschen
+                      button.btn.btn-sm.btn-danger.mx-1.bi-trash(type='submit', value='submit')  Löschen
 
   #userModal.modal.fade(tabindex='-1', role='dialog', aria-hidden='true')
     .modal-dialog.modal-dialog-centered(role='document')
@@ -127,9 +108,6 @@ block content
       $("#description").val($(current_user).data("description"));
       $('#userModal').modal('show');
     }
-    $('#close_info').on('click', function(event) {
-      $('#info').addClass( 'd-none' )
-    });
     $('#gridRadios1').change(function() {
         if ($(this).is('input:checked')) {
             $('#waip_rights').prop("required", false);
