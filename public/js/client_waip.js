@@ -400,6 +400,10 @@ function start_inactivtimer() {
 // Zustand: true = Navbar sichtbar (aktiv), false = ausgeblendet (inaktiv)
 let _ui_active = true;
 
+// Sichtbare Fensterhöhe: 100dvh statt 100vh, wo unterstützt. Safari (iPad/iPhone) rechnet 100vh
+// inklusive der ausblendbaren Browserleisten - der Monitor ragte dann über das Fenster hinaus.
+const VOLLE_HOEHE = window.CSS && CSS.supports && CSS.supports("height", "100dvh") ? "100dvh" : "100vh";
+
 // bei Inaktivitaet Header/Footer ausblenden
 function do_on_Inactive() {
   if (!_ui_active) return; // bereits inaktiv – kein erneuter Reflow
@@ -407,7 +411,7 @@ function do_on_Inactive() {
   $(".navbar").fadeOut("slow");
   $(".footer").fadeOut("slow");
   $(".fullheight").css({
-    height: "calc(100vh - 3rem)",
+    height: "calc(" + VOLLE_HOEHE + " - 3rem)",
     cursor: "none",
   });
   $("body").css({
@@ -431,7 +435,7 @@ function do_on_Active() {
     paddingBottom: "0",
   });
   $(".fullheight").css({
-    height: "calc(100vh - 60px - 5rem)",
+    height: "calc(" + VOLLE_HOEHE + " - 60px - 5rem)",
     cursor: "auto",
   });
   // resize nach abgeschlossenem fadeIn, nicht sofort
@@ -1201,8 +1205,9 @@ function layout_rmld() {
   const anzahl = box.children.length;
   const hoehe = box.clientHeight;
   if (!anzahl || !hoehe) return;
-  const h_max = hoehe * 0.15; // höchstens 15 % der Bereichshöhe je Balken
-  const h_min = hoehe * 0.11; // darunter lieber eine Spalte mehr
+  // 2026-11-12 verkleinert (vorher 15 % / 11 %): bei vielen Rückmeldungen wirkten die Balken zu wuchtig
+  const h_max = hoehe * 0.12; // höchstens 12 % der Bereichshöhe je Balken
+  const h_min = hoehe * 0.085; // darunter lieber eine Spalte mehr
   let spalten = 4;
   let balken_h = 0;
   for (let s = 2; s <= 4; s++) {

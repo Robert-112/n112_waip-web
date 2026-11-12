@@ -25,6 +25,8 @@ body {
 
 .fullheight {
   height: calc(100vh - 60px - 7rem);
+  /* sichtbare Höhe (Safari: ohne ausblendbare Browserleisten), ältere Browser nutzen die Zeile darüber */
+  height: calc(100dvh - 60px - 7rem);
 }
 
 /*** Anpassungen an Bootstrap ******************/
@@ -214,18 +216,23 @@ audio {
 }
 
 /*** Rückmeldungen: Beschriftung, gemeinsam für Alarmmonitor und Dashboard (rmld_anzeige.js) ***/
-/* Größen und Aufteilung legt jede Seite selbst fest; gemeinsam sind Umrandung, Restzeit/Name und Ticker */
+/* Größen und Aufteilung legt jede Seite selbst fest; gemeinsam sind Schatten, Restzeit/Name und Ticker */
 
 .rmld-text {
   font-size: 1em;
   line-height: 1.1; /* Bootstrap setzt in .progress line-height: 0, der Namensbereich wäre sonst 0 px hoch */
   justify-content: flex-start !important;
-  /* Umrandung in der Farbe des Balkenhintergrunds (#444): hält die weiße Schrift auch auf
-     gefüllten, hellen Balken (z.B. Zugführer, hellgrau) lesbar, ohne kräftig zu wirken */
-  text-shadow:
-    -0.06em -0.06em 0 #444, 0.06em -0.06em 0 #444, -0.06em 0.06em 0 #444, 0.06em 0.06em 0 #444,
-    0 -0.06em 0 #444, 0 0.06em 0 #444, -0.06em 0 0 #444, 0.06em 0 0 #444;
+  /* weicher Schatten statt harter Umrandung (wirkte comichaft, 2026-11-12 Variante V2); lesbar
+     bleibt die weiße Schrift durch die etwas gedämpften Füllfarben im Alarmmonitor (siehe unten) */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
+
+/* Alarmmonitor: Füllfarben der Rückmeldungsbalken etwas gedämpft, damit weiße Schrift ohne
+   Umrandung auf allen Balken lesbar ist (v.a. Zugführer hellgrau). Zähler-Badges bleiben kräftig. */
+#rmld_progressbars .progress-bar.bg-success { background-color: #00916c !important; }
+#rmld_progressbars .progress-bar.bg-info { background-color: #2178b5 !important; }
+#rmld_progressbars .progress-bar.bg-light { background-color: #7d858c !important; }
+#rmld_progressbars .progress-bar.bg-danger { background-color: #c0392b !important; }
 
 /* Restzeit links (fett), nach Ankunft der Haken */
 .rmld-text .rmld-zeit {
@@ -509,19 +516,22 @@ audio {
   }
 }
 
-/* Routen-Startpunkt: dezenter Wachenname */
-.route-label {
-  background: rgba(30, 30, 30, 0.72);
+/* Routen-Startpunkt: Wachenname als dunkles Schild. Selektor mit .leaflet-tooltip, weil leaflet.css
+   nach waip.css geladen wird und sonst Hintergrund/Farbe/Rand mit Weiß überschreibt (bisher waren die
+   Schilder deshalb weiß mit 10 px Schrift). Schrift wächst mit der Bildschirmhöhe (1080p 14 px, 4K 22 px). */
+.leaflet-tooltip.route-label {
+  background: rgba(20, 20, 20, 0.82);
   border: none;
-  border-radius: 3px;
-  box-shadow: none;
-  color: #f0f0f0;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 5px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: clamp(12px, 1.3vh, 22px);
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.2em 0.55em;
   white-space: nowrap;
 }
-.route-label::before { display: none; }
+.leaflet-tooltip.route-label::before { display: none; }
 
 /* Inset-Karte (Detailansicht Einsatzort im Alarmmonitor) */
 #map-inset {
@@ -531,7 +541,51 @@ audio {
   width: min(260px, 38%);
   height: min(260px, 38%);
   z-index: 1000;
-  border-radius: 6px;
+  border-radius: var(--waip-radius);
   border: 2px solid rgba(255,255,255,0.8);
   box-shadow: 0 2px 10px rgba(0,0,0,0.6);
+}
+
+/*** Alarmmonitor: Eckenradien und Abstände ***/
+/* Wachsen mit der Bildschirmhöhe, damit der Monitor auf 1080p und 4K gleich wirkt
+   (feste rem-Werte wirken auf 4K nur halb so groß). Keine Schatten/Verläufe (schwache Hardware). */
+:root {
+  --waip-radius: clamp(0.375rem, 0.7vh, 1rem);
+  --waip-abstand: clamp(0.5rem, 1vh, 1.5rem);
+}
+
+#waiptableau .rounded,
+#waiptableau .progress {
+  border-radius: var(--waip-radius) !important;
+}
+
+/* Abstand Kopfzeile -> Inhalt und Karte -> rechte Spalte gleich groß */
+#einsatz_art {
+  margin-bottom: var(--waip-abstand) !important;
+}
+
+@media (orientation: landscape) {
+  #waiptableau .pr-3_ls {
+    padding-right: var(--waip-abstand) !important;
+  }
+}
+
+/* Einsatzmittel-Kacheln: Lücke zwischen den Kacheln = gleicher Abstand */
+#em_alarmiert_new > div {
+  padding: calc(var(--waip-abstand) / 2) !important;
+}
+
+/*** Dashboard-Übersicht: Kartenvorschau oben in der Kachel ***/
+/* z-index 0 = eigener Stapelkontext: die Leaflet-Ebenen (z-index 400) liegen sonst über dem
+   stretched-link und die Kachel wäre auf der Karte nicht anklickbar */
+.dbrd-vorschau {
+  height: 160px;
+  position: relative;
+  z-index: 0;
+}
+
+/*** Navbar: gedecktes Akzentblau (gleicher Farbton wie Icons/Akzente #3498db, nur dunkler),
+     statt des grauen Stahlblaus von Darkly (#375a7f) - 2026-11-12 Variante N1 ***/
+.navbar.bg-primary {
+  background-color: #215d84 !important;
 }

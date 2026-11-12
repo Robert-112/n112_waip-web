@@ -64,7 +64,7 @@ header
             li.nav-item.ms-lg-2.mt-2.mt-lg-0
               form(action='/logout', method='POST')
                 input(type="hidden" name="_csrf" value=csrf_token)
-                button.btn.btn-sm.btn-outline-light.text-nowrap(type='submit', title='Abmelden')
+                button.btn.btn-sm.btn-dark.text-nowrap(type='submit', title='Abmelden')
                   i.bi.bi-box-arrow-right.me-1(aria-hidden='true')
                   | #{user.user} abmelden
           else
