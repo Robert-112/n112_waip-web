@@ -13,7 +13,7 @@ block content
                   .col-9
                     h5.card-title.ion-md-close-circle-outline  Fehler
                     p.card-text=error
-                  .col-3.text-right
+                  .col-3.text-end
                     button#close_info.btn.btn-info.ion-md-close
       .row
         .col-xs-12.col-md-6.mx-auto
@@ -22,28 +22,28 @@ block content
               h5.card-title.text-center Benutzeranmeldung
               form(action='/login', method='POST')
                 input(type="hidden" name="_csrf" value=csrf_token)
-                .form-group
-                  label(for='inputUser') Benutzername
+                .mb-3
+                  label.form-label(for='login-user') Benutzername
                   input#login-user.form-control(type='text' name='user'  placeholder='Benutzername eingeben' required='' autofocus='')
-                  small.form-text.text-muted Der Benutzer wird Ihnen von den Administratoren mitgeteilt.
-                .form-group
-                  label(for='inputPassword') Passwort
+                  .form-text.text-muted Der Benutzer wird Ihnen von den Administratoren mitgeteilt.
+                .mb-3
+                  label.form-label(for='login-password') Passwort
                   input#login-password.form-control(type='password' name='password' placeholder='Passwort' required='')  
-                .form-group
-                  .custom-control.custom-switch
-                    input#rembemerme.custom-control-input(type='checkbox' name='rememberme' checked='')
-                    label.custom-control-label.text-warning(for='rembemerme') Anmeldung dauerhaft speichern
-                button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') anmelden
+                .mb-3
+                  .form-check.form-switch
+                    input#rembemerme.form-check-input(type='checkbox' role='switch' name='rememberme' checked='')
+                    label.form-check-label.text-warning(for='rembemerme') Anmeldung dauerhaft speichern
+                button.btn.btn-lg.btn-primary.w-100.text-uppercase(type='submit') anmelden
         .col-xs-12.col-md-6.mx-auto
           .card.my-3
             .card-body
               h5.card-title.text-center Geräteanmeldung
               form(action='/login_cert', method='GET')
-                .form-group
-                  small.form-text.text-muted Diese Anmeldung erlaubt Ihnen ein Login ohne Benutzername / Kennwort. 
+                .mb-3
+                  .form-text.text-muted Diese Anmeldung erlaubt Ihnen ein Login ohne Benutzername / Kennwort. 
                     | Sie ist für Endgeräte gedacht, welche zentral über ein MDM (Mobile-Device-Management-System) verwaltet werden.
-                  small.form-text.text-muted Die Berechtigung des Nutzers wird über das Zertifikat geprüft.
-                button.btn.btn-lg.btn-primary.btn-block.text-uppercase(type='submit') anmelden
+                  .form-text.text-muted Die Berechtigung des Nutzers wird über das Zertifikat geprüft.
+                button.btn.btn-lg.btn-primary.w-100.text-uppercase(type='submit') anmelden
 
   script.
     $('#close_info').on('click', function(event) {

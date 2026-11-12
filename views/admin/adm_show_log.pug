@@ -1,9 +1,9 @@
 extends ../layout
 
 append head
-  link(rel='stylesheet', href='/css/datatables.min.css')
+  link(rel='stylesheet', href='/css/dataTables.bootstrap5.min.css')
   script(src='/js/datatables.min.js')
-  script(src='/js/dataTables.bootstrap4.min.js')
+  script(src='/js/dataTables.bootstrap5.min.js')
 
 block content
   main(role='main')
@@ -12,13 +12,14 @@ block content
         .col-12
           h3 Es werden die letzten 5.000 Einträge der Log-Datei angezeigt
         .col-12        
-          table#table_log.table-striped.table-bordered.table-hover.display.table-sm.table-responsive.w-100.table-dark
-            thead
-              tr
-                th ID
-                th Zeitstempel
-                th Typ
-                th Protokolltext
+          .table-responsive
+            table#table_log.table.table-striped.table-bordered.table-hover.table-sm.w-100
+              thead
+                tr
+                  th ID
+                  th Zeitstempel
+                  th Typ
+                  th Protokolltext
 
   script.
     let datasets = !{JSON.stringify(dataSet).replace(/<\//g, '<\\/')}

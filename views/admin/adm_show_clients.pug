@@ -1,9 +1,9 @@
 extends ../layout
 
 append head
-  link(rel='stylesheet', href='/css/datatables.min.css')
+  link(rel='stylesheet', href='/css/dataTables.bootstrap5.min.css')
   script(src='/js/datatables.min.js')
-  script(src='/js/dataTables.bootstrap4.min.js')
+  script(src='/js/dataTables.bootstrap5.min.js')
 
   // TODO: Seite mit aktiven Clients anpassen:
   //  - nicht zwingend als Tabelle, sondern eher als .col mit Buttons um Aktionen an Clients zu senden
@@ -16,21 +16,22 @@ block content
         .col-12
           h3 Zeigt alle jetzt verbundenen Clients und deren Status an
         .col-12
-          table#table_active_user.table-striped.table-bordered.table-hover.display.table-sm.table-responsive.w-100.table-dark
-            thead
-              tr
-                th ID
-                th Verbunden seit
-                th Socket-ID
-                th Benutzername
-                th Berechtigungen
-                th Client-IPs
-                th Namespace
-                th Raum 
-                th Client-Status (Einsatz-ID)
-                th Reset-Zeitstempel
-                th Netzkopplung
-                th Netzkopplung geprüft am
+          .table-responsive
+            table#table_active_user.table.table-striped.table-bordered.table-hover.table-sm.w-100
+              thead
+                tr
+                  th ID
+                  th Verbunden seit
+                  th Socket-ID
+                  th Benutzername
+                  th Berechtigungen
+                  th Client-IPs
+                  th Namespace
+                  th Raum 
+                  th Client-Status (Einsatz-ID)
+                  th Reset-Zeitstempel
+                  th Netzkopplung
+                  th Netzkopplung geprüft am
         .col-12.mt-2
           small Netzkopplung: „Ja“ = alle Internet-Testadressen erreichbar, „Teilweise“ = nur einzelne erreichbar (ebenfalls Verdacht), „Nein“ = keine erreichbar, „unbekannt“ = noch nicht geprüft.
 

@@ -13,7 +13,7 @@ block content
                   .col-9
                     h5.card-title.ion-md-close-circle-outline  Fehler
                     p.card-text=error
-                  .col-3.text-right
+                  .col-3.text-end
                     button#close_info.btn.btn-info.ion-md-close
           if success
             .card.text-white.bg-success.mb-3
@@ -22,7 +22,7 @@ block content
                   .col-9
                     h5.card-title.ion-md-checkmark-circle-outline  Erfolg
                     p.card-text=success
-                  .col-3.text-right
+                  .col-3.text-end
                     button#close_info.btn.btn-info.ion-md-close
       .row
         .col-12.p-3
@@ -44,9 +44,9 @@ block content
                     .col-4
                       form(action="/einstellungen_zeit", method="POST")
                         input(type="hidden" name="_csrf" value=csrf_token)
-                        .form-group
-                          label(for='ResetCounterSelect') Zeit in Minuten
-                          select#ResetCounterSelect.form-control(name='set_reset_counter', onchange='this.form.submit()')
+                        .mb-3
+                          label.form-label(for='ResetCounterSelect') Zeit in Minuten
+                          select#ResetCounterSelect.form-select(name='set_reset_counter', onchange='this.form.submit()')
                             option= 'Standard'
                             each _, i in Array(60)
                               if(i+1 == user_reset_counter)

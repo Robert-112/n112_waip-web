@@ -13,7 +13,7 @@ block content
       // Eingefügte Freitextsuche
       .row.mt-2
         .col-12.px-3
-          .form-group.position-relative
+          .mb-3.position-relative
             input#searchWache.form-control.form-control-lg(type='text' placeholder='Suche nach einem Wachennamen oder einer Nummer...')
             ul#searchResults.list-group.position-absolute.w-100.mt-1(role='listbox' style='z-index:2000; max-height:300px; overflow-y:auto; display:none')
         .col-12
@@ -26,7 +26,7 @@ block content
             .card-body
               p Zeigt Ihnen alle Wachalarme der im System hinterlegten Wachen an.
               p.text-info Wollen Sie nur Alarme für einen bestimmten Bereich sehen, wählen Sie bitte einen Alarmmonitor aus den Listen aus.
-            .card-footer.text-right
+            .card-footer.text-end
               a.btn.btn-success.ion-md-arrow-round-forward(href='/waip/0' role='button')  alle Wachalarme anzeigen
         .col-12.col-md-5.d-flex.align-self-stretch.p-3
           .card.border-warning.w-100.h-100
@@ -34,9 +34,9 @@ block content
               h3.text-warning Alarmmonitor Leitstelle
             .card-body
               p Zeigt alle Wachalarme eines Leitstellebereichs an.
-            .card-footer.text-right
+            .card-footer.text-end
               .dropdown
-                button.btn.btn-warning.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
+                button.btn.btn-warning.dropdown-toggle(type='button' data-bs-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
                   | bitte ausw&auml;hlen
                 .dropdown-menu
                   each item in list_wachen
@@ -48,9 +48,9 @@ block content
               h3.text-info Alarmmonitor Wache
             .card-body
               p Zeigt den Wachalarm einer einzelnen Wache (z.B. Feuerwache, Rettungswache etc.) an.
-            .card-footer.text-right
+            .card-footer.text-end
               .dropdown
-                button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
+                button.btn.btn-info.dropdown-toggle(type='button' data-bs-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
                   | bitte ausw&auml;hlen
                 .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen
@@ -62,9 +62,9 @@ block content
               h3.text-info Alarmmonitor Tr&auml;ger
             .card-body
               p Zeigt alle Wachalarme der Wachen eines Aufgabentr&auml;gers (Amt, amtsfreie Gemeinde, Stadt) an.
-            .card-footer.text-right
+            .card-footer.text-end
               .dropdown
-                button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
+                button.btn.btn-info.dropdown-toggle(type='button' data-bs-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
                   | bitte ausw&auml;hlen
                 .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen
@@ -76,9 +76,9 @@ block content
               h3.text-info Alarmmonitor Kreis
             .card-body
               p Zeigt alle Wachalarme des gesamten Kreises (in Abhängigkeit der freigeschalteten Wachen) an.
-            .card-footer.text-right
+            .card-footer.text-end
               .dropdown
-                button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
+                button.btn.btn-info.dropdown-toggle(type='button' data-bs-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
                   | bitte ausw&auml;hlen
                 .dropdown-menu(style='z-index: 2001')
                   each item in list_wachen

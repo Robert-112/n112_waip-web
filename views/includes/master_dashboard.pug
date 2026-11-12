@@ -8,13 +8,13 @@
       #dbrd_id.ion-md-clipboard.text-muted -Nummer-
 .row
   .col-lg-4.col-12
-    #einsatz_art.row.no-gutters.bg-secondary.rounded.p-3
+    #einsatz_art.row.g-0.bg-secondary.rounded.p-3
       .col-10
-        .align-items-center.font-weight-bold
-          #einsatz_stichwort.font-weight-bold.ion-md-apps  -Stichwort-
+        .align-items-center.fw-bold
+          #einsatz_stichwort.fw-bold.ion-md-apps  -Stichwort-
       .col-2
         .align-items-center.justify-content-center.rounded.text-center
-          #sondersignal.font-weight-bold.ion-md-apps
+          #sondersignal.fw-bold.ion-md-apps
     div.border-top.m-3
     .row
       .col-lg-12.col-md-6.col-12
@@ -25,19 +25,19 @@
       .col-lg-12.col-md-6.col-12
         .card.mt-2
           .card-header.bg-dark.px-3.py-2
-            .text-info.font-weight-bold.mb-0 Einsatzort
+            .text-info.fw-bold.mb-0 Einsatzort
           .card-body.p-0
             ul#einsatzort_list.list-group.list-group-flush
     div.border-top.m-3.d-lg-none.d-xl-none.d-md-block
   .col-lg-8.col-12
-    .row.no-gutters
+    .row.g-0
       .col-12
         .card
           table#table_einsatzmittel.table.table-hover.mb-0
             thead.table-borderless.small
               tr
-                th.wache-col.text-info.pl-3 Wache
-                th.text-info.pl-3 alarmierte Einsatzmittel / Rückmeldungen
+                th.wache-col.text-info.ps-3 Wache
+                th.text-info.ps-3 alarmierte Einsatzmittel / Rückmeldungen
             tbody
               // Dynamische Zeilen werden per JS eingefügt
         div.border-top.m-3
@@ -45,30 +45,30 @@
         div#rmld_container
           .card#rmld_container.mb-3
             .card-header.bg-dark.px-3.py-2
-              .text-info.font-weight-bold.mb-0 Anzahl aller Rückmeldungen
+              .text-info.fw-bold.mb-0 Anzahl aller Rückmeldungen
             .card-body.py-2.px-3
               .d-flex.flex-wrap.align-items-start
-                .d-flex.align-items-center.border.border-secondary.rounded-pill.px-1.py-2.mr-2.mb-1 
+                .d-flex.align-items-center.border.border-secondary.rounded-pill.px-1.py-2.me-2.mb-1 
                   span.mx-1 Gesamt
-                  span#gs-counter.mr-1.badge.badge-primary 0
-                .d-flex.align-items-center.flex-wrap.border.border-secondary.rounded-pill.px-1.py-2.mr-2.mb-1 
-                  span.mr-2.ml-1.text-success EK
-                  span#ek-counter.badge.badge-success.mr-3 0
-                  span.mr-2.text-info GF
-                  span#gf-counter.badge.badge-info.mr-3 0
-                  span.mr-2.text-light ZF
-                  span#zf-counter.badge.badge-light.text-dark.mr-3 0
-                  span.mr-2.text-danger VF
-                  span#vf-counter.mr-1.badge.badge-danger 0
-                .d-flex.align-items-center.flex-wrap.border.border-secondary.rounded-pill.px-1.py-2.mr-2.mb-1 
-                  span.mr-2.ml-1.text-warning AGT
-                  span#agt-counter.badge.badge-warning.mr-3 0
-                  span.mr-2.text-muted MA
-                  span#ma-counter.badge.badge-primary.mr-3 0
-                  span.mr-2.text-muted FZF
-                  span#fzf-counter.badge.badge-primary.mr-3 0
-                  span.mr-2.text-muted MED
-                  span#med-counter.badge.badge-primary.mr-1 0
+                  span#gs-counter.me-1.badge.bg-primary 0
+                .d-flex.align-items-center.flex-wrap.border.border-secondary.rounded-pill.px-1.py-2.me-2.mb-1 
+                  span.me-2.ms-1.text-success EK
+                  span#ek-counter.badge.bg-success.me-3 0
+                  span.me-2.text-info GF
+                  span#gf-counter.badge.bg-info.me-3 0
+                  span.me-2.text-light ZF
+                  span#zf-counter.badge.bg-light.text-dark.me-3 0
+                  span.me-2.text-danger VF
+                  span#vf-counter.me-1.badge.bg-danger 0
+                .d-flex.align-items-center.flex-wrap.border.border-secondary.rounded-pill.px-1.py-2.me-2.mb-1 
+                  span.me-2.ms-1.text-warning AGT
+                  span#agt-counter.badge.bg-warning.me-3 0
+                  span.me-2.text-muted MA
+                  span#ma-counter.badge.bg-primary.me-3 0
+                  span.me-2.text-muted FZF
+                  span#fzf-counter.badge.bg-primary.me-3 0
+                  span.me-2.text-muted MED
+                  span#med-counter.badge.bg-primary.me-1 0
 .d-none
   audio#audio(controls='')
       source(src='', type='audio/mpeg')
@@ -78,8 +78,7 @@
     .modal-content.bg-dark
       .modal-header.py-2.border-secondary
         h5.modal-title.text-light.mb-0 Einsatzkarte
-        button.close.text-light(type='button' data-dismiss='modal' aria-label='Close')
-          span(aria-hidden='true') &times;
+        button.btn-close(type='button' data-bs-dismiss='modal' aria-label='Schließen')
       .modal-body.p-0
         #map_fullscreen(style='height:80vh;')
 

@@ -29,6 +29,33 @@ body {
 
 /*** Anpassungen an Bootstrap ******************/
 
+/* Bootstrap 5 / Darkly 5: Werte wie bisher in Darkly 4, damit Schriftgrößen und
+   Kontraste (v.a. Standby-Uhr im Alarmmonitor) unverändert bleiben */
+:root {
+  --bs-body-font-size: 0.9375rem;
+  /* DataTables (Admin-Tabellen): Streifen und Hover hell statt schwarz, sonst auf Darkly unsichtbar */
+  --dt-row-stripe: 255, 255, 255;
+  --dt-row-hover: 255, 255, 255;
+}
+
+/* Darkly 5 hellt text-muted/text-secondary auf (75 % Weiß); im Alarmmonitor (Standby-Uhr,
+   Wachenname) sollen sie nachts so gedämpft bleiben wie bisher */
+.text-muted {
+  color: #888 !important;
+}
+
+.text-secondary {
+  color: rgba(var(--bs-secondary-rgb), var(--bs-text-opacity, 1)) !important;
+}
+
+/* Tabellen wie in Darkly 4: transparent (sonst hebt sich z.B. die Wachen-Tabelle im Dashboard
+   als dunkles Rechteck mit feinem Rand von der Karte ab), Streifen/Hover hell statt schwarz */
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.05);
+  --bs-table-hover-bg: rgba(255, 255, 255, 0.075);
+}
+
 audio {
   display: none;
 }
@@ -316,28 +343,15 @@ audio {
     padding-right: 1rem !important;
   }
 
+  /* wie .col-5 / .col-7 in Bootstrap 5, nur im Querformat; Innenabstand kommt von der .row (g-0) */
   .col-5_ls {
-    -webkit-box-flex: 0;
-    -ms-flex: 0 0 41.6666666667%;
-    flex: 0 0 41.6666666667%;
-    max-width: 41.6666666667%;
-    position: relative;
-    width: 100%;
-    min-height: 1px;
-    padding-right: 15px;
-    padding-left: 15px;
+    flex: 0 0 auto;
+    width: 41.66666667%;
   }
 
   .col-7_ls {
-    -webkit-box-flex: 0;
-    -ms-flex: 0 0 58.3333333333%;
-    flex: 0 0 58.3333333333%;
-    max-width: 58.3333333333%;
-    position: relative;
-    width: 100%;
-    min-height: 1px;
-    padding-right: 15px;
-    padding-left: 15px;
+    flex: 0 0 auto;
+    width: 58.33333333%;
   }
 
   .h-2-5_ls {

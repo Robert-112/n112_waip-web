@@ -207,7 +207,7 @@ function showAudioBlockedToast() {
     // Click-/Close-Listener nur einmalig am Toast-Element registrieren
     if (!toastListenersAdded) {
       toast.addEventListener("click", tryActivate);
-      const closeBtn = toast.querySelector(".close");
+      const closeBtn = toast.querySelector(".btn-close");
       if (closeBtn)
         closeBtn.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -531,6 +531,8 @@ try {
 // Monitorauflösung prüfen (screen statt window.inner – unabhängig von Fenstergröße/Vollbild)
 let is4K = screen.width * (window.devicePixelRatio || 1) >= 3840 &&
            screen.height * (window.devicePixelRatio || 1) >= 2160;
+// Zoomstufe für Punkt-Einsätze ohne Routen bzw. Obergrenze beim Einpassen des Einsatzumkreises
+const kartenStartZoom = is4K ? 16 : 14;
 let markerSize = is4K ? [50, 82] : [25, 41];
 let markerAnchor = is4K ? [25, 82] : [12, 41];
 let markerShadowSize = is4K ? [82, 82] : [41, 41];
@@ -565,6 +567,42 @@ let insetMap = null;
 // fitBounds hier NICHT erneut aufrufen, sonst würde jeder (auch manuelle) Zoom
 // sofort wieder auf die berechneten Bounds zurückspringen.
 map.on("zoomend", function () { draw_routes(currentRoutes, false); });
+
+// Automatisches Einpassen nach Größenänderungen: Die Karte wird beim Alarm eingepasst, danach ändert
+// sich ihre Größe aber oft noch (Navbar/Footer blenden nach 3 s aus, Fenster, Drehung, Layout nach
+// textFit). Ohne erneutes Einpassen bliebe der Zoom der kleineren Karte stehen (z.B. iPhone Zoom 8
+// statt 11). Hat jemand die Karte selbst verschoben oder gezoomt, bleibt seine Ansicht stehen.
+let karteManuellBewegt = false;
+map.on("dragstart", function () { karteManuellBewegt = true; });
+["wheel", "dblclick", "touchmove"].forEach(function (ev) {
+  map.getContainer().addEventListener(ev, function () { karteManuellBewegt = true; }, { passive: true });
+});
+
+function karte_einpassen() {
+  if (currentRoutes.length) {
+    draw_routes(currentRoutes, true);
+  } else if (showEinsatzkreisBounds) {
+    const gjBounds = geojson.getBounds();
+    if (gjBounds.isValid()) map.fitBounds(gjBounds, { padding: [50, 50], maxZoom: kartenStartZoom });
+  } else {
+    const mPos = marker.getLatLng();
+    if (mPos.lat !== 0 || mPos.lng !== 0) map.setView(mPos, kartenStartZoom);
+  }
+}
+
+let _einpassenTimer = null;
+map.on("resize", function () {
+  // Inset-Karte (Größe relativ zur Hauptkarte) mitziehen, Ziel mittig halten
+  if (insetMap) {
+    const ziel = insetMap.getCenter();
+    insetMap.invalidateSize();
+    insetMap.setView(ziel, insetMap.getZoom(), { animate: false });
+  }
+  if (karteManuellBewegt || $("#waiptableau").hasClass("d-none")) return;
+  // mehrere Größenänderungen kurz hintereinander (Ausblenden + textFit) nur einmal auswerten
+  clearTimeout(_einpassenTimer);
+  _einpassenTimer = setTimeout(karte_einpassen, 150);
+});
 
 /* ########################### */
 /* ######## SOCKET.IO ######## */
@@ -761,6 +799,7 @@ socket.on("io.standby", function (data) {
   // Routen und Inset-Karte aufräumen
   destroy_inset_map();
   clear_route_layers();
+  currentRoutes = []; // sonst zeichnet der nächste zoomend die alten Routen wieder ein
   // Leaflet-Reset: alle Layer entfernen und Basis-Kacheln + Platzhalter neu anlegen
   map.eachLayer(function (layer) { map.removeLayer(layer); });
   AddMapLayer();
@@ -971,6 +1010,7 @@ socket.on("io.new_waip", function (data) {
   // Routen und Inset-Karte aus vorherigem Einsatz löschen
   destroy_inset_map();
   clear_route_layers();
+  currentRoutes = []; // sonst zeichnet zoomend (durch setView unten) die Routen des alten Einsatzes wieder ein
   // Karte leeren
   map.removeLayer(marker);
   map.removeLayer(geojson);
@@ -988,8 +1028,10 @@ socket.on("io.new_waip", function (data) {
   $("#waiptableau").removeClass("d-none");
   // Leaflet die tatsächliche Containergröße mitteilen, bevor fitBounds aufgerufen wird
   map.invalidateSize();
+  // neuer Einsatz: automatisches Einpassen wieder erlauben
+  karteManuellBewegt = false;
 
-  const initialZoom = is4K ? 16 : 14;
+  const initialZoom = kartenStartZoom;
 
   // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
   if (data.wgs84_x && data.wgs84_y) {
@@ -1046,53 +1088,10 @@ socket.on("io.new_rmld", function (data) {
   // FIXME  Änderung des Funktions-Typ berücksichtigen
   // Neue Rueckmeldung hinterlegen
   // HTML festlegen
-  var item_type = "";
-  var item_content = "";
-  var item_classname = "";
-  // wenn Einsatzkraft dann:
-  if (data.rmld_role == "team_member") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Einsatzkraft'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Einsatzkraft";
-    }
-    item_classname = "ek";
-    item_type = "ek";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "crew_leader") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Gruppenführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Gruppenführer";
-    }
-    item_classname = "gf";
-    item_type = "gf";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "division_chief") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Zugführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Zugführer";
-    }
-    item_classname = "zf";
-    item_type = "zf";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "group_commander") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Verbandsführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Verbandsführer";
-    }
-    item_classname = "vf";
-    item_type = "vf";
-  }
+  // Typ und Anzeigename (Name, sonst Funktion) gemeinsam mit dem Dashboard ermitteln (rmld_anzeige.js)
+  const rolle = rmld_rolle(data);
+  const item_type = rolle.typ;
+  let item_content = rolle.name;
 
   // Anzeigename im Balken: Alias, sonst Rollenname (Qualifikationen hängt add_resp_progressbar selbst an)
   const anzeige_name = item_content;
@@ -1798,11 +1797,22 @@ function draw_routes(routes, fit) {
       insetEl.style.right  = stationWest  ? "10px" : "auto";
 
       // fitBounds-Padding aus tatsächlicher Inset-Größe lesen, damit responsive CSS-Änderungen
-      // (min(260px, 38%)) automatisch berücksichtigt werden.
-      const insetPad = insetEl.offsetWidth + 12; // Breite + 10px Rand + 2px Border
-      const ptl = [stationWest ? 15 : insetPad, stationSouth ? 15 : insetPad];
-      const pbr = [stationWest ? insetPad : 15, stationSouth ? insetPad : 15];
-      map.fitBounds(combined, { paddingTopLeft: ptl, paddingBottomRight: pbr });
+      // (min(260px, 38%)) automatisch berücksichtigt werden. Das Inset liegt in einer Ecke: Es genügt,
+      // auf EINER Achse Platz freizuhalten (Streifen neben ODER über/unter dem Inset), dann kann nichts
+      // darunter liegen. Bisher wurde auf beiden Achsen freigehalten -> Karte unnötig weit herausgezoomt.
+      const insetB = insetEl.offsetWidth + 12; // Breite/Höhe + 10px Rand + 2px Border
+      const insetH = insetEl.offsetHeight + 12;
+      const nebenInset = { // Streifen links/rechts freihalten
+        paddingTopLeft: [stationWest ? 15 : insetB, 15],
+        paddingBottomRight: [stationWest ? insetB : 15, 15],
+      };
+      const ueberInset = { // Streifen oben/unten freihalten
+        paddingTopLeft: [15, stationSouth ? 15 : insetH],
+        paddingBottomRight: [15, stationSouth ? insetH : 15],
+      };
+      const zoomNeben = map.getBoundsZoom(combined, false, L.point(15 + insetB, 30));
+      const zoomUeber = map.getBoundsZoom(combined, false, L.point(30, 15 + insetH));
+      map.fitBounds(combined, zoomNeben >= zoomUeber ? nebenInset : ueberInset);
     } else {
       map.fitBounds(combined, { padding: [15, 15] });
     }

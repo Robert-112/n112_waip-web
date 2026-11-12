@@ -448,41 +448,41 @@ function ensure_station_rmld_summary(stationId) {
     '<div class="d-flex flex-wrap align-items-start small px-1" id="rmld-counters-' +
     stationId +
     '">' +
-    '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center">' +
-    '<span class="mr-1">Gesamt</span><span class="badge badge-primary" id="rmld-total-' +
+    '<div class="border border-secondary rounded-pill p-1 me-2 mb-1 d-flex align-items-center">' +
+    '<span class="me-1">Gesamt</span><span class="badge bg-primary" id="rmld-total-' +
     stationId +
     '">0</span>' +
     "</div>" +
-    '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center flex-wrap">' +
-    '<span class="text-success mr-1">EK</span><span class="badge badge-success mr-2" id="rmld-ek-' +
+    '<div class="border border-secondary rounded-pill p-1 me-2 mb-1 d-flex align-items-center flex-wrap">' +
+    '<span class="text-success me-1">EK</span><span class="badge bg-success me-2" id="rmld-ek-' +
     stationId +
     '">0</span>' +
-    '<span class="text-info mr-1">GF</span><span class="badge badge-info mr-2" id="rmld-gf-' +
+    '<span class="text-info me-1">GF</span><span class="badge bg-info me-2" id="rmld-gf-' +
     stationId +
     '">0</span>' +
-    '<span class="text-light mr-1">ZF</span><span class="badge badge-light text-dark mr-2" id="rmld-zf-' +
+    '<span class="text-light me-1">ZF</span><span class="badge bg-light text-dark me-2" id="rmld-zf-' +
     stationId +
     '">0</span>' +
-    '<span class="text-danger mr-1">VF</span><span class="badge badge-danger" id="rmld-vf-' +
-    stationId +
-    '">0</span>' +
-    "</div>" +
-    '<div class="border border-secondary rounded-pill p-1 mr-2 mb-1 d-flex align-items-center flex-wrap">' +
-    '<span class="text-warning mr-1">AGT</span><span class="badge badge-warning mr-2" id="rmld-agt-' +
-    stationId +
-    '">0</span>' +
-    '<span class="text-muted mr-1">MA</span><span class="badge badge-primary mr-2" id="rmld-ma-' +
-    stationId +
-    '">0</span>' +
-    '<span class="text-muted mr-1">FZF</span><span class="badge badge-primary mr-2" id="rmld-fzf-' +
-    stationId +
-    '">0</span>' +
-    '<span class="text-muted mr-1">MED</span><span class="badge badge-primary" id="rmld-med-' +
+    '<span class="text-danger me-1">VF</span><span class="badge bg-danger" id="rmld-vf-' +
     stationId +
     '">0</span>' +
     "</div>" +
+    '<div class="border border-secondary rounded-pill p-1 me-2 mb-1 d-flex align-items-center flex-wrap">' +
+    '<span class="text-warning me-1">AGT</span><span class="badge bg-warning me-2" id="rmld-agt-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-muted me-1">MA</span><span class="badge bg-primary me-2" id="rmld-ma-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-muted me-1">FZF</span><span class="badge bg-primary me-2" id="rmld-fzf-' +
+    stationId +
+    '">0</span>' +
+    '<span class="text-muted me-1">MED</span><span class="badge bg-primary" id="rmld-med-' +
+    stationId +
+    '">0</span>' +
     "</div>" +
-    '<div class="row no-gutters mt-1" id="rmld-bars-' +
+    "</div>" +
+    '<div class="row g-0 mt-1" id="rmld-bars-' +
     stationId +
     '"></div>';
   td.appendChild(rmldSummary);
@@ -597,7 +597,7 @@ socket.on("io.deleted", function () {
   setTimeout(function () {
     $("#waipModalTitle").html("ACHTUNG");
     $("#waipModalBody").html(`Der aufgerufene Einsatz wurde gel&ouml;scht und ist nicht mehr verfügbar.<br>
-    Sie werden in gleich zur Startseite zurückgeleitet.`);
+    Sie werden gleich zur Startseite zurückgeleitet.`);
     $("#waipModal").modal("show");
     setTimeout(function () {
       window.location.href = window.location.origin;
@@ -663,25 +663,25 @@ socket.on("io.Einsatz", function (data) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_objektteil">');
     $("#listitem_objektteil").append('<li class="d-flex w-100 justify-content-between" id="dflex_objektteil">');
     $("#dflex_objektteil").append('<p class="mb-1" id="data_objektteil">' + data.objektteil + "</p>");
-    $("#dflex_objektteil").append('<small class="pl-1 text-muted text-right">Teilobjekt</small>');
+    $("#dflex_objektteil").append('<small class="ps-1 text-muted text-end">Teilobjekt</small>');
   }
   if (data.objekt) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_objekt">');
     $("#listitem_objekt").append('<li class="d-flex w-100 justify-content-between" id="dflex_objekt">');
     $("#dflex_objekt").append('<p class="mb-1" id="data_objekt">' + data.objekt + "</p>");
-    $("#dflex_objekt").append('<small class="pl-1 text-muted text-right">Objekt</small>');
+    $("#dflex_objekt").append('<small class="ps-1 text-muted text-end">Objekt</small>');
   }
   if (data.einsatzdetails) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_einsatzdetails">');
     $("#listitem_einsatzdetails").append('<li class="d-flex w-100 justify-content-between" id="dflex_einsatzdetails">');
     $("#dflex_einsatzdetails").append('<p class="mb-1" id="data_einsatzdetails">' + data.einsatzdetails + "</p>");
-    $("#dflex_einsatzdetails").append('<small class="pl-1 text-muted text-right">Ortdetails</small>');
+    $("#dflex_einsatzdetails").append('<small class="ps-1 text-muted text-end">Ortdetails</small>');
   }
   if (data.ort) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_ort">');
     $("#listitem_ort").append('<li class="d-flex w-100 justify-content-between" id="dflex_ort">');
     $("#dflex_ort").append('<p class="mb-1" id="data_ort">' + data.ort + "</p>");
-    $("#dflex_ort").append('<small class="pl-1 text-muted text-right">Ort</small>');
+    $("#dflex_ort").append('<small class="ps-1 text-muted text-end">Ort</small>');
   }
   if (data.ortsteil) {
     // wenn Ortsteil gleich Ort, dann nicht anzeigen
@@ -689,7 +689,7 @@ socket.on("io.Einsatz", function (data) {
       $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_ortsteil">');
       $("#listitem_ortsteil").append('<li class="d-flex w-100 justify-content-between" id="dflex_ortsteil">');
       $("#dflex_ortsteil").append('<p class="mb-1" id="data_ortsteil">' + data.ortsteil + "</p>");
-      $("#dflex_ortsteil").append('<small class="pl-1 text-muted text-right">Ortsteil</small>');
+      $("#dflex_ortsteil").append('<small class="ps-1 text-muted text-end">Ortsteil</small>');
     }
   }
   if (data.strasse) {
@@ -703,13 +703,13 @@ socket.on("io.Einsatz", function (data) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_strasse">');
     $("#listitem_strasse").append('<li class="d-flex w-100 justify-content-between" id="dflex_strasse">');
     $("#dflex_strasse").append('<p class="mb-1" id="data_strasse">' + tmp_strasse + "</p>");
-    $("#dflex_strasse").append('<small class="pl-1 text-muted text-right">Stra&szlig;e</small>');
+    $("#dflex_strasse").append('<small class="ps-1 text-muted text-end">Stra&szlig;e</small>');
   }
   if (data.besonderheiten) {
     $("#einsatzort_list").append('<div class="list-group-item ist-group-item-action flex-column align-items-start" id="listitem_besonderheiten">');
     $("#listitem_besonderheiten").append('<li class="d-flex w-100 justify-content-between" id="dflex_besonderheiten">');
     $("#dflex_besonderheiten").append('<p class="mb-1 text-warning" id="data_besonderheiten">' + data.besonderheiten + "</p>");
-    $("#dflex_besonderheiten").append('<small class="pl-1 text-muted text-right">Besonderheiten</small>');
+    $("#dflex_besonderheiten").append('<small class="ps-1 text-muted text-end">Besonderheiten</small>');
   }
   // Alte Einsatzmittel loeschen
   var table_em = document.getElementById("table_einsatzmittel");
@@ -764,13 +764,13 @@ socket.on("io.Einsatz", function (data) {
 
     //Einsatzmittel-Div erzeugen
     var em_div = document.createElement("div");
-    em_div.className = "pr-2";
+    em_div.className = "pe-2";
     em_div.innerHTML = data.einsatzmittel[i].em_funkrufname;
 
     //Info-Div erzeugen, wenn keine Alarmzeit
     var info_div = document.createElement("div");
     if (!data.einsatzmittel[i].em_zeitstempel_alarmierung) {  
-      info_div.className = "p-2 badge badge-pill badge-info";
+      info_div.className = "p-2 badge rounded-pill bg-info";
       info_div.innerHTML = "!";
     }
 
@@ -837,22 +837,10 @@ socket.on("io.new_rmld", function (data) {
   // DEBUG
   console.log("neue Rückmeldung:", data);
   // HTML festlegen
-  var item_type = "";
-  var item_content = "";
-  // Rollenabbildung
-  if (data.rmld_role == "team_member") {
-    item_content = data.rmld_alias || "Einsatzkraft";
-    item_type = "ek";
-  } else if (data.rmld_role == "crew_leader") {
-    item_content = data.rmld_alias || "Gruppenführer";
-    item_type = "gf";
-  } else if (data.rmld_role == "division_chief") {
-    item_content = data.rmld_alias || "Zugführer";
-    item_type = "zf";
-  } else if (data.rmld_role == "group_commander") {
-    item_content = data.rmld_alias || "Verbandsführer";
-    item_type = "vf";
-  }
+  // Typ und Anzeigename (Name, sonst Funktion) gemeinsam mit dem Alarmmonitor ermitteln (rmld_anzeige.js)
+  var rolle = rmld_rolle(data);
+  var item_type = rolle.typ;
+  var item_content = rolle.name;
   // Anzeigename im Balken: Name, sonst Funktion (z.B. bei Gästen ohne Berechtigung entfernt der Server den Namen)
   var anzeige_name = item_content;
   if (data.rmld_capability_agt > 0) item_content += " AGT";

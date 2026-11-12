@@ -13,7 +13,7 @@ block content
                   .col-9
                     h5.card-title.ion-md-close-circle-outline  Fehler
                     p.card-text=error
-                  .col-3.text-right
+                  .col-3.text-end
                     button#close_info.btn.btn-info.ion-md-close
           if success
             .card.text-white.bg-success.mb-3
@@ -22,7 +22,7 @@ block content
                   .col-9
                     h5.card-title.ion-md-checkmark-circle-outline  Erfolg
                     p.card-text=success
-                  .col-3.text-right
+                  .col-3.text-end
                     button#close_info.btn.btn-info.ion-md-close
       .row
         .col-12
@@ -30,15 +30,15 @@ block content
         .col-12
           form(action="/adm_edit_replace/create" method="post")
             input(type="hidden" name="_csrf" value=csrf_token)
-            .form-row
-              .form-group.col-md-3
-                label Typ
+            .row.g-2
+              .mb-3.col-md-3
+                label.form-label Typ
                 input.form-control(type="text" name="rp_typ" required list="rp_typ_vorschlaege" title="z.B. em_tts oder orte_tts")
-              .form-group.col-md-4
-                label Eingabewert
+              .mb-3.col-md-4
+                label.form-label Eingabewert
                 input.form-control(type="text" name="rp_input" required)
-              .form-group.col-md-4
-                label Ausgabewert
+              .mb-3.col-md-4
+                label.form-label Ausgabewert
                 input.form-control(type="text" name="rp_output" required)
             datalist#rp_typ_vorschlaege
               option(value="em_tts")
