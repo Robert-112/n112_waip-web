@@ -1,4 +1,6 @@
 const net = require("net");
+const os = require("os");
+const path = require("path");
 const crypto = require("crypto");
 const { spawnSync, spawn } = require("child_process");
 
@@ -116,8 +118,8 @@ module.exports = (fs, logger, sql, app_cfg) => {
     });
   };
 
-  // WAV-Datei aus PCM-Rohdaten und Audio-Metadaten zusammenbauen
-  const write_wav = (filepath, audioInfo, chunks) => {
+  // WAV-Daten (Header + PCM) aus PCM-Rohdaten und Audio-Metadaten zusammenbauen
+  const wav_buffer = (audioInfo, chunks) => {
     const pcm = Buffer.concat(chunks);
     const { rate, width, channels } = audioInfo;
     const hdr = Buffer.alloc(44);
@@ -134,8 +136,19 @@ module.exports = (fs, logger, sql, app_cfg) => {
     hdr.writeUInt16LE(width * 8, 34);
     hdr.write("data", 36);
     hdr.writeUInt32LE(pcm.length, 40);
-    fs.writeFileSync(filepath, Buffer.concat([hdr, pcm]));
+    return Buffer.concat([hdr, pcm]);
   };
+
+  // WAV-Datei aus PCM-Rohdaten und Audio-Metadaten schreiben
+  const write_wav = (filepath, audioInfo, chunks) => {
+    fs.writeFileSync(filepath, wav_buffer(audioInfo, chunks));
+  };
+
+  // Zeichen entfernen, die die Sprachausgabe stören. Läuft nach den Ersetzungen, gilt also auch für deren Ausgabewerte.
+  const tts_text_bereinigen = (text) => text.replace(/[:/-]/g, " ");
+
+  // Aktiver Provider: Piper (wenn konfiguriert) oder plattformspezifisch
+  const tts_provider_key = () => ((app_cfg.tts && app_cfg.tts.provider === "piper") ? "piper" : process.platform);
 
   // Konstanten für TTS-Konfiguration
   const TTS_CONFIG = {
@@ -355,10 +368,10 @@ module.exports = (fs, logger, sql, app_cfg) => {
       tts_text += ". Ende der Durchsage!";
 
       // Ungewollte Zeichen entfernen
-      tts_text = tts_text.replace(/[:/-]/g, " ");
+      tts_text = tts_text_bereinigen(tts_text);
 
       // TTS-Provider auswählen: Piper (wenn konfiguriert) oder plattformspezifisch
-      const providerKey = (app_cfg.tts && app_cfg.tts.provider === "piper") ? "piper" : process.platform;
+      const providerKey = tts_provider_key();
       const ttsProvider = ttsImplementations[providerKey];
 
       if (dev) logger.log("log", `TTS tts_erstellen: Provider="${providerKey}" Text="${tts_text}" MP3="${mp3_tts}"`);
@@ -404,5 +417,47 @@ module.exports = (fs, logger, sql, app_cfg) => {
     }
   };
 
-  return { tts_erstellen };
+  // Sprachvorschau für die Admin-Seite "Aussprache testen": nur Sprache als WAV im Speicher, ohne Gong,
+  // ohne Datei unter /media und ohne Cache. Der Text kommt vom Benutzer und wird daher nie in eine
+  // Shell-Kommandozeile eingesetzt.
+  const tts_vorschau = async (text) => {
+    const providerKey = tts_provider_key();
+    if (providerKey === "piper") {
+      const { audioInfo, chunks } = await synthesize_wyoming(app_cfg.tts.piper_host, app_cfg.tts.piper_port, app_cfg.tts.piper_voice, text);
+      if (!audioInfo || !audioInfo.rate) throw new Error("Piper hat keine Audio-Informationen geliefert.");
+      return { audio: wav_buffer(audioInfo, chunks), mime: "audio/wav", provider: providerKey };
+    }
+
+    if (providerKey !== "linux" && providerKey !== "win32") {
+      throw new Error(`Für den TTS-Provider "${providerKey}" ist keine Sprachausgabe verfügbar.`);
+    }
+
+    const wav_tmp = path.join(os.tmpdir(), `waip_tts_vorschau_${crypto.randomUUID()}.wav`);
+    try {
+      await new Promise((resolve, reject) => {
+        let child;
+        if (providerKey === "linux") {
+          child = spawn("pico2wave", ["--lang=de-DE", `--wave=${wav_tmp}`, text]);
+        } else {
+          // Text und Zielpfad über Umgebungsvariablen übergeben, nicht im Skripttext
+          const script =
+            "Add-Type -AssemblyName System.speech; " +
+            "$speak = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
+            "$speak.SetOutputToWaveFile($env:WAIP_TTS_WAV); $speak.Speak($env:WAIP_TTS_TEXT); $speak.Dispose();";
+          child = spawn("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+            env: { ...process.env, WAIP_TTS_TEXT: text, WAIP_TTS_WAV: wav_tmp },
+          });
+        }
+        let stderr = "";
+        child.stderr.on("data", (d) => { stderr += d.toString(); });
+        child.on("error", reject);
+        child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`Sprachausgabe beendet mit Code ${code}. ${stderr}`))));
+      });
+      return { audio: fs.readFileSync(wav_tmp), mime: "audio/wav", provider: providerKey };
+    } finally {
+      try { fs.unlinkSync(wav_tmp); } catch (_) {}
+    }
+  };
+
+  return { tts_erstellen, tts_vorschau, tts_text_bereinigen, tts_provider_key };
 };

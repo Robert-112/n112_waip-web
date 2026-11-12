@@ -1,7 +1,7 @@
 const e = require("express");
 
-module.exports = (io, sql, fs, logger, app_cfg) => {
-  const { tts_erstellen } = require("./tts.js")(fs, logger, sql, app_cfg);
+module.exports = (io, sql, fs, logger, app_cfg, tts) => {
+  const { tts_erstellen } = tts || require("./tts.js")(fs, logger, sql, app_cfg);
   const osrm = app_cfg.osrm.enabled ? require("./osrm.js")(app_cfg, logger) : null;
   const waip_verteilen_socket = (einsatzdaten, socket, wachen_nr, reset_timestamp) => {
     return new Promise(async (resolve, reject) => {
