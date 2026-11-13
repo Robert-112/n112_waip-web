@@ -253,13 +253,16 @@ module.exports = (db, app_cfg) => {
           sql_filter = `(SELECT wa.nr_leitstelle FROM waip_wachen wa WHERE wa.id = em.em_station_id) LIKE ${wachen_nr} `;
         }
 
-        // neuesten Einsatz für die gewählte Wachen-ID abfragen
+        // neuesten Einsatz für die gewählte Wachen-ID abfragen, in dem mindestens ein Einsatzmittel
+        // dieser Wache tatsächlich alarmiert wurde (Einsatzmittel ohne Alarmierungszeit sind nur zur Info)
         const stmt1 = db.prepare(`
-          SELECT 
+          SELECT
           em.em_waip_einsaetze_id AS waip_id
           FROM waip_einsatzmittel em
-          WHERE 
+          WHERE
           ${sql_filter}
+          AND em.em_zeitstempel_alarmierung IS NOT NULL
+          AND em.em_zeitstempel_alarmierung != ''
           ORDER BY (SELECT zeitstempel FROM waip_einsaetze WHERE id = em.em_waip_einsaetze_id) DESC LIMIT 1
         `);
         const row1 = stmt1.get();
