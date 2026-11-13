@@ -96,4 +96,37 @@ app_cfg.tts = {
   piper_voice: process.env.PIPER_VOICE || "de_DE-thorsten_emotional-medium",
 };
 
+// Standby-Widgets (Wetter, Unwetterwarnungen, Kalender) – Daten holt nur der Server, die Monitore
+// brauchen keinen Internetzugang
+app_cfg.widgets = {
+  // selbst gehostetes Bright Sky (DWD-Daten), leer = Wetter aus
+  brightsky_url: (process.env.WIDGET_BRIGHTSKY_URL || "").replace(/\/+$/, ""),
+  // aktuelles Wetter je Monitor alle x Minuten (Startzeitpunkt je Monitor zufällig verteilt)
+  weather_interval: Number(process.env.WIDGET_WEATHER_INTERVAL) || 30,
+  // Unwetterwarnungen alle x Minuten prüfen, Änderungen gehen sofort an alle Monitore
+  alert_interval: Number(process.env.WIDGET_ALERT_INTERVAL) || 5,
+  // Daten älter als x Minuten werden auf dem Monitor ausgeblendet
+  max_age: Number(process.env.WIDGET_MAX_AGE) || 180,
+  // Kalender alle x Minuten neu laden
+  ical_interval: Number(process.env.WIDGET_ICAL_INTERVAL) || 15,
+  // Termine von heute bis heute + x Tage, höchstens ical_max Einträge
+  ical_days: Number(process.env.WIDGET_ICAL_DAYS ?? 3),
+  ical_max: Number(process.env.WIDGET_ICAL_MAX) || 4,
+  ical_max_bytes: (Number(process.env.WIDGET_ICAL_MAX_KB) || 2048) * 1024,
+  // Proxy für Kalender-Server mit Kennzeichen ":proxy"
+  ical_proxy: process.env.WIDGET_ICAL_PROXY || "",
+  // erlaubte Kalender-Server: "host[:proxy|:direkt],…" (ohne Angabe: Proxy, wenn WIDGET_ICAL_PROXY gesetzt ist)
+  ical_domains: (process.env.WIDGET_ICAL_DOMAINS || "")
+    .split(",")
+    .map((eintrag) => eintrag.trim().toLowerCase())
+    .filter(Boolean)
+    .map((eintrag) => {
+      const [host, art] = eintrag.split(":").map((teil) => teil.trim());
+      const proxy = art ? art === "proxy" : Boolean(process.env.WIDGET_ICAL_PROXY);
+      return { host: host, proxy: proxy };
+    })
+    .filter((d) => d.host),
+  zeitzone: process.env.WIDGET_TIMEZONE || "Europe/Berlin",
+};
+
 module.exports = app_cfg;

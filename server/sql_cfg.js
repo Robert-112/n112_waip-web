@@ -303,6 +303,20 @@ module.exports = (bcrypt, app_cfg) => {
     }
   }
 
+  // Wetter-Standorte für die Standby-Widgets (neu in Version 2.1.4, für neue und bestehende Datenbanken).
+  // nr = Nummer wie im Aufruf /waip/<nr>: 1 = Leitstelle, 2 = Kreis, 4 = Träger, 6 = Wache.
+  // warncell_id optional (DWD-Warnzelle), leer = Bright Sky ermittelt sie aus der Koordinate.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS waip_wetter_orte (
+      id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
+      nr TEXT NOT NULL UNIQUE,
+      name TEXT,
+      lat REAL NOT NULL,
+      lon REAL NOT NULL,
+      warncell_id INTEGER
+    );
+  `);
+
   console.log("START - Datenbank geöffnet.");
 
   return db;

@@ -1,13 +1,51 @@
 #waipclock.fullheight
   #screen_saver.h-95
-    #clock_day.h-60.w-50
-      #time.h-80.text-muted.fw-bold.d-flex.align-items-end.clock_frame
-        span#clock-hhmm -HH:MM-
-        span#clock-seconds.clock-seconds :00
-      #day.h-20.text-secondary.d-flex.align-items-start.day_frame -Datum-
+    //- Uhr, Warnung und Widgets bilden einen Block, der als Ganzes wandert (Einbrennschutz)
+    #standby_block
+      #standby_links
+        #clock_day
+          #time.h-80.text-muted.fw-bold.d-flex.align-items-end.clock_frame
+            span#clock-hhmm -HH:MM-
+            span#clock-seconds.clock-seconds :00
+          #day.h-20.text-secondary.d-flex.align-items-start.day_frame -Datum-
+        #standby_warnung.d-none(role='status')
+          i.bi.bi-exclamation-triangle-fill(aria-hidden='true')
+          .standby-warnung-text
+            .standby-warnung-stufe
+            .standby-warnung-titel
+            .standby-warnung-zeit
+      #standby_widgets.d-none
+        #standby_wetter.d-none
+          .standby-label
+            i.bi.bi-geo-alt(aria-hidden='true')
+            span.standby-wetter-ort
+          .standby-wetter-jetzt
+            i.bi.standby-wetter-icon(aria-hidden='true')
+            .standby-wetter-temp
+            .standby-wetter-text
+              span.standby-wetter-zustand
+              span.standby-wetter-minmax
+          .standby-wetter-fakten
+            div
+              span.standby-klein Regenrisiko
+              span.standby-wetter-regen
+            div
+              span.standby-klein Wind
+              span.standby-wetter-wind
+            div
+              span.standby-klein Böen
+              span.standby-wetter-boeen
+          .standby-wetter-tage
+          .standby-quelle.standby-wetter-quelle
+        #standby_kalender.d-none
+          .standby-kalender-kopf
+            span.standby-label
+              i.bi.bi-calendar-event(aria-hidden='true')
+              span Termine
+            span.standby-quelle.standby-kalender-stand
+          .standby-kalender-liste
   .h-5.pt-2
     #wachenname_footer.text-secondary
       .h4.bi-building
         = ' ' + (data_wache || ' -Wachenname-')
         span#wachenname-login-icon.bi-eye-slash.d-none(title="Nicht angemeldet")
-      

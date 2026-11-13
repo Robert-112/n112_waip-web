@@ -327,6 +327,7 @@ function resize_text(reProcess) {
       textFit(document.getElementsByClassName("clock_frame"), { minFontSize: 4, maxFontSize: 500, reProcess: reProcess });
       textFit(document.getElementsByClassName("day_frame"), { minFontSize: 3, maxFontSize: 500, reProcess: reProcess });
     } catch (e) { console.error("resize_text clock_frame/day_frame:", e); }
+    widgets_einpassen();
   }
   // Tableau nur Anpassen wenn sichtbar
   if ($("#waiptableau").is(":visible")) {
@@ -827,6 +828,266 @@ socket.on("io.standby", function (data) {
     updateRandomPosition();
   }, 200);
 
+});
+
+/* ############################ */
+/* ##### STANDBY-WIDGETS ###### */
+/* ############################ */
+
+// Wetter, Unwetterwarnungen und Termine kommen fertig aufbereitet vom Server (der Monitor selbst braucht
+// keinen Internetzugang). Teil-Updates werden zusammengeführt, die Anzeige wird einmal pro Minute geprüft
+// (veraltete Daten ausblenden, vergangene Termine entfernen, Tageswechsel).
+const widgetDaten = { aktiv: { wetter: false, kalender: false }, max_age: 180, wetter: null, warnungen: null, kalender: null };
+
+const WETTER_SYMBOLE = {
+  "clear-day": ["bi-sun", "klar"],
+  "clear-night": ["bi-moon-stars", "klar"],
+  "partly-cloudy-day": ["bi-cloud-sun", "teils bewölkt"],
+  "partly-cloudy-night": ["bi-cloud-moon", "teils bewölkt"],
+  cloudy: ["bi-cloud", "bewölkt"],
+  fog: ["bi-cloud-fog2", "Nebel"],
+  wind: ["bi-wind", "windig"],
+  rain: ["bi-cloud-rain", "Regen"],
+  sleet: ["bi-cloud-sleet", "Schneeregen"],
+  snow: ["bi-cloud-snow", "Schnee"],
+  hail: ["bi-cloud-hail", "Hagel"],
+  thunderstorm: ["bi-cloud-lightning-rain", "Gewitter"],
+};
+const WARN_STUFEN = { 1: "Wetterwarnung", 2: "Markante Wetterwarnung", 3: "Unwetterwarnung", 4: "Extremes Unwetter" };
+const MINUTE_MS = 60 * 1000;
+
+function wetter_symbol(icon) {
+  return WETTER_SYMBOLE[icon] || ["bi-cloud", ""];
+}
+
+function grad(wert) {
+  return typeof wert === "number" ? wert + "°" : "–";
+}
+
+function zwei(n) {
+  return String(n).padStart(2, "0");
+}
+
+function uhrzeit(date) {
+  return zwei(date.getHours()) + ":" + zwei(date.getMinutes());
+}
+
+function tages_start(date, plus) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + (plus || 0));
+  return d.getTime();
+}
+
+// "heute", "morgen" oder Wochentag (kurz) für einen Zeitpunkt
+function tag_relativ(date) {
+  const jetzt = new Date();
+  const t = date.getTime();
+  if (t >= tages_start(jetzt, 0) && t < tages_start(jetzt, 1)) return "heute";
+  if (t >= tages_start(jetzt, 1) && t < tages_start(jetzt, 2)) return "morgen";
+  return date.toLocaleDateString("de-DE", { weekday: "short" });
+}
+
+function veraltet(iso) {
+  if (!iso) return true;
+  return Date.now() - new Date(iso).getTime() > widgetDaten.max_age * MINUTE_MS;
+}
+
+function element(tag, klasse, text) {
+  const el = document.createElement(tag);
+  if (klasse) el.className = klasse;
+  if (text !== undefined && text !== null) el.textContent = text;
+  return el;
+}
+
+function termin_laeuft_noch(t, jetzt) {
+  return Math.max(new Date(t.ende).getTime(), new Date(t.start).getTime() + 60 * MINUTE_MS) > jetzt;
+}
+
+function warnung_rendern(w) {
+  const box = document.getElementById("standby_warnung");
+  const liste = w && !veraltet(w.abgerufen) ? w.liste || [] : [];
+  if (!widgetDaten.aktiv.wetter || liste.length === 0) {
+    box.classList.add("d-none");
+    return;
+  }
+  const erste = liste[0];
+  box.classList.remove("stufe-1", "stufe-2", "stufe-3", "stufe-4");
+  box.classList.add("stufe-" + (erste.stufe || 1));
+  box.querySelector(".standby-warnung-stufe").textContent = WARN_STUFEN[erste.stufe] || WARN_STUFEN[1];
+  box.querySelector(".standby-warnung-titel").textContent = erste.ereignis || erste.titel || "";
+  let zeit = "";
+  const beginn = erste.beginn ? new Date(erste.beginn) : null;
+  const ende = erste.ende ? new Date(erste.ende) : null;
+  const fmt = (d) => tag_relativ(d) + " " + uhrzeit(d);
+  if (beginn && beginn.getTime() > Date.now()) {
+    // Ende am selben Tag nur mit Uhrzeit ("heute 15:00 bis 22:00 Uhr")
+    const gleicher_tag = ende && tages_start(ende, 0) === tages_start(beginn, 0);
+    zeit = fmt(beginn) + (ende ? " bis " + (gleicher_tag ? uhrzeit(ende) : fmt(ende)) + " Uhr" : " Uhr");
+  } else {
+    zeit = ende ? "bis " + fmt(ende) + " Uhr" : "bis auf Weiteres";
+  }
+  zeit += " · DWD";
+  if (liste.length > 1) zeit += " · " + (liste.length - 1) + (liste.length === 2 ? " weitere Warnung" : " weitere Warnungen");
+  box.querySelector(".standby-warnung-zeit").textContent = zeit;
+  box.classList.remove("d-none");
+}
+
+function wetter_rendern(w) {
+  const box = document.getElementById("standby_wetter");
+  if (!widgetDaten.aktiv.wetter || !w || veraltet(w.abgerufen) || (!w.aktuell && !w.heute)) {
+    box.classList.add("d-none");
+    return false;
+  }
+  const a = w.aktuell || {};
+  const h = w.heute || {};
+  const symbol = wetter_symbol(a.icon || h.icon);
+  box.querySelector(".standby-wetter-ort").textContent = w.ort || "";
+  box.querySelector(".standby-wetter-icon").className = "bi standby-wetter-icon " + symbol[0];
+  box.querySelector(".standby-wetter-temp").textContent = grad(typeof a.temperatur === "number" ? a.temperatur : h.max);
+  box.querySelector(".standby-wetter-zustand").textContent = symbol[1];
+  box.querySelector(".standby-wetter-minmax").textContent = "↓ " + grad(h.min) + "  ↑ " + grad(h.max);
+  box.querySelector(".standby-wetter-regen").textContent = typeof h.regen === "number" ? h.regen + " %" : "–";
+  box.querySelector(".standby-wetter-wind").textContent = typeof a.wind === "number" ? a.wind + " km/h" : "–";
+  box.querySelector(".standby-wetter-boeen").textContent = typeof a.boeen === "number" ? a.boeen + " km/h" : "–";
+
+  const tage = box.querySelector(".standby-wetter-tage");
+  const namen = ["Morgen", "Übermorgen"];
+  const kinder = (w.tage || []).slice(0, 2).map(function (t, i) {
+    const s = wetter_symbol(t.icon);
+    const tag = element("div", "standby-tag");
+    tag.appendChild(element("i", "bi " + s[0])).setAttribute("aria-hidden", "true");
+    const text = element("div", "standby-tag-text");
+    text.appendChild(element("span", "standby-klein", namen[i]));
+    const temp = element("span", "standby-tag-temp", grad(t.max) + " ");
+    temp.appendChild(element("span", null, "/ " + grad(t.min)));
+    text.appendChild(temp);
+    text.appendChild(element("span", "standby-klein", s[1] + (typeof t.regen === "number" && t.regen >= 30 ? ", Regen " + t.regen + " %" : "")));
+    tag.appendChild(text);
+    return tag;
+  });
+  tage.replaceChildren.apply(tage, kinder);
+
+  const stand = a.stand ? new Date(a.stand) : w.abgerufen ? new Date(w.abgerufen) : null;
+  box.querySelector(".standby-wetter-quelle").textContent = (stand ? "Stand " + uhrzeit(stand) + " · " : "") + "Quelle: Deutscher Wetterdienst";
+  box.classList.remove("d-none");
+  return true;
+}
+
+function kalender_rendern(k) {
+  const box = document.getElementById("standby_kalender");
+  if (!widgetDaten.aktiv.kalender || !k || veraltet(k.abgerufen)) {
+    box.classList.add("d-none");
+    return false;
+  }
+  const jetzt = new Date();
+  const heute = tages_start(jetzt, 0);
+  const termine = (k.termine || []).filter((t) => termin_laeuft_noch(t, jetzt.getTime())).slice(0, 4);
+
+  // nach Tagen gruppieren (laufende mehrtägige Termine erscheinen unter "Heute")
+  const gruppen = [];
+  termine.forEach(function (t) {
+    const start = new Date(t.start);
+    const tag = Math.max(tages_start(start, 0), heute);
+    let gruppe = gruppen.find((g) => g.tag === tag);
+    if (!gruppe) {
+      gruppe = { tag: tag, termine: [] };
+      gruppen.push(gruppe);
+    }
+    let zeit;
+    if (t.ganztaegig) zeit = "ganztägig";
+    else if (start.getTime() < heute) zeit = "läuft";
+    else zeit = uhrzeit(start);
+    gruppe.termine.push({ zeit: zeit, titel: t.titel, ort: t.ort });
+  });
+
+  const liste = box.querySelector(".standby-kalender-liste");
+  if (gruppen.length === 0) {
+    liste.replaceChildren(element("div", "standby-kalender-leer", "Keine Termine in den nächsten Tagen"));
+  } else {
+    liste.replaceChildren.apply(
+      liste,
+      gruppen.map(function (g) {
+        const datum = new Date(g.tag);
+        const el = element("div", "standby-tag-gruppe");
+        const kopf = element("div", "standby-tag-kopf");
+        let name;
+        if (g.tag === heute) name = element("span", "standby-tag-name heute", "Heute");
+        else if (g.tag === tages_start(jetzt, 1)) name = element("span", "standby-tag-name", "Morgen");
+        else name = element("span", "standby-tag-name", datum.toLocaleDateString("de-DE", { weekday: "long" }));
+        kopf.appendChild(name);
+        const kurz = datum.toLocaleDateString("de-DE", { weekday: "short" }).replace(".", "");
+        kopf.appendChild(element("span", "standby-tag-datum", kurz + " " + zwei(datum.getDate()) + "." + zwei(datum.getMonth() + 1) + "."));
+        el.appendChild(kopf);
+        g.termine.forEach(function (t) {
+          const zeile = element("div", "standby-termin");
+          zeile.appendChild(element("span", "standby-termin-zeit", t.zeit));
+          const text = element("div", "standby-termin-text");
+          text.appendChild(element("span", "standby-termin-titel", t.titel));
+          if (t.ort) text.appendChild(element("span", "standby-termin-ort", t.ort));
+          zeile.appendChild(text);
+          el.appendChild(zeile);
+        });
+        return el;
+      })
+    );
+  }
+  box.querySelector(".standby-kalender-stand").textContent = k.abgerufen ? "Stand " + uhrzeit(new Date(k.abgerufen)) : "";
+  box.classList.remove("d-none");
+  return true;
+}
+
+// Widget-Spalte verkleinern, bis Wetter und Termine vollständig hineinpassen (flache Bildschirme)
+function widgets_einpassen() {
+  const box = document.getElementById("standby_widgets");
+  if (!box || box.classList.contains("d-none") || !$("#waipclock").is(":visible")) return;
+  box.style.fontSize = "";
+  const inhalt_hoehe = function () {
+    const kinder = Array.from(box.children).filter((el) => !el.classList.contains("d-none"));
+    if (kinder.length === 0) return 0;
+    return kinder[kinder.length - 1].getBoundingClientRect().bottom - kinder[0].getBoundingClientRect().top;
+  };
+  let groesse = parseFloat(getComputedStyle(box).fontSize);
+  for (let i = 0; i < 30 && inhalt_hoehe() > box.clientHeight && groesse > 8; i++) {
+    groesse -= 0.5;
+    box.style.fontSize = groesse + "px";
+  }
+}
+
+function widgets_rendern() {
+  try {
+    warnung_rendern(widgetDaten.warnungen);
+    const mit_wetter = wetter_rendern(widgetDaten.wetter);
+    const mit_kalender = kalender_rendern(widgetDaten.kalender);
+    const mit_widgets = mit_wetter || mit_kalender;
+    const block = document.getElementById("standby_block");
+    const vorher = block.classList.contains("mit-widgets");
+    document.getElementById("standby_widgets").classList.toggle("d-none", !mit_widgets);
+    block.classList.toggle("mit-widgets", mit_widgets);
+    widgets_einpassen();
+    // Uhrgröße und Position neu berechnen, wenn sich das Layout geändert hat
+    if (vorher !== mit_widgets && $("#waipclock").is(":visible")) {
+      setTimeout(function () {
+        resize_text(true);
+        updateRandomPosition();
+      }, 50);
+    }
+  } catch (e) {
+    console.error("Standby-Widgets:", e);
+  }
+}
+
+socket.on("io.widgets", function (data) {
+  if (!data) return;
+  if (data.aktiv) widgetDaten.aktiv = data.aktiv;
+  if (data.max_age) widgetDaten.max_age = data.max_age;
+  ["wetter", "warnungen", "kalender"].forEach(function (teil) {
+    if (Object.prototype.hasOwnProperty.call(data, teil)) widgetDaten[teil] = data[teil];
+  });
+  widgets_rendern();
+});
+
+// einmal pro Minute: veraltete Daten und vergangene Termine ausblenden, Tageswechsel
+takt_add("widgets", function () {
+  if (new Date().getSeconds() === 0) widgets_rendern();
 });
 
 // Einsatzdaten laden, Wachalarm anzeigen
@@ -1601,27 +1862,24 @@ function startRandomPositioning() {
 
 function updateRandomPosition() {
   const screenSaver = document.getElementById("screen_saver");
-  const clockDay = document.getElementById("clock_day");
+  const block = document.getElementById("standby_block");
 
-  if (!screenSaver || !clockDay) return;
+  if (!screenSaver || !block) return;
 
-  // Dimensionen des Containers und des Elements
+  // Dimensionen des Containers und des Blocks (Uhr, Warnung, Widgets)
   const containerRect = screenSaver.getBoundingClientRect();
-  const elementRect = clockDay.getBoundingClientRect();
+  const elementRect = block.getBoundingClientRect();
 
-  // Maximale Positionen berechnen (unter Berücksichtigung der Elementgröße)
-  const maxX = containerRect.width - elementRect.width;
-  const maxY = containerRect.height - elementRect.height;
+  // Maximale Positionen berechnen (unter Berücksichtigung der Blockgröße)
+  const maxX = Math.max(0, containerRect.width - elementRect.width);
+  const maxY = Math.max(0, containerRect.height - elementRect.height);
 
   // Zufällige Position berechnen
   const randomX = Math.floor(Math.random() * maxX);
   const randomY = Math.floor(Math.random() * maxY);
 
   // Position via transform – löst keinen Layout-Reflow aus (Compositor-Thread)
-  clockDay.style.position = "absolute";
-  clockDay.style.left = "0";
-  clockDay.style.top = "0";
-  clockDay.style.transform = `translate(${randomX}px, ${randomY}px)`;
+  block.style.transform = `translate(${randomX}px, ${randomY}px)`;
 }
 
 /* ############################ */
