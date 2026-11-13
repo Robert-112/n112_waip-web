@@ -786,18 +786,28 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     return null;
   };
 
-  // Ersetzungen-Administration anzeigen
+  /* ##### Ersetzungen und Aussprache (waip_replace) ##### */
+
+  // Typen mit Wirkung auf die Sprachansage (Probehören möglich, je Eingabewert nur ein Eintrag)
+  const TTS_TYPEN = ["orte_tts", "em_tts"];
+  const TTS_VORSCHAU_MAX_LAENGE = 500;
+
+  const ersetzung_laden = async (id) => (await sql.db_replace_get_all_full()).find((r) => r.id === Number(id));
+
+  // Seite anzeigen: alle Ersetzungen, Probehören für die Sprachansage
   app.get("/adm_edit_replace", auth.ensureAdmin, async (req, res, next) => {
     try {
-      const replace = await sql.db_replace_get_all_full();
       res.render("admin/adm_edit_replace", {
         public: app_cfg.public,
         title: "Ersetzungen verwalten",
         user: req.user,
         session_max_age: app_cfg.global.session_cookie_max_age,
-        replace,
+        ersetzungen: await sql.db_replace_get_all_full(),
+        tts_typen: TTS_TYPEN,
+        tts_provider: tts.tts_provider_key(),
+        tts_stimme: tts.tts_provider_key() === "piper" ? app_cfg.tts.piper_voice : null,
+        max_laenge: TTS_VORSCHAU_MAX_LAENGE,
         error: req.query.error || null,
-        success: req.query.success || null,
       });
     } catch (error) {
       const err = new Error("Fehler beim Laden der Seite /adm_edit_replace. " + error);
@@ -807,80 +817,12 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     }
   });
 
-  // Ersetzung bearbeiten
-  app.post("/adm_edit_replace/edit", auth.ensureAdmin, async (req, res) => {
-    try {
-      const pruef_fehler = ersetzung_pruefen(req.body);
-      if (pruef_fehler) throw new Error(pruef_fehler);
-      await sql.db_replace_update(req.body);
-      config_event(req, `Ersetzung mit ID ${req.body.id} wurde von ${req.user.user} bearbeitet.`, "ersetzung-geaendert", "change", {
-        ziel_id: req.body.id,
-      });
-      res.redirect("/adm_edit_replace?success=" + encodeURIComponent("Ersetzung erfolgreich bearbeitet."));
-    } catch (error) {
-      res.redirect("/adm_edit_replace?error=" + encodeURIComponent("Fehler beim Bearbeiten der Ersetzung. " + error));
-    }
-  });
-
-  // Ersetzung löschen
-  app.post("/adm_edit_replace/delete", auth.ensureAdmin, async (req, res) => {
-    try {
-      await sql.db_replace_delete(req.body.id);
-      config_event(req, `Ersetzung mit ID ${req.body.id} wurde von ${req.user.user} gelöscht.`, "ersetzung-geloescht", "deletion", {
-        ziel_id: req.body.id,
-      });
-      res.redirect("/adm_edit_replace?success=" + encodeURIComponent("Ersetzung erfolgreich gelöscht."));
-    } catch (error) {
-      res.redirect("/adm_edit_replace?error=" + encodeURIComponent("Fehler beim Löschen der Ersetzung. " + error));
-    }
-  });
-
-  // Neue Ersetzung anlegen
-  app.post("/adm_edit_replace/create", auth.ensureAdmin, async (req, res) => {
-    try {
-      const pruef_fehler = ersetzung_pruefen(req.body);
-      if (pruef_fehler) throw new Error(pruef_fehler);
-      await sql.db_replace_create(req.body);
-      config_event(req, `Ersetzung wurde von ${req.user.user} angelegt.`, "ersetzung-angelegt", "creation");
-      res.redirect("/adm_edit_replace?success=" + encodeURIComponent("Ersetzung erfolgreich angelegt."));
-    } catch (error) {
-      res.redirect("/adm_edit_replace?error=" + encodeURIComponent("Fehler beim Anlegen der Ersetzung. " + error));
-    }
-  });
-
-  /* ##### Aussprache testen (TTS-Ersetzungen) ##### */
-
-  // Nur diese Typen wirken auf die Sprachansage und werden auf der Testseite bearbeitet
-  const TTS_TYPEN = ["orte_tts", "em_tts"];
-  const TTS_VORSCHAU_MAX_LAENGE = 500;
-
-  const tts_ersetzungen_laden = async () => (await sql.db_replace_get_all_full()).filter((r) => TTS_TYPEN.includes(r.rp_typ));
-
-  // Seite anzeigen
-  app.get("/adm_tts_test", auth.ensureAdmin, async (req, res, next) => {
-    try {
-      res.render("admin/adm_tts_test", {
-        public: app_cfg.public,
-        title: "Aussprache testen",
-        user: req.user,
-        session_max_age: app_cfg.global.session_cookie_max_age,
-        ersetzungen: await tts_ersetzungen_laden(),
-        tts_provider: tts.tts_provider_key(),
-        tts_stimme: tts.tts_provider_key() === "piper" ? app_cfg.tts.piper_voice : null,
-        max_laenge: TTS_VORSCHAU_MAX_LAENGE,
-        error: req.query.error || null,
-      });
-    } catch (error) {
-      const err = new Error("Fehler beim Laden der Seite /adm_tts_test. " + error);
-      logger.log("error", err);
-      err.status = 500;
-      next(err);
-    }
-  });
+  // Frühere eigene Testseite ist in der Ersetzungsseite aufgegangen
+  app.get("/adm_tts_test", (req, res) => res.redirect(301, "/adm_edit_replace"));
 
   // Probehören: Text (optional mit Ersetzungen bzw. einer noch nicht gespeicherten Ersetzung) sprechen lassen.
   // Antwort als JSON mit dem tatsächlich gesprochenen Text, den Treffern und der Audiodatei (Base64-WAV).
-  app.post("/adm_tts_test/vorschau", auth.ensureAdmin, checkContentType, async (req, res) => {
+  app.post("/adm_edit_replace/vorschau", auth.ensureAdmin, checkContentType, async (req, res) => {
     try {
       const modus = String(req.body.modus || "ersetzt");
       const kandidat = req.body.kandidat && typeof req.body.kandidat === "object" ? req.body.kandidat : null;
@@ -888,11 +830,18 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       let treffer = [];
       let fehlerhaft = [];
 
+      if (kandidat && !TTS_TYPEN.includes(kandidat.rp_typ)) {
+        return res.status(400).json({ error: "Dieser Typ wirkt nicht auf die Sprachansage und kann nicht angehört werden." });
+      }
+
       if (kandidat && kandidat.rp_typ === "em_tts") {
         // Fahrzeugtyp: so sprechen, wie er in der Alarmansage vorkommt ("Für <Ausgabewert> <Nr>")
         if (!String(kandidat.rp_output || "").trim()) return res.status(400).json({ error: "Bitte einen Ausgabewert eingeben." });
         text = `Für ${String(kandidat.rp_output).trim()} 1`;
-        treffer = [{ id: kandidat.id || null, rp_input: kandidat.rp_input, rp_output: kandidat.rp_output, anzahl: 1, kandidat: true }];
+        // Als Entwurf markieren, solange die Werte nicht dem gespeicherten Eintrag entsprechen
+        const gespeichert = kandidat.id ? await ersetzung_laden(kandidat.id) : null;
+        const entwurf = !gespeichert || gespeichert.rp_input !== kandidat.rp_input || gespeichert.rp_output !== kandidat.rp_output;
+        treffer = [{ id: kandidat.id || null, rp_input: kandidat.rp_input, rp_output: kandidat.rp_output, anzahl: 1, kandidat: entwurf }];
       } else {
         if (!text) return res.status(400).json({ error: "Bitte einen Text eingeben." });
         if (kandidat && kandidat.rp_input) {
@@ -930,9 +879,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     }
   });
 
-  // Ersetzung speichern: mit id wird der Eintrag geändert, sonst ein vorhandener Eintrag mit gleichem
-  // Typ und Eingabewert aktualisiert bzw. ein neuer angelegt.
-  app.post("/adm_tts_test/speichern", auth.ensureAdmin, checkContentType, async (req, res) => {
+  // Ersetzung speichern: mit id wird der Eintrag geändert, sonst neu angelegt. Bei den Sprachausgabe-Typen
+  // wird ein vorhandener Eintrag mit gleichem Eingabewert überschrieben (dort wirkt ohnehin nur einer);
+  // Wachen-Aliase dürfen denselben Eingabewert mehrfach haben (ein Name → mehrere Wachen).
+  app.post("/adm_edit_replace/speichern", auth.ensureAdmin, checkContentType, async (req, res) => {
     try {
       const rp = {
         id: req.body.id ? Number(req.body.id) : null,
@@ -940,14 +890,14 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         rp_input: String(req.body.rp_input || ""),
         rp_output: String(req.body.rp_output || "").trim(),
       };
-      if (!TTS_TYPEN.includes(rp.rp_typ)) return res.status(400).json({ error: "Ungültiger Typ." });
-      if (rp.rp_typ === "em_tts") rp.rp_input = rp.rp_input.trim();
+      // Leerzeichen am Rand nur bei Regex-Suchtexten erhalten (können dort gewollt sein)
+      if (rp.rp_typ !== "orte_tts") rp.rp_input = rp.rp_input.trim();
       const pruef_fehler = ersetzung_pruefen(rp);
       if (pruef_fehler) return res.status(400).json({ error: pruef_fehler });
 
-      const vorhandene = await tts_ersetzungen_laden();
+      const vorhandene = await sql.db_replace_get_all_full();
       if (!rp.id) {
-        const gleich = vorhandene.find((r) => r.rp_typ === rp.rp_typ && r.rp_input === rp.rp_input);
+        const gleich = TTS_TYPEN.includes(rp.rp_typ) && vorhandene.find((r) => r.rp_typ === rp.rp_typ && r.rp_input === rp.rp_input);
         if (gleich) rp.id = gleich.id;
       } else if (!vorhandene.some((r) => r.id === rp.id)) {
         return res.status(404).json({ error: "Die Ersetzung existiert nicht mehr. Bitte als neuen Eintrag speichern." });
@@ -957,20 +907,36 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       if (rp.id) {
         await sql.db_replace_update(rp);
         aktion = "geaendert";
-        config_event(req, `Ersetzung mit ID ${rp.id} wurde von ${req.user.user} über die Aussprache-Testseite bearbeitet.`, "ersetzung-geaendert", "change", {
+        config_event(req, `Ersetzung mit ID ${rp.id} wurde von ${req.user.user} bearbeitet.`, "ersetzung-geaendert", "change", {
           ziel_id: rp.id,
         });
       } else {
         rp.id = Number(await sql.db_replace_create(rp));
         aktion = "angelegt";
-        config_event(req, `Ersetzung wurde von ${req.user.user} über die Aussprache-Testseite angelegt.`, "ersetzung-angelegt", "creation", {
+        config_event(req, `Ersetzung mit ID ${rp.id} wurde von ${req.user.user} angelegt.`, "ersetzung-angelegt", "creation", {
           ziel_id: rp.id,
         });
       }
-      res.json({ ok: true, id: rp.id, aktion, ersetzungen: await tts_ersetzungen_laden() });
+      res.json({ ok: true, id: rp.id, aktion, ersetzungen: await sql.db_replace_get_all_full() });
     } catch (error) {
-      logger.log("error", `Ersetzung über Aussprache-Testseite nicht gespeichert: ${error.message}`);
+      logger.log("error", `Ersetzung nicht gespeichert: ${error.message}`);
       res.status(500).json({ error: "Fehler beim Speichern der Ersetzung. " + error.message });
+    }
+  });
+
+  // Ersetzung löschen
+  app.post("/adm_edit_replace/loeschen", auth.ensureAdmin, checkContentType, async (req, res) => {
+    try {
+      const id = Number(req.body.id);
+      if (!id || !(await ersetzung_laden(id))) return res.status(404).json({ error: "Die Ersetzung existiert nicht (mehr)." });
+      await sql.db_replace_delete(id);
+      config_event(req, `Ersetzung mit ID ${id} wurde von ${req.user.user} gelöscht.`, "ersetzung-geloescht", "deletion", {
+        ziel_id: id,
+      });
+      res.json({ ok: true, id, ersetzungen: await sql.db_replace_get_all_full() });
+    } catch (error) {
+      logger.log("error", `Ersetzung nicht gelöscht: ${error.message}`);
+      res.status(500).json({ error: "Fehler beim Löschen der Ersetzung. " + error.message });
     }
   });
 

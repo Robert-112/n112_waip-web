@@ -7,7 +7,7 @@ mixin navlink(href, text, icon, aktiv)
 
 - const seite = title || ''
 - const istInfo = ['Impressum', 'Datenschutzerklärung', 'Über'].includes(seite)
-- const istAdmin = ['Benutzer und Rechte verwalten', 'Wachen verwalten', 'Ersetzungen verwalten', 'Aussprache testen', 'Verbundene PCs/Benutzer', 'Akutelle Einsätze', 'Log-Datei'].includes(seite)
+- const istAdmin = ['Benutzer und Rechte verwalten', 'Wachen verwalten', 'Ersetzungen verwalten', 'Verbundene PCs/Benutzer', 'Akutelle Einsätze', 'Log-Datei'].includes(seite)
 
 header
   // Fixed navbar
@@ -46,10 +46,7 @@ header
                     | Wachen bearbeiten
                   a.dropdown-item(href='/adm_edit_replace')
                     i.bi.bi-arrow-left-right.me-2(aria-hidden='true')
-                    | Ersetzungen bearbeiten
-                  a.dropdown-item(href='/adm_tts_test')
-                    i.bi.bi-volume-up-fill.me-2(aria-hidden='true')
-                    | Aussprache testen
+                    | Ersetzungen und Aussprache
                   .dropdown-divider
                   a.dropdown-item(href='/adm_show_clients')
                     i.bi.bi-globe.me-2(aria-hidden='true')
