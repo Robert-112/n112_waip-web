@@ -589,3 +589,154 @@ audio {
 .navbar.bg-primary {
   background-color: #215d84 !important;
 }
+
+/*** Startseite ***/
+/* Die ganze Startseite ist Bühne für den animierten Hintergrund (.start-hg): er liegt hinter
+   Kopfbereich und Kacheln und wird erst am Rand der Seite abgeschnitten */
+.start-seite {
+  position: relative;
+  overflow: hidden;
+  min-height: calc(100vh - 5rem - 60px);
+  min-height: calc(100dvh - 5rem - 60px);
+}
+
+.start-seite > .container {
+  position: relative;
+}
+
+.start-hero {
+  position: relative;
+  padding: 2rem 0 2.5rem;
+}
+
+@media (min-width: 992px) {
+  .start-hero {
+    min-height: 42vh;
+    display: flex;
+    align-items: center;
+    padding: 3rem 0;
+  }
+}
+
+/* große Bildschirme: Kopfbereich höher, damit unter den Kacheln nicht zu viel Leerraum bleibt */
+@media (min-width: 1200px) and (min-height: 1000px) {
+  .start-hero {
+    min-height: 50vh;
+  }
+}
+
+/*** Startseite: animierter Hintergrund (Thema Alarmierung) ***/
+/* Punktraster wie eine Karte; einzelne Wachen leuchten nacheinander kurz rot/blau auf und senden einen
+   weichen Impuls aus („werden alarmiert“). Bewusst zurückhaltend. Nur transform/opacity, keine Filter;
+   bei „Bewegung reduzieren“ im Betriebssystem steht alles still. */
+
+/* am Fenster verankert, damit der Hintergrund auch hinter dem Footer weiterläuft (keine Kante) */
+.start-hg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hg-raster {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.08) 1px, transparent 1.6px);
+  background-size: 26px 26px;
+  /* zu den Rändern hin auslaufen lassen */
+  -webkit-mask-image: radial-gradient(ellipse at 65% 35%, #000 0%, rgba(0, 0, 0, 0.6) 45%, transparent 85%);
+  mask-image: radial-gradient(ellipse at 65% 35%, #000 0%, rgba(0, 0, 0, 0.6) 45%, transparent 85%);
+}
+
+.hg-ping {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 0;
+  height: 0;
+  --farbe: 231, 76, 60;
+}
+
+.hg-ping.blau {
+  --farbe: 52, 152, 219;
+}
+
+.hg-ping::before,
+.hg-ping::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0;
+  animation-duration: 18s;
+  animation-iteration-count: infinite;
+  animation-delay: var(--d);
+}
+
+/* die Wache: kleiner, weich auslaufender Punkt */
+.hg-ping::before {
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  background: radial-gradient(circle closest-side, rgba(var(--farbe), 0.8), rgba(var(--farbe), 0));
+  animation-name: hg-punkt;
+  animation-timing-function: ease-in-out;
+}
+
+/* weicher Impuls um die Wache */
+.hg-ping::after {
+  left: -90px;
+  top: -90px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle closest-side, rgba(var(--farbe), 0.2), rgba(var(--farbe), 0.06) 55%, rgba(var(--farbe), 0) 100%);
+  transform: scale(0.1);
+  animation-name: hg-impuls;
+  animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1);
+}
+
+@keyframes hg-punkt {
+  0% { opacity: 0; }
+  4% { opacity: 0.7; }
+  22% { opacity: 0.35; }
+  35%, 100% { opacity: 0; }
+}
+
+@keyframes hg-impuls {
+  0% { transform: scale(0.1); opacity: 0; }
+  4% { opacity: 1; }
+  22% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hg-ping::before,
+  .hg-ping::after {
+    animation: none;
+  }
+  .hg-ping::before { opacity: 0.35; }
+}
+
+/* Aktionskacheln (Alarmmonitor, Dashboard) */
+.start-icon {
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .start-icon { width: 4.5rem; height: 4.5rem; font-size: 2.25rem; }
+}
+
+@media (min-width: 1200px) {
+  .start-icon { width: 5.5rem; height: 5.5rem; font-size: 2.75rem; }
+  .start-aktion h2 { font-size: 1.5rem; }
+}
+
+.start-aktion {
+  transition: background-color 0.15s;
+}
+
+.start-aktion:hover {
+  background-color: #383838;
+}

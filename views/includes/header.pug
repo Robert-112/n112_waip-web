@@ -13,9 +13,7 @@ header
   // Fixed navbar
   nav.navbar.navbar-expand-lg.bg-primary.fixed-top(data-bs-theme='dark')
     .container-fluid
-      a.navbar-brand.d-flex.align-items-center.gap-2(href='/')
-        i.bi.bi-broadcast-pin.text-danger(aria-hidden='true')
-        span= public.app_name
+      a.navbar-brand(href='/')= public.app_name
       button.navbar-toggler(type='button', data-bs-toggle='collapse', data-bs-target='#navbarCollapse', aria-controls='navbarCollapse', aria-expanded='false', aria-label='Menü umschalten')
         span.navbar-toggler-icon
       #navbarCollapse.collapse.navbar-collapse

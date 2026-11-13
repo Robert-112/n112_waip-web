@@ -1,5 +1,13 @@
 extends layout
 
+//- Anmeldeweg ohne Kennwort als großer Button mit kurzer Erklärung
+mixin anmeldeweg(icon, titel, text)
+  span.d-flex.align-items-center.gap-3.text-start
+    i.bi.fs-4(class=icon, aria-hidden='true')
+    span.flex-grow-1
+      span.d-block= titel
+      span.d-block.small.text-body-secondary= text
+
 block content
   main(role='main')
     .container
@@ -9,33 +17,35 @@ block content
             .display-6.text-info.mb-2
               i.bi.bi-person-circle(aria-hidden='true')
             h1.h3.mb-1 Anmelden
-            p.text-body-secondary.mb-0 Die Zugangsdaten erhalten Sie von den Administratoren.
+            p.text-body-secondary.mb-0 Wählen Sie Ihre Anmeldeart.
           +meldungen(error, success)
-          .card.border-0
+          //- Anmeldewege ohne Kennwort zuerst, damit sie (z.B. auf MDM-Dienstgeräten) nicht übersehen werden
+          .d-grid.gap-2
+            form(action='/login_cert', method='GET')
+              button.btn.btn-outline-light.btn-lg.w-100(type='submit')
+                +anmeldeweg('bi-shield-lock', 'Mit Gerätezertifikat', 'Für zentral verwaltete Dienstgeräte (MDM)')
+            //- Keycloak-Login (geplant): erscheint, sobald public.login_keycloak_url konfiguriert ist
+            if public.login_keycloak_url
+              a.btn.btn-outline-light.btn-lg.w-100(href=public.login_keycloak_url)
+                +anmeldeweg('bi-key', 'Mit Keycloak (Single Sign-on)', 'Mit Ihrem zentralen Benutzerkonto')
+          .d-flex.align-items-center.gap-3.my-4.text-body-secondary
+            hr.flex-grow-1.my-0
+            span.small.text-nowrap oder mit Benutzername und Passwort
+            hr.flex-grow-1.my-0
+          .card.border-0.mb-4
             .card-body.p-4
               form(action='/login', method='POST')
                 input(type="hidden" name="_csrf" value=csrf_token)
                 .mb-3
                   label.form-label(for='login-user') Benutzername
-                  input#login-user.form-control(type='text' name='user' autocomplete='username' placeholder='Benutzername eingeben' required='' autofocus='')
+                  input#login-user.form-control(type='text' name='user' autocomplete='username' placeholder='Benutzername eingeben' required='')
                 .mb-3
                   label.form-label(for='login-password') Passwort
                   input#login-password.form-control(type='password' name='password' autocomplete='current-password' placeholder='Passwort' required='')
                 .form-check.form-switch.mb-4
                   input#rembemerme.form-check-input(type='checkbox' role='switch' name='rememberme' checked='')
                   label.form-check-label(for='rembemerme') Anmeldung dauerhaft speichern
-                button.btn.btn-primary.btn-lg.w-100(type='submit')
+                button.btn.btn-primary.w-100(type='submit')
                   i.bi.bi-box-arrow-in-right.me-2(aria-hidden='true')
                   | Anmelden
-          // Geräteanmeldung per Zertifikat (MDM-verwaltete Endgeräte) als Alternative
-          .d-flex.align-items-center.gap-3.my-4.text-body-secondary
-            hr.flex-grow-1.my-0
-            span.small oder
-            hr.flex-grow-1.my-0
-          form(action='/login_cert', method='GET')
-            button.btn.btn-outline-light.w-100(type='submit')
-              i.bi.bi-shield-lock.me-2(aria-hidden='true')
-              | Mit Gerätezertifikat anmelden
-          p.form-text.text-center.mt-2.mb-4
-            | Für zentral per MDM (Mobile-Device-Management) verwaltete Endgeräte – ohne Benutzername und Kennwort.
-            | Die Berechtigung wird über das Zertifikat geprüft.
+              p.small.text-body-secondary.text-center.mt-3.mb-0 Die Zugangsdaten erhalten Sie von den Administratoren.
