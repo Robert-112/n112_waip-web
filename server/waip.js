@@ -115,10 +115,11 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
             // alles Sockets der Wache ermitteln
             const sockets = await io.of("/waip").in(wachen_nr.toString()).fetchSockets();
 
-            // prüfen ob nach dem Aktiv-Filter noch Einsatzmittel vorhanden sind
-            const keineAktivenEinsatzmittel =
-              (!einsatzdaten.em_alarmiert || einsatzdaten.em_alarmiert.length === 0) &&
-              (!einsatzdaten.em_weitere || einsatzdaten.em_weitere.length === 0);
+            // prüfen ob für DIESE Wache (diesen Raum) tatsächlich Einsatzmittel alarmiert wurden.
+            // Einsatzmittel ohne Alarmierungszeit stehen nur zur Info im Einsatz (z.B. NEF im
+            // Einsatzvorschlag, das noch nicht alarmiert wurde) und dürfen den Einsatz auf dem
+            // Alarmmonitor dieser Wache NICHT auslösen - sie erscheinen nur unter em_weitere.
+            const keineAlarmiertenEinsatzmittel = !einsatzdaten.em_alarmiert || einsatzdaten.em_alarmiert.length === 0;
 
             // jüngster Alarmierungszeitpunkt der für DIESE Wache alarmierten Einsatzmittel ermitteln.
             // Wichtig bei Nachalarmierung: eine neu hinzugekommene Wache hat einen eigenen, viel
@@ -133,10 +134,16 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
 
             // an jeden Socket entsprechende Daten senden
             for (const socket of sockets) {
-              if (keineAktivenEinsatzmittel) {
-                // Standby senden, da keine Einsatzmittel aktiver Wachen vorhanden
-                standby_verteilen_socket(socket);
-                logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr} verworfen: keine Einsatzmittel aktiver Wachen, sende Standby.`);
+              if (keineAlarmiertenEinsatzmittel) {
+                // Nur wenn dieser Monitor genau diesen Einsatz bereits anzeigt (Alarmierung wurde
+                // zurückgenommen), auf Standby schalten. Monitore, die gerade einen anderen Einsatz
+                // oder Standby anzeigen, bleiben unberührt.
+                if (socket.data.waip_id === einsatzdaten.id) {
+                  standby_verteilen_socket(socket);
+                  logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr}: keine alarmierten Einsatzmittel mehr, sende Standby an ${socket.id}.`);
+                } else {
+                  logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr} nicht angezeigt: keine alarmierten Einsatzmittel dieser Wache.`);
+                }
                 resolve(false);
               } else {
                 // Prüfen ob für den Client die Anzeigezeit abgelaufen ist
