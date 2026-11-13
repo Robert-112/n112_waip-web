@@ -1006,6 +1006,26 @@ audio {
   z-index: 0;
 }
 
+/* Kurz-Archiv in der Dashboard-Übersicht: Darkly färbt den geöffneten Accordion-Kopf hell,
+   hier bleibt er dunkel und lesbar */
+#archiv {
+  --bs-accordion-active-bg: var(--bs-card-bg, #303030);
+  --bs-accordion-active-color: var(--bs-body-color);
+  --bs-accordion-btn-active-icon: var(--bs-accordion-btn-icon);
+  --bs-accordion-btn-focus-box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.35);
+}
+
+/* eine Zeile je Wache mit ihren Einsatzmitteln, dezente Trennlinie */
+#archiv .archiv-wache {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.4rem 0;
+}
+
+/* aufgerufener (beendeter) Einsatz: Rahmen statt hellem Hintergrund */
+#archiv .archiv-markiert {
+  box-shadow: inset 0 0 0 2px var(--bs-info);
+}
+
 /*** Navbar: gedecktes Akzentblau (gleicher Farbton wie Icons/Akzente #3498db, nur dunkler),
      statt des grauen Stahlblaus von Darkly (#375a7f) - 2026-11-12 Variante N1 ***/
 .navbar.bg-primary {

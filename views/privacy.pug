@@ -119,6 +119,12 @@ block content
             | Eine Zusammenführung dieser Daten mit anderen Datenquellen wird nicht vorgenommen.
             p
             | Die Erfassung dieser Daten erfolgt auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO. Der Websitebetreiber hat ein berechtigtes Interesse an der technisch fehlerfreien Darstellung und der Optimierung seiner Website – hierzu müssen die Server-Log-Files erfasst werden.
+            h3 Einsatzdaten im Dashboard
+            p
+              | Laufende Einsätze werden im öffentlichen Dashboard nur mit groben Angaben angezeigt, also ohne Straße, Hausnummer, Objekt, Einsatznummer und Hinweise. #{einsatz_minuten} Minuten nach der letzten Aktualisierung eines Einsatzes werden alle zugehörigen Daten automatisch gelöscht.
+            if archiv_tage > 0
+              p
+                | Von Brand- und Hilfeleistungseinsätzen bleibt danach für #{archiv_tage === 1 ? 'einen Tag' : archiv_tage + ' Tage'} eine Kurzübersicht im Dashboard abrufbar. Sie enthält Einsatzart und Stichwort, Ort und Ortsteil, den Alarmierungszeitpunkt, die beteiligten Einsatzmittel sowie die Anzahl der Einsatzmittel und der Rückmeldungen. Namen von Einsatzkräften, Adressen und Koordinaten enthält die Kurzübersicht nicht. Nach Ablauf der Frist wird auch sie automatisch gelöscht.
             h2 4. Plugins und Tools
             h3 Google Web Fonts
             p

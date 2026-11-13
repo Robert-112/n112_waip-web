@@ -125,6 +125,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         title: "Datenschutzerklärung",
         user: req.user,
         session_max_age: app_cfg.global.session_cookie_max_age,
+        archiv_tage: app_cfg.global.archive_days,
+        einsatz_minuten: app_cfg.global.time_to_delete_waip,
       });
     }
   });
@@ -617,6 +619,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         user: req.user,
         session_max_age: app_cfg.global.session_cookie_max_age,
         dataSet: data,
+        archiv_tage: app_cfg.global.archive_days,
+        // ?archiv=<uuid> kommt von der Weiterleitung eines beendeten Dashboards
+        archiv_markiert: /^[0-9a-f-]{36}$/i.test(req.query.archiv || "") ? req.query.archiv : "",
       });
     } catch (error) {
       const err = new Error(`Fehler beim Laden der Seite /dbrd. ` + error);
@@ -626,11 +631,28 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     }
   });
 
+  // Kurz-Archiv beendeter Brand-/Hilfeleistungseinsätze (öffentlich, nur reduzierte Angaben).
+  // Wird erst beim Aufklappen in der Dashboard-Übersicht geladen. Muss vor /dbrd/:dbrd_uuid stehen.
+  app.get("/dbrd/archiv", (req, res) => {
+    try {
+      const markiert = /^[0-9a-f-]{36}$/i.test(req.query.markiert || "") ? req.query.markiert : "";
+      res.set("Cache-Control", "no-store");
+      res.json({ tage: app_cfg.global.archive_days, einsaetze: sql.db_archiv_get_all(markiert) });
+    } catch (error) {
+      logger.log("error", new Error(`Fehler beim Laden des Kurz-Archivs. ` + error));
+      res.status(500).json({ error: "Das Archiv konnte nicht geladen werden." });
+    }
+  });
+
   // Dashboard für einen Einsatz anzeigen
   app.get("/dbrd/:dbrd_uuid", async (req, res, next) => {
     try {
       let dbrd_uuid = req.params.dbrd_uuid;
       const wache = await sql.db_einsatz_check_uuid(dbrd_uuid);
+      if (!wache && sql.db_archiv_check_uuid(dbrd_uuid)) {
+        // Einsatz bereits gelöscht, aber noch im Kurz-Archiv: dorthin weiterleiten
+        return res.redirect("/dbrd?archiv=" + encodeURIComponent(dbrd_uuid));
+      }
       if (wache) {
         res.render("dbrd", {
           public: app_cfg.public,

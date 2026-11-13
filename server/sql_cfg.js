@@ -317,6 +317,27 @@ module.exports = (bcrypt, app_cfg) => {
     );
   `);
 
+  // Kurz-Archiv beendeter Brand- und Hilfeleistungseinsätze (neu in Version 2.2, für neue und bestehende
+  // Datenbanken). Enthält nur die öffentlichen, datenschutzreduzierten Angaben, wird beim Löschen eines
+  // Einsatzes einmalig befüllt und nach ARCHIVE_DAYS Tagen wieder geleert.
+  // waip_uuid dient nur der Weiterleitung alter Dashboard-Links und wird nicht ausgeliefert.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS waip_archiv (
+      id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
+      waip_uuid TEXT NOT NULL UNIQUE,
+      alarmzeit DATETIME,
+      einsatzart TEXT,
+      stichwort TEXT,
+      ort TEXT,
+      ortsteil TEXT,
+      einsatzmittel TEXT,             -- JSON: [{ f: Funkrufname, w: Wachenname }], nur alarmierte Einsatzmittel
+      anzahl_einsatzmittel INTEGER,
+      anzahl_rueckmeldungen INTEGER,
+      archiviert_am DATETIME DEFAULT (DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_waip_archiv_alarmzeit ON waip_archiv (alarmzeit);
+  `);
+
   console.log("START - Datenbank geöffnet.");
 
   return db;

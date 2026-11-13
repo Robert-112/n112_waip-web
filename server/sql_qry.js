@@ -860,6 +860,93 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // Kurz-Archiv: öffentliche, datenschutzreduzierte Zusammenfassung eines Brand-/Hilfeleistungseinsatzes
+  // speichern, bevor der Einsatz gelöscht wird. Nur alarmierte Einsatzmittel zählen (Info-Einsatzmittel nicht).
+  // Liefert true, wenn ein Archiv-Eintrag geschrieben wurde.
+  const db_einsatz_archivieren = (einsatz_id) => {
+    if (!app_cfg.global.archive_days) return false;
+    const einsatz = db
+      .prepare(`
+        SELECT uuid, COALESCE(alarmzeit, zeitstempel, DATETIME('now', 'localtime')) AS alarmzeit, einsatzart, stichwort, ort, ortsteil
+        FROM waip_einsaetze
+        WHERE id = ? AND einsatzart IN ('Brandeinsatz', 'Hilfeleistungseinsatz');
+      `)
+      .get(einsatz_id);
+    if (!einsatz || !einsatz.uuid) return false;
+
+    const em = db
+      .prepare(`
+        SELECT DISTINCT em_funkrufname AS f, em_station_name AS w
+        FROM waip_einsatzmittel
+        WHERE em_waip_einsaetze_id = ?
+          AND em_zeitstempel_alarmierung IS NOT NULL AND em_zeitstempel_alarmierung != ''
+          AND em_funkrufname IS NOT NULL AND em_funkrufname != ''
+        ORDER BY em_station_name, em_funkrufname;
+      `)
+      .all(einsatz_id);
+    if (em.length === 0) return false;
+
+    const { anzahl } = db.prepare(`SELECT COUNT(*) AS anzahl FROM waip_rueckmeldungen WHERE waip_uuid = ?;`).get(einsatz.uuid);
+
+    db.prepare(`
+      INSERT INTO waip_archiv (
+        waip_uuid, alarmzeit, einsatzart, stichwort, ort, ortsteil, einsatzmittel, anzahl_einsatzmittel, anzahl_rueckmeldungen
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (waip_uuid) DO UPDATE SET
+        alarmzeit = excluded.alarmzeit, einsatzart = excluded.einsatzart, stichwort = excluded.stichwort,
+        ort = excluded.ort, ortsteil = excluded.ortsteil, einsatzmittel = excluded.einsatzmittel,
+        anzahl_einsatzmittel = excluded.anzahl_einsatzmittel, anzahl_rueckmeldungen = excluded.anzahl_rueckmeldungen,
+        archiviert_am = DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME');
+    `).run(
+      einsatz.uuid,
+      einsatz.alarmzeit,
+      einsatz.einsatzart,
+      einsatz.stichwort,
+      einsatz.ort,
+      einsatz.ortsteil,
+      JSON.stringify(em),
+      em.length,
+      anzahl
+    );
+    return true;
+  };
+
+  // Kurz-Archiv: Einträge älter als ARCHIVE_DAYS löschen (bei 0 = Archiv aus alles löschen).
+  // Liefert die Anzahl der gelöschten Einträge.
+  const db_archiv_aufraeumen = () => {
+    if (!app_cfg.global.archive_days) return db.prepare(`DELETE FROM waip_archiv;`).run().changes;
+    // nur die Index-Bedingung, damit SQLite den Index auf alarmzeit nutzt (läuft bei jedem Cleanup-Durchlauf)
+    const info = db
+      .prepare(`DELETE FROM waip_archiv WHERE alarmzeit < DATETIME('now', 'localtime', ?);`)
+      .run(`-${app_cfg.global.archive_days} days`);
+    return info.changes;
+  };
+
+  // Kurz-Archiv: alle Einträge für die Dashboard-Übersicht (ohne waip_uuid, neueste zuerst).
+  // markiert = Eintrag zur übergebenen waip_uuid (Weiterleitung von einem alten Dashboard-Link).
+  const db_archiv_get_all = (markiert_uuid) => {
+    if (!app_cfg.global.archive_days) return [];
+    const rows = db
+      .prepare(`
+        SELECT id, alarmzeit, einsatzart, stichwort, ort, ortsteil, einsatzmittel,
+          anzahl_einsatzmittel, anzahl_rueckmeldungen, (waip_uuid = ?) AS markiert
+        FROM waip_archiv
+        WHERE alarmzeit >= DATETIME('now', 'localtime', ?)
+        ORDER BY alarmzeit DESC;
+      `)
+      .all(markiert_uuid || "", `-${app_cfg.global.archive_days} days`);
+    return rows.map((r) => ({ ...r, einsatzmittel: JSON.parse(r.einsatzmittel || "[]"), markiert: !!r.markiert }));
+  };
+
+  // Kurz-Archiv: prüfen, ob zu einer (gelöschten) Einsatz-UUID ein Archiv-Eintrag existiert
+  const db_archiv_check_uuid = (waip_uuid) => {
+    if (!app_cfg.global.archive_days || !waip_uuid) return false;
+    const row = db
+      .prepare(`SELECT 1 FROM waip_archiv WHERE waip_uuid = ? AND alarmzeit >= DATETIME('now', 'localtime', ?);`)
+      .get(String(waip_uuid), `-${app_cfg.global.archive_days} days`);
+    return !!row;
+  };
+
   // alle im System verfügbaren Wachen/Alarmmonitore abfragen
   const db_wache_get_all = () => {
     return new Promise((resolve, reject) => {
@@ -2821,6 +2908,10 @@ module.exports = (db, app_cfg) => {
     db_einsaetze_get_old,
     db_einsatz_statusupdate,
     db_einsatz_loeschen,
+    db_einsatz_archivieren,
+    db_archiv_aufraeumen,
+    db_archiv_get_all,
+    db_archiv_check_uuid,
     db_wache_get_all,
     db_wache_vorhanden,
     db_einsatzmittel_update,

@@ -7,9 +7,26 @@ block content
   main(role='main')
     .container
       +seitenkopf('Dashboard', 'Laufende Einsätze im Überblick – für Details eine Kachel antippen.', 'bi-clipboard')
-      .row.g-4.mb-4
-        if dataSet && dataSet.length > 0
-          each val, index in dataSet
+      //- Rettungsdienst und Krankentransport sind für das Dashboard meist uninteressant (kaum Rückmeldungen):
+      //- standardmäßig ausgeblendet, per Schalter einblendbar (wird nicht gespeichert)
+      -
+        const rd_arten = ['Rettungseinsatz', 'Krankentransport']
+        const einsaetze = dataSet || []
+        const anzahl_rd = einsaetze.filter((e) => rd_arten.includes(e.einsatzart)).length
+        const anzahl_sichtbar = einsaetze.length - anzahl_rd
+      if anzahl_rd > 0
+        .d-flex.justify-content-end.mb-3
+          .form-check.form-switch.mb-0
+            input.form-check-input#rdAnzeigen(type='checkbox', role='switch', aria-controls='dbrdKacheln')
+            label.form-check-label.small.text-body-secondary(for='rdAnzeigen')
+              | Rettungsdienst und Krankentransport anzeigen
+              span.badge.text-bg-secondary.ms-2= anzahl_rd
+      .row.g-4.mb-4#dbrdKacheln
+        if einsaetze.length > 0
+          if anzahl_sichtbar === 0
+            .col-12#rdHinweis
+              .alert.alert-info.mb-0 Derzeit sind keine Brand- oder Hilfeleistungseinsätze aktiv.
+          each val, index in einsaetze
             -
               const art = {
                 Brandeinsatz: ['danger', 'bi-fire'],
@@ -17,7 +34,8 @@ block content
                 Rettungseinsatz: ['warning', 'bi-heart-pulse-fill'],
                 Krankentransport: ['success', 'bi-asterisk'],
               }[val.einsatzart] || ['light', 'bi-info-circle-fill']
-            .col-12.col-md-6.col-xl-4
+              const ist_rd = rd_arten.includes(val.einsatzart)
+            .col-12.col-md-6.col-xl-4(class=ist_rd ? 'dbrd-rd d-none' : '', data-uuid=val.uuid)
               //- ganze Kachel ist der Link (stretched-link); die Karte ist nur Vorschau
               .card.h-100.border-0.border-start.border-4.overflow-hidden.position-relative(class='border-' + art[0])
                 .dbrd-vorschau(id='map' + val.uuid)
@@ -35,6 +53,162 @@ block content
         else
           .col-12
             .alert.alert-info Derzeit sind keine aktiven Einsätze vorhanden.
+
+      //- Kurz-Archiv beendeter Brand-/Hilfeleistungseinsätze: zugeklappt, lädt erst beim Aufklappen
+      if archiv_tage > 0
+        - const tage_text = archiv_tage === 1 ? 'des letzten Tages' : 'der letzten ' + archiv_tage + ' Tage'
+        .accordion.mb-4#archiv
+          .accordion-item
+            h2.accordion-header
+              button.accordion-button(type='button', data-bs-toggle='collapse', data-bs-target='#archivInhalt', aria-expanded=archiv_markiert ? 'true' : 'false', aria-controls='archivInhalt', class=archiv_markiert ? '' : 'collapsed')
+                i.bi.bi-archive.me-2(aria-hidden='true')
+                | Beendete Einsätze #{tage_text}
+            #archivInhalt.accordion-collapse.collapse(class=archiv_markiert ? 'show' : '', data-markiert=archiv_markiert)
+              .accordion-body
+                if archiv_markiert
+                  .alert.alert-info.small.py-2 Der aufgerufene Einsatz ist beendet. Eine Kurzübersicht finden Sie hier im Archiv.
+                p.small.text-body-secondary Brand- und Hilfeleistungseinsätze mit groben Angaben. Die Einträge werden nach #{archiv_tage === 1 ? 'einem Tag' : archiv_tage + ' Tagen'} automatisch gelöscht.
+                .row.g-2.mb-3
+                  .col-12.col-md
+                    label.visually-hidden(for='archivSuche') Archiv durchsuchen
+                    input.form-control#archivSuche(type='search', placeholder='Ort, Stichwort oder Einsatzmittel suchen …', autocomplete='off')
+                  .col-12.col-md-auto
+                    .btn-group.w-100(role='group', aria-label='Einsatzart')
+                      input.btn-check#archivArtAlle(type='radio', name='archivArt', value='', checked)
+                      label.btn.btn-outline-secondary(for='archivArtAlle') Alle
+                      input.btn-check#archivArtBrand(type='radio', name='archivArt', value='Brandeinsatz')
+                      label.btn.btn-outline-danger(for='archivArtBrand')
+                        i.bi.bi-fire.me-1(aria-hidden='true')
+                        | Brand
+                      input.btn-check#archivArtTH(type='radio', name='archivArt', value='Hilfeleistungseinsatz')
+                      label.btn.btn-outline-info(for='archivArtTH')
+                        i.bi.bi-tools.me-1(aria-hidden='true')
+                        | Hilfeleistung
+                #archivStatus.text-body-secondary.small.mb-2
+                  span.spinner-border.spinner-border-sm.me-2(aria-hidden='true')
+                  | Archiv wird geladen …
+                .list-group.gap-2#archivListe
+
+        script.
+          // Kurz-Archiv: einmalig beim ersten Aufklappen laden, danach nur noch im Browser filtern
+          (function () {
+            var inhalt = document.getElementById('archivInhalt');
+            var liste = document.getElementById('archivListe');
+            var status = document.getElementById('archivStatus');
+            var suche = document.getElementById('archivSuche');
+            var markiert = inhalt.getAttribute('data-markiert') || '';
+            var eintraege = null;
+            var geladen = false;
+            var ART = {
+              Brandeinsatz: ['danger', 'bi-fire'],
+              Hilfeleistungseinsatz: ['info', 'bi-tools'],
+            };
+
+            function el(tag, cls, text) {
+              var e = document.createElement(tag);
+              if (cls) e.className = cls;
+              if (text != null) e.textContent = text;
+              return e;
+            }
+
+            function zeit(s) {
+              var t = new Date(String(s || '').replace(' ', 'T'));
+              if (isNaN(t)) return '';
+              return t.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) + ', ' +
+                t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+            }
+
+            // Einsatzmittel nach Wache gruppieren: eine Zeile je Wache mit ihren Einsatzmitteln
+            function em_liste(em) {
+              var gruppen = {};
+              var reihenfolge = [];
+              em.forEach(function (e) {
+                var w = e.w || 'Sonstige';
+                if (!gruppen[w]) { gruppen[w] = []; reihenfolge.push(w); }
+                gruppen[w].push(e.f);
+              });
+              var box = el('div', 'small mt-2');
+              reihenfolge.forEach(function (w) {
+                var zeile = el('div', 'archiv-wache row g-0 gx-sm-2');
+                zeile.appendChild(el('div', 'col-12 col-sm-5 col-lg-4 text-body-secondary', w));
+                zeile.appendChild(el('div', 'col-12 col-sm-7 col-lg-8', gruppen[w].join(', ')));
+                box.appendChild(zeile);
+              });
+              return box;
+            }
+
+            function eintrag(d) {
+              var art = ART[d.einsatzart] || ['secondary', 'bi-info-circle-fill'];
+              var li = el('div', 'list-group-item rounded border-0 border-start border-4 border-' + art[0] + (d.markiert ? ' archiv-markiert' : ''));
+              if (d.markiert) li.id = 'archivMarkiert';
+
+              var kopf = el('div', 'd-flex justify-content-between align-items-start gap-2 flex-wrap');
+              var titel = el('div', 'fw-semibold d-flex gap-2 text-' + art[0]);
+              var icon = el('i', 'bi ' + art[1]);
+              icon.setAttribute('aria-hidden', 'true');
+              titel.appendChild(icon);
+              titel.appendChild(el('span', null, d.einsatzart + ' – ' + (d.stichwort || '')));
+              kopf.appendChild(titel);
+              var rechts = el('div', 'd-flex align-items-center gap-2');
+              if (d.markiert) rechts.appendChild(el('span', 'badge text-bg-info', 'Aufgerufen'));
+              rechts.appendChild(el('span', 'small text-body-secondary text-nowrap', zeit(d.alarmzeit)));
+              kopf.appendChild(rechts);
+              li.appendChild(kopf);
+
+              li.appendChild(el('div', 'text-body-secondary', d.ortsteil ? d.ort + ', ' + d.ortsteil : (d.ort || '')));
+
+              var zahlen = el('div', 'd-flex flex-wrap gap-2 mt-2');
+              zahlen.appendChild(el('span', 'badge text-bg-secondary', d.anzahl_einsatzmittel + ' Einsatzmittel'));
+              zahlen.appendChild(el('span', 'badge text-bg-secondary', d.anzahl_rueckmeldungen + (d.anzahl_rueckmeldungen === 1 ? ' Rückmeldung' : ' Rückmeldungen')));
+              li.appendChild(zahlen);
+
+              li.appendChild(em_liste(d.einsatzmittel));
+              return li;
+            }
+
+            function suchtext(d) {
+              return [d.einsatzart, d.stichwort, d.ort, d.ortsteil]
+                .concat(d.einsatzmittel.map(function (e) { return e.f + ' ' + e.w; }))
+                .join(' ').toLowerCase();
+            }
+
+            function anzeigen() {
+              if (!eintraege) return;
+              var art = (document.querySelector('input[name="archivArt"]:checked') || {}).value || '';
+              var woerter = suche.value.toLowerCase().split(/\s+/).filter(Boolean);
+              var treffer = eintraege.filter(function (d) {
+                if (art && d.einsatzart !== art) return false;
+                return woerter.every(function (w) { return d._such.indexOf(w) !== -1; });
+              });
+              liste.replaceChildren.apply(liste, treffer.map(eintrag));
+              if (eintraege.length === 0) status.textContent = 'Im Archiv sind derzeit keine Einsätze vorhanden.';
+              else if (treffer.length === 0) status.textContent = 'Keine Einsätze gefunden.';
+              else status.textContent = treffer.length + (treffer.length === 1 ? ' Einsatz' : ' Einsätze') +
+                (treffer.length !== eintraege.length ? ' von ' + eintraege.length : '');
+            }
+
+            function laden() {
+              if (geladen) return;
+              geladen = true;
+              fetch('/dbrd/archiv' + (markiert ? '?markiert=' + encodeURIComponent(markiert) : ''), { credentials: 'same-origin' })
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(function (j) {
+                  eintraege = (j.einsaetze || []).map(function (d) { d._such = suchtext(d); return d; });
+                  anzeigen();
+                  var m = document.getElementById('archivMarkiert');
+                  if (m) m.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                })
+                .catch(function () {
+                  geladen = false;
+                  status.textContent = 'Das Archiv konnte nicht geladen werden. Bitte später erneut versuchen.';
+                });
+            }
+
+            inhalt.addEventListener('show.bs.collapse', laden);
+            if (inhalt.classList.contains('show')) laden();
+            suche.addEventListener('input', anzeigen);
+            document.querySelectorAll('input[name="archivArt"]').forEach(function (r) { r.addEventListener('change', anzeigen); });
+          })();
 
   script.
     // Alter der Einsätze ("vor 12 min") anzeigen und jede halbe Minute aktualisieren
@@ -55,56 +229,74 @@ block content
   script(src='/js/leaflet.js')
   script.  
 
-    let data = !{JSON.stringify(dataSet).replace(/<\//g, '<\\/')}
-    for (let i in data) {
-      // Karte definieren
-      let map = L.map('map'+data[i].uuid, {
+    const data = !{JSON.stringify(dataSet || []).replace(/<\//g, '<\\/')};
+    const map_service = !{JSON.stringify(map_service)};
+    const maxMapZoom = 18; // Standard-Zoomstufe
+    const karten = {};
+
+    // Vorschaukarte einer Kachel erzeugen (nur wenn die Kachel sichtbar ist, sonst hat sie keine Größe)
+    function karte(d) {
+      if (karten[d.uuid]) return;
+      const map = L.map('map' + d.uuid, {
         zoomControl: false,
-        attributionControl: false
+        attributionControl: false,
+        dragging: false,
+        touchZoom: false,
+        doubleClickZoom: false,
+        scrollWheelZoom: false,
+        boxZoom: false,
+        keyboard: false,
       });
-
-      map_service=!{JSON.stringify(map_service)};
-
-      let maxMapZoom = 18; // Standard-Zoomstufe
+      karten[d.uuid] = map;
 
       // Layer der Karte basierend auf dem Typ des Kartendienstes hinzufuegen
       if (map_service.type === "tile") {
-        // Tile-Map hinzufuegen
-        L.tileLayer(map_service.tile_url, {
-          maxZoom: maxMapZoom,
-        }).addTo(map);
+        L.tileLayer(map_service.tile_url, { maxZoom: maxMapZoom }).addTo(map);
       } else if (map_service.type === "wms") {
-        // WMS-Map hinzufuegen
-        var wmsLayer = L.tileLayer.wms(map_service.wms_url, {
+        const wmsLayer = L.tileLayer.wms(map_service.wms_url, {
           layers: map_service.wms_layers,
           format: map_service.wms_format,
           transparent: map_service.wms_transparent,
           version: map_service.wms_version,
         });
-
         // Fehlerbehandlung: Wenn der WMS-Layer nicht geladen werden kann, dann versuche den Tile-Layer
         wmsLayer.on("tileerror", function () {
           console.warn("WMS-Layer konnte nicht geladen werden, versuche Tile-Layer:", map_service.tile_url);
-          // Tile-Map hinufuegen
-          L.tileLayer(map_service.tile_url, {
-            maxZoom: maxMapZoom,
-          }).addTo(map);
+          L.tileLayer(map_service.tile_url, { maxZoom: maxMapZoom }).addTo(map);
         });
-
         wmsLayer.addTo(map);
       }
 
-    // Karte setzen
+      // Einsatzbereich setzen
+      try {
+        const bounds = L.geoJSON(JSON.parse(d.geometry)).addTo(map).getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds);
+          map.setZoom(13);
+          return;
+        }
+      } catch (e) {
+        console.warn("Einsatzbereich für Vorschau nicht lesbar:", d.uuid);
+      }
+      map.setView([51.16, 10.45], 6);
+    }
 
-    let geojson = L.geoJSON(JSON.parse(data[i].geometry)).addTo(map);
-    map.fitBounds(geojson.getBounds());
-    map.setZoom(13);
-    map.dragging.disable();
-    map.touchZoom.disable();
-    map.doubleClickZoom.disable();
-    map.scrollWheelZoom.disable();
-    map.boxZoom.disable();
-    map.keyboard.disable();
-    map.scrollWheelZoom.disable();
+    function sichtbare_karten() {
+      data.forEach(function (d) {
+        const kachel = document.querySelector('[data-uuid="' + d.uuid + '"]');
+        if (kachel && !kachel.classList.contains('d-none')) karte(d);
+      });
+    }
 
-    };    
+    // Schalter Rettungsdienst/Krankentransport
+    const rdSchalter = document.getElementById('rdAnzeigen');
+    if (rdSchalter) {
+      rdSchalter.addEventListener('change', function () {
+        document.querySelectorAll('.dbrd-rd').forEach(function (k) { k.classList.toggle('d-none', !rdSchalter.checked); });
+        const hinweis = document.getElementById('rdHinweis');
+        if (hinweis) hinweis.classList.toggle('d-none', rdSchalter.checked);
+        sichtbare_karten();
+      });
+    }
+
+    sichtbare_karten();
