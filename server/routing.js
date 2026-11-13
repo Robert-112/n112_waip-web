@@ -72,12 +72,15 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         user_waips = await sql.db_get_user_waips(req.user.id);
         user_dbrds = await sql.db_get_user_dbrds(req.user.id);
       }
+      // Anzahl laufender Einsätze für die Dashboard-Kachel (dieselbe Liste wie die öffentliche Dashboard-Übersicht)
+      const einsaetze = await sql.db_einsatz_get_active();
       res.render("page_home", {
         public: app_cfg.public,
         title: "Wachalarm IP-Web",
         user: req.user,
         user_waips: user_waips,
         user_dbrds: user_dbrds,
+        einsaetze_aktiv: einsaetze ? einsaetze.length : 0,
         session_max_age: app_cfg.global.session_cookie_max_age,
       });
     } catch (error) {

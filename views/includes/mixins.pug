@@ -1,0 +1,36 @@
+//- Gemeinsame Bausteine für die normalen Seiten (nicht für den Alarmmonitor)
+
+//- Seitenkopf: Titel linksbündig, optional mit Icon und Untertitel
+mixin seitenkopf(titel, untertitel, icon)
+  .d-flex.align-items-center.gap-3.mt-3.mb-4
+    if icon
+      .fs-2.lh-1.text-info
+        i.bi(class=icon, aria-hidden='true')
+    div
+      h1.h3.mb-1= titel
+      if untertitel
+        p.text-body-secondary.mb-0= untertitel
+
+//- Rückmeldung nach Formularaktionen (Fehler/Erfolg), schließbar
+mixin meldungen(error, success)
+  if error
+    .alert.alert-danger.alert-dismissible.d-flex.align-items-start.gap-2(role='alert')
+      i.bi.bi-x-circle-fill.flex-shrink-0(aria-hidden='true')
+      div= error
+      button.btn-close(type='button', data-bs-dismiss='alert', aria-label='Schließen')
+  if success
+    .alert.alert-success.alert-dismissible.d-flex.align-items-start.gap-2(role='alert')
+      i.bi.bi-check-circle-fill.flex-shrink-0(aria-hidden='true')
+      div= success
+      button.btn-close(type='button', data-bs-dismiss='alert', aria-label='Schließen')
+
+//- Kachel mit farbigem Akzent links (Startseite, Alarmmonitor-Auswahl);
+//- Inhalt per block, Aktion (Button/Dropdown) am unteren Rand
+mixin kachel(titel, farbe, icon)
+  .card.h-100.border-0.border-start.border-4(class='border-' + farbe)
+    .card-body.d-flex.flex-column
+      h2.h5.card-title.d-flex.align-items-center.gap-2(class='text-' + farbe)
+        if icon
+          i.bi(class=icon, aria-hidden='true')
+        span= titel
+      block

@@ -1,110 +1,65 @@
 extends ../layout
 
+//- Auswahlliste für einen Bereichstyp (leitstelle, wache, traeger, kreis)
+mixin auswahl(farbe, typ, text)
+  .dropdown.mt-auto
+    button.btn.dropdown-toggle(class='btn-' + farbe, type='button' data-bs-toggle='dropdown' aria-expanded='false')= text
+    .dropdown-menu(style='z-index: 2001; max-height: 50vh; overflow-y: auto')
+      each item in list_wachen
+        if item.typ == typ
+          a.dropdown-item(href='/waip/'+ item.nr)= item.name
+
 block content
   main(role='main')
     .container
-      .row
-        .col-12.p-3
-          .card.bg-dark
-            .card-body.text-muted.text-center
-              h3 Alarmmonitor - Auswahl
-        .col-12
-          div.border-top.m-3
-      // Eingefügte Freitextsuche
-      .row.mt-2
-        .col-12.px-3
-          .form-group.position-relative
-            input#searchWache.form-control.form-control-lg(type='text' placeholder='Suche nach einem Wachennamen oder einer Nummer...')
-            ul#searchResults.list-group.position-absolute.w-100.mt-1(role='listbox' style='z-index:2000; max-height:300px; overflow-y:auto; display:none')
-        .col-12
-          div.border-top.mx-3.my-2
-      .row 
-        .col-12.col-md-7.d-flex.align-self-stretch.p-3
-          .card.border-success.w-100.h-100
-            .card-header
-              h2.text-success Alle Wachalarme 
-            .card-body
-              p Zeigt Ihnen alle Wachalarme der im System hinterlegten Wachen an.
-              p.text-info Wollen Sie nur Alarme für einen bestimmten Bereich sehen, wählen Sie bitte einen Alarmmonitor aus den Listen aus.
-            .card-footer.text-right
-              a.btn.btn-success.ion-md-arrow-round-forward(href='/waip/0' role='button')  alle Wachalarme anzeigen
-        .col-12.col-md-5.d-flex.align-self-stretch.p-3
-          .card.border-warning.w-100.h-100
-            .card-header
-              h3.text-warning Alarmmonitor Leitstelle
-            .card-body
-              p Zeigt alle Wachalarme eines Leitstellebereichs an.
-            .card-footer.text-right
-              .dropdown
-                button.btn.btn-warning.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
-                  | bitte ausw&auml;hlen
-                .dropdown-menu
-                  each item in list_wachen
-                    if item.typ == 'leitstelle'
-                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
-        .col-12.col-md-4.d-flex.align-self-stretch.p-3
-          .card.w-100.h-100
-            .card-header
-              h3.text-info Alarmmonitor Wache
-            .card-body
-              p Zeigt den Wachalarm einer einzelnen Wache (z.B. Feuerwache, Rettungswache etc.) an.
-            .card-footer.text-right
-              .dropdown
-                button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
-                  | bitte ausw&auml;hlen
-                .dropdown-menu(style='z-index: 2001')
-                  each item in list_wachen
-                    if item.typ == 'wache'
-                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
-        .col-12.col-md-4.d-flex.align-self-stretch.p-3
-          .card.w-100.h-100
-            .card-header            
-              h3.text-info Alarmmonitor Tr&auml;ger
-            .card-body
-              p Zeigt alle Wachalarme der Wachen eines Aufgabentr&auml;gers (Amt, amtsfreie Gemeinde, Stadt) an.
-            .card-footer.text-right
-              .dropdown
-                button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
-                  | bitte ausw&auml;hlen
-                .dropdown-menu(style='z-index: 2001')
-                  each item in list_wachen
-                    if item.typ == 'traeger'
-                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
-        .col-12.col-md-4.d-flex.align-self-stretch.p-3
-          .card.w-100.h-100
-            .card-header
-              h3.text-info Alarmmonitor Kreis
-            .card-body
-              p Zeigt alle Wachalarme des gesamten Kreises (in Abhängigkeit der freigeschalteten Wachen) an.
-            .card-footer.text-right
-              .dropdown
-                button.btn.btn-info.dropdown-toggle(type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false')
-                  | bitte ausw&auml;hlen
-                .dropdown-menu(style='z-index: 2001')
-                  each item in list_wachen
-                    if item.typ == 'kreis'
-                      a.dropdown-item(href='/waip/'+ item.nr)= item.name
-        .col-12
-          div.border-top.mx-3.my-2
-      .row
-        .col-12.p-3
-          .card.w-100.h-100
-            .card-body
-              .text-muted Beim Alarmmonitor können Sie optional die Anzeige von Rückmeldungen und Hinweise zur Audioausgabe deaktivieren sowie Animationen reduzieren.
-              .text-muted Markieren Sie dazu die jeweilige Option und wählen Sie anschließend den gewünschten Alarmmonitor aus.
-            .card-footer.text-center 
-              // Checkbox zum Deaktivieren von Rückmeldungen
-              .form-check
-                input#rmldOff.form-check-input(type='checkbox')
-                label.form-check-label(for='rmldOff') Rückmeldungen im Alarmmonitor ausblenden
-              // Checkbox zum Deaktivieren der Soundausgabe
-              .form-check.mt-2
-                input#soundOff.form-check-input(type='checkbox')
-                label.form-check-label(for='soundOff') Hinweise zur Audioausgabe deaktivieren (z.B. wenn kein Lautsprecher angeschlossen ist)
-              // Checkbox zum Reduzieren von Animationen
-              .form-check.mt-2
-                input#animOff.form-check-input(type='checkbox')
-                label.form-check-label(for='animOff') Animationen reduzieren (für leistungsschwache Geräte, z.B. Raspberry Pi 3)
+      +seitenkopf('Alarmmonitor', 'Wählen Sie aus, welche Wachalarme im Vollbild angezeigt werden sollen.', 'bi-display')
+      // Freitextsuche
+      .position-relative.mb-4
+        .input-group.input-group-lg
+          span.input-group-text
+            i.bi.bi-search(aria-hidden='true')
+          input#searchWache.form-control(type='text' placeholder='Name oder Nummer suchen …' aria-label='Alarmmonitor suchen' autocomplete='off')
+        ul#searchResults.list-group.position-absolute.w-100.mt-1.shadow(role='listbox' style='z-index:2000; max-height:300px; overflow-y:auto; display:none')
+      .row.g-4
+        .col-12.col-lg-7
+          +kachel('Alle Wachalarme', 'success', 'bi-collection')
+            p.card-text Zeigt Ihnen alle Wachalarme der im System hinterlegten Wachen an.
+            p.card-text.text-body-secondary.small Wollen Sie nur Alarme für einen bestimmten Bereich sehen, wählen Sie bitte einen Alarmmonitor aus den Listen aus.
+            a.btn.btn-success.mt-auto.align-self-start(href='/waip/0' role='button')
+              | Alle Wachalarme anzeigen
+              i.bi.bi-arrow-right.ms-2(aria-hidden='true')
+        .col-12.col-lg-5
+          +kachel('Leitstelle', 'warning', 'bi-broadcast')
+            p.card-text Zeigt alle Wachalarme eines Leitstellenbereichs an.
+            +auswahl('warning', 'leitstelle', 'Leitstelle auswählen')
+        .col-12.col-md-4
+          +kachel('Wache', 'info', 'bi-building')
+            p.card-text Zeigt den Wachalarm einer einzelnen Wache (z.B. Feuerwache, Rettungswache etc.) an.
+            +auswahl('info', 'wache', 'Wache auswählen')
+        .col-12.col-md-4
+          +kachel('Aufgabenträger', 'info', 'bi-bank')
+            p.card-text Zeigt alle Wachalarme der Wachen eines Aufgabenträgers (Amt, amtsfreie Gemeinde, Stadt) an.
+            +auswahl('info', 'traeger', 'Träger auswählen')
+        .col-12.col-md-4
+          +kachel('Kreis', 'info', 'bi-map')
+            p.card-text Zeigt alle Wachalarme des gesamten Kreises (in Abhängigkeit der freigeschalteten Wachen) an.
+            +auswahl('info', 'kreis', 'Kreis auswählen')
+      // Optionen für den anschließend gewählten Alarmmonitor
+      .card.border-0.mt-4.mb-4
+        .card-body
+          h2.h5.card-title.d-flex.align-items-center.gap-2
+            i.bi.bi-sliders(aria-hidden='true')
+            span Optionen
+          p.card-text.text-body-secondary.small Markieren Sie die gewünschten Optionen und wählen Sie anschließend den Alarmmonitor aus.
+          .form-check.form-switch.mb-2
+            input#rmldOff.form-check-input(type='checkbox' role='switch')
+            label.form-check-label(for='rmldOff') Rückmeldungen im Alarmmonitor ausblenden
+          .form-check.form-switch.mb-2
+            input#soundOff.form-check-input(type='checkbox' role='switch')
+            label.form-check-label(for='soundOff') Hinweise zur Audioausgabe deaktivieren (z.B. wenn kein Lautsprecher angeschlossen ist)
+          .form-check.form-switch
+            input#animOff.form-check-input(type='checkbox' role='switch')
+            label.form-check-label(for='animOff') Animationen reduzieren (für leistungsschwache Geräte, z.B. Raspberry Pi 3)
     // Client-seitige Suchlogik + rmld=off Handling
     script.
       (function(){

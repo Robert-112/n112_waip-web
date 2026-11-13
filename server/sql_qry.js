@@ -643,7 +643,7 @@ module.exports = (db, app_cfg) => {
       try {
         const stmt = db.prepare(`
           SELECT 
-            we.uuid, we.einsatzart, we.stichwort, we.ort, we.ortsteil, we.geometry,
+            we.uuid, we.einsatzart, we.stichwort, we.ort, we.ortsteil, we.geometry, we.zeitstempel,
             GROUP_CONCAT(DISTINCT wa.nr_leitstelle) l,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 3 )) a,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 5 )) b,

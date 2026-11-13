@@ -127,11 +127,11 @@ function indicateAudioBlocked() {
     if (typeof sound_off !== "undefined" && sound_off === true) {
       return; // still bleiben
     }
-    let icon = document.querySelector(".ion-md-volume-off") || document.querySelector(".ion-md-volume-high");
+    let icon = document.querySelector(".bi-volume-mute-fill") || document.querySelector(".bi-volume-up-fill");
     if (!icon) return;
-    if (icon.classList.contains("ion-md-volume-high")) {
-      icon.classList.remove("ion-md-volume-high");
-      icon.classList.add("ion-md-volume-off");
+    if (icon.classList.contains("bi-volume-up-fill")) {
+      icon.classList.remove("bi-volume-up-fill");
+      icon.classList.add("bi-volume-mute-fill");
     }
     // Blinken starten
     startBlink(icon);
@@ -145,16 +145,16 @@ function indicateAudioBlocked() {
 function resetAudioUi() {
   let tmp_element;
   // Pause-Symbol in Play-Symbol
-  tmp_element = document.querySelector(".ion-md-pause");
-  if (tmp_element && tmp_element.classList.contains("ion-md-pause")) {
-    tmp_element.classList.remove("ion-md-pause");
-    tmp_element.classList.add("ion-md-play-circle");
+  tmp_element = document.querySelector(".bi-pause-circle-fill");
+  if (tmp_element && tmp_element.classList.contains("bi-pause-circle-fill")) {
+    tmp_element.classList.remove("bi-pause-circle-fill");
+    tmp_element.classList.add("bi-play-circle-fill");
   }
   // Lautsprecher-Symbol in Leise-Symbol
-  tmp_element = document.querySelector(".ion-md-volume-high");
-  if (tmp_element && tmp_element.classList.contains("ion-md-volume-high")) {
-    tmp_element.classList.remove("ion-md-volume-high");
-    tmp_element.classList.add("ion-md-volume-off");
+  tmp_element = document.querySelector(".bi-volume-up-fill");
+  if (tmp_element && tmp_element.classList.contains("bi-volume-up-fill")) {
+    tmp_element.classList.remove("bi-volume-up-fill");
+    tmp_element.classList.add("bi-volume-mute-fill");
   }
   // Button Hintergrund entfernen, falls vorhanden
   tmp_element = document.querySelector("#volume");
@@ -207,7 +207,7 @@ function showAudioBlockedToast() {
     // Click-/Close-Listener nur einmalig am Toast-Element registrieren
     if (!toastListenersAdded) {
       toast.addEventListener("click", tryActivate);
-      const closeBtn = toast.querySelector(".close");
+      const closeBtn = toast.querySelector(".btn-close");
       if (closeBtn)
         closeBtn.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -224,7 +224,7 @@ function showAudioBlockedToast() {
     container.classList.remove("d-none");
     toast.classList.add("show");
     // Icon blinken lassen
-    const iconInToast = toast.querySelector(".ion-md-volume-off");
+    const iconInToast = toast.querySelector(".bi-volume-mute-fill");
     if (iconInToast) startBlink(iconInToast);
     audioBlockedToast = toast;
   } catch (e) {
@@ -271,16 +271,16 @@ waipAudio.addEventListener("play", function () {
   stopAllBlinks();
   audioBlocked = false; // Wiedergabe läuft
   // Pause-Symbol in Play-Symbol
-  tmp_element = document.querySelector(".ion-md-play-circle");
-  if (tmp_element && tmp_element.classList.contains("ion-md-play-circle")) {
-    tmp_element.classList.remove("ion-md-play-circle");
-    tmp_element.classList.add("ion-md-pause");
+  tmp_element = document.querySelector(".bi-play-circle-fill");
+  if (tmp_element && tmp_element.classList.contains("bi-play-circle-fill")) {
+    tmp_element.classList.remove("bi-play-circle-fill");
+    tmp_element.classList.add("bi-pause-circle-fill");
   }
   // Lautsprecher-Symbol in Leise-Symbol
-  tmp_element = document.querySelector(".ion-md-volume-off");
-  if (tmp_element && tmp_element.classList.contains("ion-md-volume-off")) {
-    tmp_element.classList.remove("ion-md-volume-off");
-    tmp_element.classList.add("ion-md-volume-high");
+  tmp_element = document.querySelector(".bi-volume-mute-fill");
+  if (tmp_element && tmp_element.classList.contains("bi-volume-mute-fill")) {
+    tmp_element.classList.remove("bi-volume-mute-fill");
+    tmp_element.classList.add("bi-volume-up-fill");
   }
   // Button Hintergrund entfernen, falls vorhanden
   tmp_element = document.querySelector("#volume");
@@ -291,8 +291,8 @@ waipAudio.addEventListener("play", function () {
   removeAudioBlockedToast();
 });
 
-// Play/Pause Steuerung: Button mit ID #playpause oder direkt Icon mit Klasse .ion-md-pause
-$(document).on("click", "#playpause, .ion-md-pause", function (e) {
+// Play/Pause Steuerung: Button mit ID #playpause oder direkt Icon mit Klasse .bi-pause-circle-fill
+$(document).on("click", "#playpause, .bi-pause-circle-fill", function (e) {
   // Falls Audio läuft -> stoppen & zurücksetzen
   if (!waipAudio.paused && !waipAudio.ended) {
     waipAudio.pause();
@@ -400,6 +400,10 @@ function start_inactivtimer() {
 // Zustand: true = Navbar sichtbar (aktiv), false = ausgeblendet (inaktiv)
 let _ui_active = true;
 
+// Sichtbare Fensterhöhe: 100dvh statt 100vh, wo unterstützt. Safari (iPad/iPhone) rechnet 100vh
+// inklusive der ausblendbaren Browserleisten - der Monitor ragte dann über das Fenster hinaus.
+const VOLLE_HOEHE = window.CSS && CSS.supports && CSS.supports("height", "100dvh") ? "100dvh" : "100vh";
+
 // bei Inaktivitaet Header/Footer ausblenden
 function do_on_Inactive() {
   if (!_ui_active) return; // bereits inaktiv – kein erneuter Reflow
@@ -407,7 +411,7 @@ function do_on_Inactive() {
   $(".navbar").fadeOut("slow");
   $(".footer").fadeOut("slow");
   $(".fullheight").css({
-    height: "calc(100vh - 3rem)",
+    height: "calc(" + VOLLE_HOEHE + " - 3rem)",
     cursor: "none",
   });
   $("body").css({
@@ -431,7 +435,7 @@ function do_on_Active() {
     paddingBottom: "0",
   });
   $(".fullheight").css({
-    height: "calc(100vh - 60px - 5rem)",
+    height: "calc(" + VOLLE_HOEHE + " - 60px - 5rem)",
     cursor: "auto",
   });
   // resize nach abgeschlossenem fadeIn, nicht sofort
@@ -531,6 +535,8 @@ try {
 // Monitorauflösung prüfen (screen statt window.inner – unabhängig von Fenstergröße/Vollbild)
 let is4K = screen.width * (window.devicePixelRatio || 1) >= 3840 &&
            screen.height * (window.devicePixelRatio || 1) >= 2160;
+// Zoomstufe für Punkt-Einsätze ohne Routen bzw. Obergrenze beim Einpassen des Einsatzumkreises
+const kartenStartZoom = is4K ? 16 : 14;
 let markerSize = is4K ? [50, 82] : [25, 41];
 let markerAnchor = is4K ? [25, 82] : [12, 41];
 let markerShadowSize = is4K ? [82, 82] : [41, 41];
@@ -565,6 +571,42 @@ let insetMap = null;
 // fitBounds hier NICHT erneut aufrufen, sonst würde jeder (auch manuelle) Zoom
 // sofort wieder auf die berechneten Bounds zurückspringen.
 map.on("zoomend", function () { draw_routes(currentRoutes, false); });
+
+// Automatisches Einpassen nach Größenänderungen: Die Karte wird beim Alarm eingepasst, danach ändert
+// sich ihre Größe aber oft noch (Navbar/Footer blenden nach 3 s aus, Fenster, Drehung, Layout nach
+// textFit). Ohne erneutes Einpassen bliebe der Zoom der kleineren Karte stehen (z.B. iPhone Zoom 8
+// statt 11). Hat jemand die Karte selbst verschoben oder gezoomt, bleibt seine Ansicht stehen.
+let karteManuellBewegt = false;
+map.on("dragstart", function () { karteManuellBewegt = true; });
+["wheel", "dblclick", "touchmove"].forEach(function (ev) {
+  map.getContainer().addEventListener(ev, function () { karteManuellBewegt = true; }, { passive: true });
+});
+
+function karte_einpassen() {
+  if (currentRoutes.length) {
+    draw_routes(currentRoutes, true);
+  } else if (showEinsatzkreisBounds) {
+    const gjBounds = geojson.getBounds();
+    if (gjBounds.isValid()) map.fitBounds(gjBounds, { padding: [50, 50], maxZoom: kartenStartZoom });
+  } else {
+    const mPos = marker.getLatLng();
+    if (mPos.lat !== 0 || mPos.lng !== 0) map.setView(mPos, kartenStartZoom);
+  }
+}
+
+let _einpassenTimer = null;
+map.on("resize", function () {
+  // Inset-Karte (Größe relativ zur Hauptkarte) mitziehen, Ziel mittig halten
+  if (insetMap) {
+    const ziel = insetMap.getCenter();
+    insetMap.invalidateSize();
+    insetMap.setView(ziel, insetMap.getZoom(), { animate: false });
+  }
+  if (karteManuellBewegt || $("#waiptableau").hasClass("d-none")) return;
+  // mehrere Größenänderungen kurz hintereinander (Ausblenden + textFit) nur einmal auswerten
+  clearTimeout(_einpassenTimer);
+  _einpassenTimer = setTimeout(karte_einpassen, 150);
+});
 
 /* ########################### */
 /* ######## SOCKET.IO ######## */
@@ -718,7 +760,7 @@ socket.on("io.playtts", function (data) {
       .then(function () {
         // Automatic playback started!
         audio.play();
-        //$('.ion-md-volume-high').toggleClass('ion-md-pause');
+        //$('.bi-volume-up-fill').toggleClass('bi-pause-circle-fill');
       })
       .catch(function (error) {
         console.log("Automatic playback failed");
@@ -729,10 +771,10 @@ socket.on("io.playtts", function (data) {
         /*if (!tmp_element.classList.contains('btn-danger')) {
         tmp_element.classList.add('btn-danger');
       };*/
-        tmp_element = document.querySelector(".ion-md-volume-high");
-        if (tmp_element && tmp_element.classList.contains("ion-md-volume-high")) {
-          tmp_element.classList.remove("ion-md-volume-high");
-          tmp_element.classList.add("ion-md-volume-off");
+        tmp_element = document.querySelector(".bi-volume-up-fill");
+        if (tmp_element && tmp_element.classList.contains("bi-volume-up-fill")) {
+          tmp_element.classList.remove("bi-volume-up-fill");
+          tmp_element.classList.add("bi-volume-mute-fill");
         }
         indicateAudioBlocked();
       });
@@ -761,6 +803,7 @@ socket.on("io.standby", function (data) {
   // Routen und Inset-Karte aufräumen
   destroy_inset_map();
   clear_route_layers();
+  currentRoutes = []; // sonst zeichnet der nächste zoomend die alten Routen wieder ein
   // Leaflet-Reset: alle Layer entfernen und Basis-Kacheln + Platzhalter neu anlegen
   map.eachLayer(function (layer) { map.removeLayer(layer); });
   AddMapLayer();
@@ -814,35 +857,35 @@ socket.on("io.new_waip", function (data) {
   switch (data.einsatzart) {
     case "Brandeinsatz":
       $("#einsatz_art").addClass("bg-danger");
-      $("#einsatz_stichwort").addClass("ion-md-flame");
+      $("#einsatz_stichwort").addClass("bi-fire");
       $("#rueckmeldung").removeClass("d-none");
       break;
     case "Hilfeleistungseinsatz":
       $("#einsatz_art").addClass("bg-info");
-      $("#einsatz_stichwort").addClass("ion-md-construct");
+      $("#einsatz_stichwort").addClass("bi-tools");
       $("#rueckmeldung").removeClass("d-none");
       break;
     case "Rettungseinsatz":
       $("#einsatz_art").addClass("bg-warning");
-      $("#einsatz_stichwort").addClass("ion-md-medkit");
+      $("#einsatz_stichwort").addClass("bi-heart-pulse-fill");
       break;
     case "Krankentransport":
       $("#einsatz_art").addClass("bg-success");
-      $("#einsatz_stichwort").addClass("ion-md-medical");
+      $("#einsatz_stichwort").addClass("bi-asterisk");
       break;
     default:
       $("#einsatz_art").addClass("bg-secondary");
-      $("#einsatz_stichwort").addClass("ion-md-information-circle");
+      $("#einsatz_stichwort").addClass("bi-info-circle-fill");
   }
   $("#einsatz_stichwort").text(" " + data.stichwort);
   // Sondersignal setzen
   $("#sondersignal").removeClass();
   switch (data.sondersignal) {
     case 1:
-      $("#sondersignal").addClass("ion-md-notifications");
+      $("#sondersignal").addClass("bi-bell-fill");
       break;
     default:
-      $("#sondersignal").addClass("ion-md-notifications-off");
+      $("#sondersignal").addClass("bi-bell-slash-fill");
   }
   // Ortsdaten zusammenstellen und setzen
   let small_ortsdaten;
@@ -971,6 +1014,7 @@ socket.on("io.new_waip", function (data) {
   // Routen und Inset-Karte aus vorherigem Einsatz löschen
   destroy_inset_map();
   clear_route_layers();
+  currentRoutes = []; // sonst zeichnet zoomend (durch setView unten) die Routen des alten Einsatzes wieder ein
   // Karte leeren
   map.removeLayer(marker);
   map.removeLayer(geojson);
@@ -988,8 +1032,10 @@ socket.on("io.new_waip", function (data) {
   $("#waiptableau").removeClass("d-none");
   // Leaflet die tatsächliche Containergröße mitteilen, bevor fitBounds aufgerufen wird
   map.invalidateSize();
+  // neuer Einsatz: automatisches Einpassen wieder erlauben
+  karteManuellBewegt = false;
 
-  const initialZoom = is4K ? 16 : 14;
+  const initialZoom = kartenStartZoom;
 
   // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
   if (data.wgs84_x && data.wgs84_y) {
@@ -1046,53 +1092,10 @@ socket.on("io.new_rmld", function (data) {
   // FIXME  Änderung des Funktions-Typ berücksichtigen
   // Neue Rueckmeldung hinterlegen
   // HTML festlegen
-  var item_type = "";
-  var item_content = "";
-  var item_classname = "";
-  // wenn Einsatzkraft dann:
-  if (data.rmld_role == "team_member") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Einsatzkraft'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Einsatzkraft";
-    }
-    item_classname = "ek";
-    item_type = "ek";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "crew_leader") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Gruppenführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Gruppenführer";
-    }
-    item_classname = "gf";
-    item_type = "gf";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "division_chief") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Zugführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Zugführer";
-    }
-    item_classname = "zf";
-    item_type = "zf";
-  }
-  // wenn Maschinist dann:
-  if (data.rmld_role == "group_commander") {
-    // wenn data.rmld_alias nicht leer ist, dann data.rmld_alias, sonst 'Verbandsführer'
-    if (data.rmld_alias) {
-      item_content = data.rmld_alias;
-    } else {
-      item_content = "Verbandsführer";
-    }
-    item_classname = "vf";
-    item_type = "vf";
-  }
+  // Typ und Anzeigename (Name, sonst Funktion) gemeinsam mit dem Dashboard ermitteln (rmld_anzeige.js)
+  const rolle = rmld_rolle(data);
+  const item_type = rolle.typ;
+  let item_content = rolle.name;
 
   // Anzeigename im Balken: Alias, sonst Rollenname (Qualifikationen hängt add_resp_progressbar selbst an)
   const anzeige_name = item_content;
@@ -1202,8 +1205,9 @@ function layout_rmld() {
   const anzahl = box.children.length;
   const hoehe = box.clientHeight;
   if (!anzahl || !hoehe) return;
-  const h_max = hoehe * 0.15; // höchstens 15 % der Bereichshöhe je Balken
-  const h_min = hoehe * 0.11; // darunter lieber eine Spalte mehr
+  // 2026-11-12 verkleinert (vorher 15 % / 11 %): bei vielen Rückmeldungen wirkten die Balken zu wuchtig
+  const h_max = hoehe * 0.12; // höchstens 12 % der Bereichshöhe je Balken
+  const h_min = hoehe * 0.085; // darunter lieber eine Spalte mehr
   let spalten = 4;
   let balken_h = 0;
   for (let s = 2; s <= 4; s++) {
@@ -1798,11 +1802,22 @@ function draw_routes(routes, fit) {
       insetEl.style.right  = stationWest  ? "10px" : "auto";
 
       // fitBounds-Padding aus tatsächlicher Inset-Größe lesen, damit responsive CSS-Änderungen
-      // (min(260px, 38%)) automatisch berücksichtigt werden.
-      const insetPad = insetEl.offsetWidth + 12; // Breite + 10px Rand + 2px Border
-      const ptl = [stationWest ? 15 : insetPad, stationSouth ? 15 : insetPad];
-      const pbr = [stationWest ? insetPad : 15, stationSouth ? insetPad : 15];
-      map.fitBounds(combined, { paddingTopLeft: ptl, paddingBottomRight: pbr });
+      // (min(260px, 38%)) automatisch berücksichtigt werden. Das Inset liegt in einer Ecke: Es genügt,
+      // auf EINER Achse Platz freizuhalten (Streifen neben ODER über/unter dem Inset), dann kann nichts
+      // darunter liegen. Bisher wurde auf beiden Achsen freigehalten -> Karte unnötig weit herausgezoomt.
+      const insetB = insetEl.offsetWidth + 12; // Breite/Höhe + 10px Rand + 2px Border
+      const insetH = insetEl.offsetHeight + 12;
+      const nebenInset = { // Streifen links/rechts freihalten
+        paddingTopLeft: [stationWest ? 15 : insetB, 15],
+        paddingBottomRight: [stationWest ? insetB : 15, 15],
+      };
+      const ueberInset = { // Streifen oben/unten freihalten
+        paddingTopLeft: [15, stationSouth ? 15 : insetH],
+        paddingBottomRight: [15, stationSouth ? insetH : 15],
+      };
+      const zoomNeben = map.getBoundsZoom(combined, false, L.point(15 + insetB, 30));
+      const zoomUeber = map.getBoundsZoom(combined, false, L.point(30, 15 + insetH));
+      map.fitBounds(combined, zoomNeben >= zoomUeber ? nebenInset : ueberInset);
     } else {
       map.fitBounds(combined, { padding: [15, 15] });
     }
