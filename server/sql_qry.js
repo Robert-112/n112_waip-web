@@ -2885,7 +2885,45 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // Kartenbreite im Alarmmonitor (Querformat): 20–60 % in 5er-Schritten, null = Standard-Layout
+  const karte_breite_pruefen = (wert) => {
+    const n = Number(wert);
+    return Number.isInteger(n) && n >= 20 && n <= 60 && n % 5 === 0 ? n : null;
+  };
+
+  // Kartenbreite eines Benutzers laden (null = Standard)
+  const db_user_get_config_karte = (user_id) => {
+    try {
+      const row = db
+        .prepare(`SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'karte_breite';`)
+        .get(user_id);
+      return row ? karte_breite_pruefen(row.config_value) : null;
+    } catch (error) {
+      throw new Error("Fehler beim Laden der Kartenbreite eines Benutzers. " + error);
+    }
+  };
+
+  // Kartenbreite eines Benutzers speichern, ungültige Werte/„Standard“ entfernen den Eintrag
+  const db_user_set_config_karte = (user_id, wert) => {
+    try {
+      const breite = karte_breite_pruefen(wert);
+      if (breite === null) {
+        db.prepare(`DELETE FROM waip_user_config WHERE user_id = ? AND config_type = 'karte_breite';`).run(user_id);
+      } else {
+        db.prepare(`
+          INSERT OR REPLACE INTO waip_user_config (id, user_id, config_type, config_value)
+          VALUES ((SELECT id FROM waip_user_config WHERE user_id = ? AND config_type = 'karte_breite'), ?, 'karte_breite', ?);
+        `).run(user_id, user_id, String(breite));
+      }
+      return breite;
+    } catch (error) {
+      throw new Error("Fehler beim Speichern der Kartenbreite eines Benutzers. " + error);
+    }
+  };
+
   return {
+    db_user_get_config_karte,
+    db_user_set_config_karte,
     db_wetter_orte_get_all,
     db_wetter_ort_create,
     db_wetter_ort_update,

@@ -39,6 +39,14 @@ function ziel_icon(gross) {
 const ROUTEN_ABSTAND = 5;
 const ROUTEN_BUENDEL_MAX = 20;
 
+// Maßstab für Linienbreiten, Wachen-Punkte und Abstände in CSS-Pixeln. Der Alarmmonitor setzt auf 4K
+// ohne Skalierung (Kiosk, 3840×2160 CSS-Pixel) 2, damit Routen und Punkte wie in Full-HD wirken
+// (der Zielmarker wird dort ebenfalls verdoppelt, siehe ziel_icon_groesse). Dashboard: immer 1.
+let karteSkala = 1;
+function karte_skala_setzen(faktor) {
+  karteSkala = faktor > 0 ? faktor : 1;
+}
+
 // Versatzfaktoren je Route (Cache, wird nur bei neuen Routendaten berechnet)
 const _routenVersatz = new WeakMap();
 
@@ -111,7 +119,7 @@ function routen_versatz_max(routes) {
     const v = routen_versatz(r, routes);
     if (v) v.forEach(function (px) { if (Math.abs(px) > max) max = Math.abs(px); });
   });
-  return max;
+  return max * karteSkala;
 }
 
 // Versetzt eine Latlng-Liste je Stützpunkt um versatzPx[i] Pixel senkrecht zur Linie. Wird bei jedem
@@ -138,7 +146,8 @@ function versatz_anwenden(targetMap, latlngs, versatzPx) {
       const slen = Math.sqrt(sx * sx + sy * sy) || 1;
       perp = { x: sx / slen, y: sy / slen };
     }
-    out.push(L.point(pts[i].x + perp.x * versatzPx[i], pts[i].y + perp.y * versatzPx[i]));
+    const v = versatzPx[i] * karteSkala;
+    out.push(L.point(pts[i].x + perp.x * v, pts[i].y + perp.y * v));
   }
   return out.map(function (p) { return targetMap.unproject(p, zoom); });
 }
@@ -174,16 +183,17 @@ function routen_zeichnen(targetMap, routes, layerArr) {
       layerArr.push(L.polyline(l.ll, o).addTo(targetMap));
     });
   };
-  ebene({ color: "#000000", weight: 10, opacity: 0.18 });
-  ebene({ color: "#ffffff", weight: 6, opacity: 0.65 });
-  ebene({ weight: 4, opacity: 1.0 });
+  const k = karteSkala;
+  ebene({ color: "#000000", weight: 10 * k, opacity: 0.18 });
+  ebene({ color: "#ffffff", weight: 6 * k, opacity: 0.65 });
+  ebene({ weight: 4 * k, opacity: 1.0 });
 
   // Wachen-Punkt auf der echten Wachenposition (nicht versetzt)
   starts.forEach(function (s) {
     const punkt = L.circleMarker(s.pos, {
-      radius: 8, color: "#ffffff", weight: 2, fillColor: s.route.color, fillOpacity: 1.0,
+      radius: 8 * k, color: "#ffffff", weight: 2 * k, fillColor: s.route.color, fillOpacity: 1.0,
     }).addTo(targetMap);
-    if (s.route.name_wache) punkt.bindTooltip(s.route.name_wache, { permanent: true, direction: "top", offset: [0, -10], className: "route-label" });
+    if (s.route.name_wache) punkt.bindTooltip(s.route.name_wache, { permanent: true, direction: "top", offset: [0, -10 * k], className: "route-label" + (k > 1 ? " route-label-gross" : "") });
     layerArr.push(punkt);
     wachen.push(punkt);
   });

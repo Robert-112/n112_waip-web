@@ -296,7 +296,22 @@ audio {
 #standbytimer-text {
   text-shadow: 0 1px 3px rgba(0,0,0,0.85);
   /* wächst mit der Bildschirmhöhe, damit die Restzeit auch aus Entfernung lesbar bleibt */
-  font-size: clamp(0.75rem, 1.7vh, 1.3rem);
+  font-size: clamp(0.75rem, 1.7vh, 2.6rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Schrift an die Balkenhöhe koppeln: auf kleinen Bildschirmen (iPhone quer, Balken ~10 px) passt
+   die Restzeit sonst nicht hinein. Ältere Browser ohne Container-Queries behalten das clamp oben. */
+@supports (container-type: size) {
+  #waiptableau .standbytimer-progress {
+    container-type: size;
+  }
+
+  #standbytimer-text {
+    /* nie größer als bisher, nur kleiner, wenn der Balken nicht genug Höhe hat */
+    font-size: min(85cqh, clamp(0.75rem, 1.7vh, 2.6rem));
+  }
 }
 
 #rueckmeldung .list-group-item {
@@ -350,15 +365,21 @@ audio {
     padding-right: 1rem !important;
   }
 
-  /* wie .col-5 / .col-7 in Bootstrap 5, nur im Querformat; Innenabstand kommt von der .row (g-0) */
+  /* wie .col-5 / .col-7 in Bootstrap 5, nur im Querformat; Innenabstand kommt von der .row (g-0).
+     --karte-breite: persönliche Kartenbreite aus den Einstellungen (sonst Standard 5/12) */
   .col-5_ls {
     flex: 0 0 auto;
-    width: 41.66666667%;
+    width: var(--karte-breite, 41.66666667%);
   }
 
   .col-7_ls {
     flex: 0 0 auto;
-    width: 58.33333333%;
+    width: calc(100% - var(--karte-breite, 41.66666667%));
+  }
+
+  /* schmale Karte (< 30 %): Detailkarte würde die Hauptkarte fast verdecken */
+  .karte-schmal #map-inset {
+    display: none !important;
   }
 
   .h-2-5_ls {
@@ -941,6 +962,15 @@ audio {
   white-space: nowrap;
 }
 .leaflet-tooltip.route-label::before { display: none; }
+/* Alarmmonitor: Wachennamen etwas größer als im Dashboard (Full-HD 17 px statt 14 px) */
+#waiptableau .leaflet-tooltip.route-label {
+  font-size: clamp(14px, 1.6vh, 34px);
+}
+/* Alarmmonitor auf 4K ohne Skalierung (karte_skala_setzen(2)): doppelt so groß wie in Full-HD (17 px) */
+#waiptableau .leaflet-tooltip.route-label.route-label-gross {
+  font-size: 34px;
+  border-radius: 8px;
+}
 
 /* Zielmarker (Einsatzort): Stecknadel als SVG (karte_routen.js), darin ein weißer Punkt aus Bootstrap Icons */
 .ziel-marker svg { display: block; }
@@ -966,6 +996,12 @@ audio {
   border-radius: var(--waip-radius);
   border: 2px solid rgba(255,255,255,0.8);
   box-shadow: 0 2px 10px rgba(0,0,0,0.6);
+}
+/* 4K ohne Skalierung (client_waip.js, is4K): gleiche Wirkung wie in Full-HD */
+#map.karte-gross #map-inset {
+  width: min(520px, 38%);
+  height: min(520px, 38%);
+  border-width: 4px;
 }
 
 /*** Alarmmonitor: Eckenradien und Abstände ***/

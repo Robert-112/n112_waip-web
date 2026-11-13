@@ -17,10 +17,11 @@
         #wachenname.h-30.bi-building= ' ' + (data_wache || ' -Wachenname-')
         #einsatznummer.bi-clipboard.h-30= ' -Einsatznummer-'
         #alert_time.bi-clock.h-30=' -Uhrzeit-'
-    .row.g-0.h-87-5_ls.h-93_p
+    //- persönliche Kartenbreite (Einstellungen, nur angemeldet): setzt --karte-breite für .col-5_ls/.col-7_ls
+    .row.g-0.h-87-5_ls.h-93_p(class=(typeof karte_breite === 'number' && karte_breite < 30) ? 'karte-schmal' : null, style=(typeof karte_breite === 'number') ? '--karte-breite: ' + karte_breite + '%' : null)
       .col-12.col-5_ls.h-100_ls.h-40_p.pr-3_ls
         .h-4_ls.h-5_p.d-flex.align-items-end.justify-content-center.pb-1 
-          .progress.h-100.flex-fill.position-relative
+          .progress.standbytimer-progress.h-100.flex-fill.position-relative
             #standbytimer-bar.progress-bar.progress-bar-striped(role='progressbar', aria-valuenow='0', aria-valuemin='0', aria-valuemax='100', style='width: 0%')
             div#standbytimer-text.d-flex.justify-content-center.align-items-center.position-absolute.w-100.h-100
         #map.h-96_ls.h-95_p.rounded

@@ -539,14 +539,21 @@ try {
 }
 
 // Icon der Karte zuordnen
-// Monitorauflösung prüfen (screen statt window.inner – unabhängig von Fenstergröße/Vollbild)
-let is4K = screen.width * (window.devicePixelRatio || 1) >= 3840 &&
-           screen.height * (window.devicePixelRatio || 1) >= 2160;
+// Monitorauflösung prüfen (screen statt window.inner – unabhängig von Fenstergröße/Vollbild).
+// Bewusst in CSS-Pixeln, NICHT mal devicePixelRatio: Bei einem 4K-Monitor mit 200 % Skalierung
+// (Mac, Windows) vergrößert der Browser schon selbst alles auf das Doppelte, die Seite hat dann nur
+// 1920×1080 CSS-Pixel wie Full-HD. Mit Pixelverhältnis gerechnet wurde der Zielmarker dort ein zweites Mal
+// verdoppelt (4× so groß wie in Full-HD) und die Startzoomstufe zu groß. Kiosk-Pi an 4K (100 %): 3840×2160.
+let is4K = screen.width >= 3840 && screen.height >= 2160;
 // Zoomstufe für Punkt-Einsätze ohne Routen bzw. Obergrenze beim Einpassen des Einsatzumkreises
 const kartenStartZoom = is4K ? 16 : 14;
 // Zielmarker (Einsatzort), gemeinsam mit dem Dashboard (karte_routen.js)
 const zielGroesse = ziel_icon_groesse(is4K);
 let redIcon = ziel_icon(is4K);
+// Routenlinien, Wachen-Punkte und Namensschilder im selben Maßstab wie der Zielmarker (karte_routen.js)
+karte_skala_setzen(is4K ? 2 : 1);
+// Inset-Karte auf 4K ebenfalls doppelt so groß (CSS .karte-gross)
+if (is4K) document.getElementById("map").classList.add("karte-gross");
 
 // Icon setzen
 let marker = L.marker(new L.LatLng(0, 0), {
@@ -631,18 +638,19 @@ function karte_einpassen() {
   if (hatZiel) elemente.push({ ll: mPos, box: [-zielGroesse[0] / 2, -zielGroesse[1], zielGroesse[0] / 2, 0] });
   if (showEinsatzkreisBounds) flaeche(geojson.getBounds(), 0);
   // Routenlinien: Rand = größter seitlicher Versatz + halbe Schattenbreite
-  const linienRand = routen_versatz_max(currentRoutes) + 5;
+  const linienRand = routen_versatz_max(currentRoutes) + 5 * karteSkala;
   currentRoutes.forEach(function (r) {
     const co = r.geometry && r.geometry.coordinates;
     if (co && co.length) flaeche(L.latLngBounds(co.map(function (c) { return [c[1], c[0]]; })), linienRand);
   });
-  // Wachen-Punkt (Radius 8 + Rand 2) mit Namensschild darüber (Versatz 10 px + 6 px Pfeilabstand)
+  // Wachen-Punkt (Radius 8 + Rand 2) mit Namensschild darüber (Versatz 10 px + 6 px Pfeilabstand), je mal karteSkala
   routenWachen.forEach(function (w) {
     const t = w.getTooltip && w.getTooltip();
     const el = t && t.getElement();
     const b = el ? el.offsetWidth : 0;
     const h = el ? el.offsetHeight : 0;
-    elemente.push({ ll: w.getLatLng(), box: [-Math.max(b / 2, 10), -(h ? h + 16 : 10), Math.max(b / 2, 10), 10] });
+    const r = 10 * karteSkala;
+    elemente.push({ ll: w.getLatLng(), box: [-Math.max(b / 2, r), -(h ? h + 16 * karteSkala : r), Math.max(b / 2, r), r] });
   });
   if (!elemente.length) return;
 
@@ -650,7 +658,8 @@ function karte_einpassen() {
   const rand = showEinsatzkreisBounds && !currentRoutes.length ? 50 : 15;
   let varianten = [{ tl: [rand, rand], br: [rand, rand] }];
   const insetEl = document.getElementById("map-inset");
-  if (insetEl && !insetEl.classList.contains("d-none")) {
+  // offsetWidth: Inset kann auch per CSS ausgeblendet sein (schmale Karte, .karte-schmal)
+  if (insetEl && !insetEl.classList.contains("d-none") && insetEl.offsetWidth > 0) {
     // Inset in die Ecke gegenüber der (ersten) Wache legen
     const mitte = L.latLngBounds(elemente.map(function (e) { return e.ll; })).getCenter();
     const start = routenWachen.length ? routenWachen[0].getLatLng() : null;
@@ -2114,7 +2123,7 @@ function create_inset_map(lat, lng) {
     boxZoom: false,
     keyboard: false,
     touchZoom: false,
-  }).setView([lat, lng], 17);
+  }).setView([lat, lng], is4K ? 18 : 17); // doppelte Größe auf 4K: eine Stufe näher = gleicher Ausschnitt
   AddMapLayer(insetMap);
   L.marker(new L.LatLng(lat, lng), { icon: redIcon }).addTo(insetMap);
 }
