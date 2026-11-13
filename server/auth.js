@@ -45,6 +45,8 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     "/login": "/login",
     "/logout": "/",
     "/einstellungen_zeit": "/einstellungen",
+    "/einstellungen_standby": "/einstellungen",
+    "/adm_edit_wetter": "/adm_edit_wetter",
     "/adm_edit_users": "/adm_edit_users",
     "/adm_edit_wachen": "/adm_edit_wachen",
     "/adm_edit_replace": "/adm_edit_replace",

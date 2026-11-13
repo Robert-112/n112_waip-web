@@ -443,10 +443,328 @@ audio {
   overflow: hidden;
 }
 
-#clock_day {
+/*** Standby: Uhr + Warnung + Widgets als ein Block, der als Ganzes wandert (Einbrennschutz) ***/
+#standby_block {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* ohne Widgets so groß wie die bisherige Uhr (h-60 w-50) */
+  width: 50%;
+  height: 60%;
+  display: flex;
+  gap: 4%;
   /* transform statt left/top – Compositor-Thread, kein Layout-Reflow */
   transition: transform 0.5s ease-in-out;
   z-index: 1;
+}
+
+/* mit Widgets: kleiner als der Bildschirm, damit genug Bewegungsraum bleibt */
+#standby_block.mit-widgets {
+  width: 72%;
+  height: 76%;
+}
+
+#standby_links {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+#clock_day {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+/* Unwetterwarnung unter der Uhr, Farben nach DWD-Warnstufe */
+#standby_warnung {
+  --warn: #e3d14b;
+  flex: none;
+  margin-top: 1.2em;
+  padding: 0.9em 1.3em;
+  border-radius: 0.7em;
+  display: flex;
+  gap: 1.1em;
+  align-items: center;
+  font-size: clamp(11px, 1.05vw, 34px);
+  background: rgba(227, 209, 75, 0.12);
+}
+
+#standby_warnung.stufe-2 {
+  --warn: #f0a23a;
+  background: rgba(240, 162, 58, 0.14);
+}
+
+#standby_warnung.stufe-3 {
+  --warn: #ff6b5e;
+  background: rgba(255, 107, 94, 0.14);
+}
+
+#standby_warnung.stufe-4 {
+  --warn: #c98bff;
+  background: rgba(201, 139, 255, 0.16);
+}
+
+#standby_warnung > .bi {
+  font-size: 2.6em;
+  line-height: 1;
+  color: var(--warn);
+}
+
+.standby-warnung-text {
+  min-width: 0;
+}
+
+.standby-warnung-stufe {
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
+.standby-warnung-titel {
+  font-size: 1.6em;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--warn);
+}
+
+.standby-warnung-zeit {
+  color: #999;
+}
+
+/* Widget-Spalte (Wetter, Termine); Größen in em, Grundgröße folgt der Bildschirmbreite */
+#standby_widgets {
+  flex: 0 0 30%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.6em;
+  overflow: hidden;
+  /* Grundgröße nach Breite und Höhe; passt der Inhalt nicht, verkleinert widgets_einpassen() weiter */
+  font-size: clamp(10px, min(0.85vw, 1.6vh), 28px);
+  color: #aaa;
+  line-height: 1.25;
+}
+
+.standby-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #777;
+  min-width: 0;
+}
+
+.standby-label > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.standby-klein {
+  font-size: 0.82em;
+  color: #777;
+}
+
+.standby-quelle {
+  font-size: 0.76em;
+  color: #666;
+}
+
+#standby_wetter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+}
+
+.standby-wetter-jetzt {
+  display: flex;
+  align-items: center;
+  gap: 0.9em;
+}
+
+.standby-wetter-icon {
+  font-size: 4.4em;
+  line-height: 1;
+  color: #999;
+}
+
+.standby-wetter-temp {
+  font-size: 5.2em;
+  font-weight: 700;
+  line-height: 1;
+  color: #aaa;
+  white-space: nowrap;
+}
+
+.standby-wetter-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  font-size: 1.25em;
+  min-width: 0;
+}
+
+.standby-wetter-minmax {
+  color: #888;
+  white-space: nowrap;
+}
+
+.standby-wetter-fakten,
+.standby-wetter-tage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7em;
+}
+
+.standby-wetter-tage {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 0.2em;
+}
+
+.standby-wetter-fakten > div,
+.standby-tag-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.standby-wetter-fakten > div > span:last-child {
+  font-size: 1.3em;
+}
+
+.standby-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  min-width: 0;
+}
+
+.standby-tag > .bi {
+  font-size: 2em;
+  line-height: 1;
+  color: #999;
+}
+
+.standby-tag-temp {
+  font-size: 1.18em;
+  white-space: nowrap;
+}
+
+.standby-tag-temp > span,
+.standby-tag-text > span:last-child {
+  color: #777;
+}
+
+/* Termine als eigene, leicht abgesetzte Kachel */
+#standby_kalender {
+  flex-shrink: 0;
+  background: #141414;
+  border-radius: 0.8em;
+  padding: 0.9em 1.2em 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.standby-kalender-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+.standby-kalender-kopf .standby-label {
+  color: #888;
+}
+
+.standby-kalender-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+}
+
+.standby-tag-gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  padding-top: 0.6em;
+  border-top: 1px solid #262626;
+}
+
+.standby-tag-kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+.standby-tag-name {
+  font-weight: 700;
+  color: #bbb;
+}
+
+.standby-tag-name.heute {
+  padding: 0.05em 0.6em;
+  border-radius: 999px;
+  background: rgba(52, 152, 219, 0.18);
+  color: #8cc4ea;
+}
+
+.standby-tag-datum {
+  font-size: 0.88em;
+  color: #777;
+}
+
+.standby-termin {
+  display: grid;
+  grid-template-columns: 5.6em minmax(0, 1fr);
+  column-gap: 0.7em;
+  align-items: baseline;
+}
+
+.standby-termin-zeit {
+  font-size: 1.12em;
+  color: #999;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.standby-termin-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.standby-termin-titel {
+  font-size: 1.18em;
+  color: #c4c4c4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.standby-termin-ort {
+  font-size: 0.82em;
+  color: #808080;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.standby-kalender-leer {
+  font-size: 0.95em;
+  color: #777;
 }
 
 .clock-seconds {

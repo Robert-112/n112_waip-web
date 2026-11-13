@@ -2615,7 +2615,175 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  /* ##### Standby-Widgets: Wetter-Standorte und Benutzereinstellungen ##### */
+
+  // Alle Wetter-Standorte laden (sortiert nach Ebene: Leitstelle, Kreis, Träger, Wache)
+  const db_wetter_orte_get_all = () => {
+    return new Promise((resolve, reject) => {
+      try {
+        const rows = db.prepare(`SELECT * FROM waip_wetter_orte ORDER BY LENGTH(nr), nr;`).all();
+        resolve(rows);
+      } catch (error) {
+        reject(new Error("Fehler beim Laden der Wetter-Standorte. " + error));
+      }
+    });
+  };
+
+  // Wetter-Standort anlegen
+  const db_wetter_ort_create = (ort) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const info = db
+          .prepare(`INSERT INTO waip_wetter_orte (nr, name, lat, lon, warncell_id) VALUES (?, ?, ?, ?, ?);`)
+          .run(ort.nr, ort.name, ort.lat, ort.lon, ort.warncell_id);
+        resolve(info.lastInsertRowid);
+      } catch (error) {
+        reject(new Error("Fehler beim Anlegen des Wetter-Standorts. " + error));
+      }
+    });
+  };
+
+  // Wetter-Standort bearbeiten (die Nummer bleibt fest)
+  const db_wetter_ort_update = (ort) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const info = db
+          .prepare(`UPDATE waip_wetter_orte SET name = ?, lat = ?, lon = ?, warncell_id = ? WHERE id = ?;`)
+          .run(ort.name, ort.lat, ort.lon, ort.warncell_id, ort.id);
+        resolve(info.changes);
+      } catch (error) {
+        reject(new Error("Fehler beim Bearbeiten des Wetter-Standorts. " + error));
+      }
+    });
+  };
+
+  // Wetter-Standort löschen
+  const db_wetter_ort_delete = (id) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const info = db.prepare(`DELETE FROM waip_wetter_orte WHERE id = ?;`).run(id);
+        resolve(info.changes);
+      } catch (error) {
+        reject(new Error("Fehler beim Löschen des Wetter-Standorts. " + error));
+      }
+    });
+  };
+
+  // Wetter-Standort für eine Monitor-Nummer ermitteln. Es gilt der genaueste Eintrag aus waip_wetter_orte:
+  // Wache (6) -> Träger (4) -> Kreis (2) -> Leitstelle (1). Ohne Eintrag wird die Koordinate der Wache
+  // (bei Träger/Kreis/Leitstelle der Mittelpunkt ihrer aktiven Wachen) aus waip_wachen verwendet.
+  // Achtung: in waip_wachen ist wgs84_x die geografische Breite, wgs84_y die Länge.
+  // Rückgabe: { nr, name, lat, lon, warncell_id, quelle } oder null.
+  const db_wetter_ort_ermitteln = (wachen_nr) => {
+    try {
+      const nr = String(wachen_nr ?? "").trim();
+      if (!/^\d+$/.test(nr) || ![1, 2, 4, 6].includes(nr.length)) return null;
+
+      // Leitstelle der Wache / des Trägers / des Kreises ermitteln
+      let leitstelle = null;
+      let gruppe = null;
+      if (nr.length === 6) {
+        gruppe = db
+          .prepare(`SELECT nr_leitstelle, name_wache name, wgs84_x lat, wgs84_y lon FROM waip_wachen WHERE nr_wache = ? AND aktiv = 1 LIMIT 1;`)
+          .get(Number(nr));
+      } else if (nr.length === 4) {
+        gruppe = db
+          .prepare(`
+            SELECT MIN(nr_leitstelle) nr_leitstelle, MIN(name_traeger) name, AVG(NULLIF(wgs84_x, 0)) lat, AVG(NULLIF(wgs84_y, 0)) lon
+            FROM waip_wachen WHERE nr_kreis = ? AND nr_traeger = ? AND aktiv = 1;
+          `)
+          .get(nr.slice(0, 2), nr.slice(2, 4));
+      } else if (nr.length === 2) {
+        gruppe = db
+          .prepare(`
+            SELECT MIN(nr_leitstelle) nr_leitstelle, MIN(name_kreis) name, AVG(NULLIF(wgs84_x, 0)) lat, AVG(NULLIF(wgs84_y, 0)) lon
+            FROM waip_wachen WHERE nr_kreis = ? AND aktiv = 1;
+          `)
+          .get(nr);
+      } else if (nr !== "0") {
+        // Leitstelle 0 ist "Global" (alle Einsätze), dafür gibt es keinen sinnvollen Mittelpunkt
+        gruppe = db
+          .prepare(`
+            SELECT MIN(nr_leitstelle) nr_leitstelle, MIN(name_leitstelle) name, AVG(NULLIF(wgs84_x, 0)) lat, AVG(NULLIF(wgs84_y, 0)) lon
+            FROM waip_wachen WHERE nr_leitstelle = ? AND aktiv = 1;
+          `)
+          .get(nr);
+      }
+      if (gruppe && gruppe.nr_leitstelle != null) leitstelle = String(gruppe.nr_leitstelle);
+
+      // Kandidaten vom genauesten zum gröbsten Eintrag
+      const kandidaten = [];
+      if (nr.length >= 6) kandidaten.push(nr.slice(0, 6));
+      if (nr.length >= 4) kandidaten.push(nr.slice(0, 4));
+      if (nr.length >= 2) kandidaten.push(nr.slice(0, 2));
+      if (nr.length === 1) kandidaten.push(nr);
+      if (leitstelle && leitstelle !== "0" && !kandidaten.includes(leitstelle)) kandidaten.push(leitstelle);
+
+      const stmt_ort = db.prepare(`SELECT nr, name, lat, lon, warncell_id FROM waip_wetter_orte WHERE nr = ?;`);
+      for (const kandidat of kandidaten) {
+        const ort = stmt_ort.get(kandidat);
+        if (ort) return { ...ort, quelle: "wetter_orte" };
+      }
+
+      // Fallback: Koordinaten aus den Wachen-Stammdaten
+      if (gruppe && Number(gruppe.lat) && Number(gruppe.lon)) {
+        return { nr: nr, name: gruppe.name, lat: Number(gruppe.lat), lon: Number(gruppe.lon), warncell_id: null, quelle: "wachen" };
+      }
+      return null;
+    } catch (error) {
+      throw new Error(`Fehler beim Ermitteln des Wetter-Standorts für ${wachen_nr}. ` + error);
+    }
+  };
+
+  // Standby-Einstellungen eines Benutzers laden (Wetter/Kalender an, Kalender-Adresse)
+  const db_user_get_config_standby = (user_id) => {
+    try {
+      const rows = db
+        .prepare(`
+          SELECT config_type, config_value FROM waip_user_config
+          WHERE user_id = ? AND config_type IN ('standby_wetter', 'standby_kalender', 'ical_url');
+        `)
+        .all(user_id);
+      const cfg = Object.fromEntries(rows.map((r) => [r.config_type, r.config_value]));
+      return {
+        wetter: cfg.standby_wetter === "1",
+        kalender: cfg.standby_kalender === "1",
+        ical_url: cfg.ical_url || "",
+      };
+    } catch (error) {
+      throw new Error("Fehler beim Laden der Standby-Einstellungen eines Benutzers. " + error);
+    }
+  };
+
+  // Standby-Einstellungen eines Benutzers speichern
+  const db_user_set_config_standby = (user_id, standby) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const stmt = db.prepare(`
+          INSERT OR REPLACE INTO waip_user_config (id, user_id, config_type, config_value)
+          VALUES ((SELECT id FROM waip_user_config WHERE user_id = ? AND config_type = ?), ?, ?, ?);
+        `);
+        const speichern = db.transaction(() => {
+          stmt.run(user_id, "standby_wetter", user_id, "standby_wetter", standby.wetter ? "1" : "0");
+          stmt.run(user_id, "standby_kalender", user_id, "standby_kalender", standby.kalender ? "1" : "0");
+          stmt.run(user_id, "ical_url", user_id, "ical_url", standby.ical_url || "");
+        });
+        speichern();
+        resolve(true);
+      } catch (error) {
+        reject(new Error("Fehler beim Speichern der Standby-Einstellungen eines Benutzers. " + error));
+      }
+    });
+  };
+
   return {
+    db_wetter_orte_get_all,
+    db_wetter_ort_create,
+    db_wetter_ort_update,
+    db_wetter_ort_delete,
+    db_wetter_ort_ermitteln,
+    db_user_get_config_standby,
+    db_user_set_config_standby,
     db_alarmdaten_filter_aktiv,
     db_einsatz_speichern,
     db_einsatz_for_client_ermitteln,

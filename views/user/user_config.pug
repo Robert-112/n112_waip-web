@@ -29,3 +29,35 @@ block content
                                 option(selected)= i+1
                               else
                                 option= i+1              
+          .row
+            .col-12.w-100.pb-3
+              .card.border-0
+                .card-body.p-4
+                  form(action="/einstellungen_standby", method="POST")
+                    input(type="hidden" name="_csrf" value=csrf_token)
+                    .row.g-4
+                      .col-12.col-md-4
+                        h2.h5.card-title.d-flex.align-items-center.gap-2
+                          i.bi.bi-display(aria-hidden='true')
+                          span Standby-Anzeige
+                        p.card-text.text-body-secondary.mb-0 Was der Alarmmonitor ohne laufenden Einsatz zeigt. Uhrzeit und Datum werden immer angezeigt.
+                      .col-12.col-md-8.d-flex.flex-column.gap-3
+                        div
+                          .form-check.form-switch
+                            input#einstellung_wetter.form-check-input(type='checkbox', role='switch', name='standby_wetter', checked=standby.wetter, disabled=!widgets_wetter_aktiv)
+                            label.form-check-label.fw-bold(for='einstellung_wetter') Wetter und amtliche Unwetterwarnungen
+                          if !widgets_wetter_aktiv
+                            .form-text.ms-5 Auf diesem Server ist kein Wetterdienst eingerichtet.
+                        div
+                          .form-check.form-switch
+                            input#einstellung_kalender.form-check-input(type='checkbox', role='switch', name='standby_kalender', checked=standby.kalender, disabled=widgets_kalender_erlaubt.length === 0)
+                            label.form-check-label.fw-bold(for='einstellung_kalender') Termine aus einem Kalender
+                          .ms-5.mt-2
+                            label.form-label(for='ical_url') Öffentliche Kalender-Adresse (iCal/ICS)
+                            input#ical_url.form-control(type='url', name='ical_url', value=standby.ical_url, maxlength='2000', placeholder='https://…', disabled=widgets_kalender_erlaubt.length === 0)
+                            if widgets_kalender_erlaubt.length > 0
+                              .form-text Erlaubte Kalender: #{widgets_kalender_erlaubt.join(', ')}
+                            else
+                              .form-text Auf diesem Server sind keine Kalender freigegeben.
+                        div
+                          button.btn.btn-primary(type='submit') Speichern

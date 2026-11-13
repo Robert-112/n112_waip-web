@@ -1,4 +1,4 @@
-module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts) {
+module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts, widgets) {
   // HTTP-Antworten mit Fehlerstatus (401/403/404/5xx) strukturiert protokollieren
   app.use(logger.http_error_middleware);
 
@@ -474,6 +474,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         title: "Einstellungen",
         user: req.user,
         user_reset_counter: data.resetcounter,
+        standby: sql.db_user_get_config_standby(req.user.id),
+        widgets_wetter_aktiv: widgets.wetter_aktiv,
+        widgets_kalender_erlaubt: widgets.erlaubte_kalender(),
         session_max_age: app_cfg.global.session_cookie_max_age,
         error: req.query.error || null,
         success: req.query.success || null,
@@ -493,6 +496,46 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       res.redirect("/einstellungen?success=" + encodeURIComponent("Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert"));
     } catch (error) {
       res.redirect("/einstellungen?error=" + encodeURIComponent("Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error));
+    }
+  });
+
+  // Einstellungen zur Standby-Anzeige speichern (Wetter/Kalender ein/aus, Kalender-Adresse)
+  app.post("/einstellungen_standby", auth.ensureAuthenticated, async (req, res) => {
+    const zurueck = (art, text) => res.redirect("/einstellungen?" + art + "=" + encodeURIComponent(text));
+    try {
+      const wetter = req.body.standby_wetter === "on";
+      const kalender = req.body.standby_kalender === "on";
+      const eingabe = String(req.body.ical_url || "").trim().slice(0, 2000);
+      let ical_url = "";
+      let domain = null;
+      if (eingabe) {
+        try {
+          const geprueft = widgets.kalender_url_pruefen(eingabe);
+          ical_url = geprueft.url;
+          domain = geprueft.domain.host;
+        } catch (error) {
+          if (error instanceof widgets.KalenderFehler) return zurueck("error", error.message);
+          throw error;
+        }
+      }
+      if (kalender && !ical_url) {
+        return zurueck("error", "Bitte eine öffentliche Kalender-Adresse angeben oder die Termine ausschalten.");
+      }
+      await sql.db_user_set_config_standby(req.user.id, { wetter, kalender, ical_url });
+      logger.event(`Standby-Einstellungen von ${req.user.user} geändert (Wetter: ${wetter ? "an" : "aus"}, Kalender: ${kalender ? "an" : "aus"}).`, {
+        ...logger.from_req(req),
+        action: "standby-einstellungen",
+        category: "configuration",
+        type: "change",
+        outcome: "success",
+        wachalarm: { standby: { wetter: wetter, kalender: kalender, kalender_domain: domain } },
+      });
+      // verbundene Monitore des Benutzers sofort umstellen
+      widgets.benutzer_aktualisiert(req.user.id);
+      zurueck("success", "Einstellungen für die Standby-Anzeige wurden gespeichert.");
+    } catch (error) {
+      logger.log("error", error);
+      zurueck("error", "Fehler beim Speichern der Standby-Einstellungen.");
     }
   });
 
@@ -762,6 +805,124 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       res.redirect("/adm_edit_wachen?success=" + encodeURIComponent("Wache erfolgreich angelegt."));
     } catch (error) {
       res.redirect("/adm_edit_wachen?error=" + encodeURIComponent("Fehler beim Anlegen der Wache. " + error));
+    }
+  });
+
+  /* ##### Wetter-Standorte (Standby-Widgets) ##### */
+
+  // Eingaben eines Wetter-Standorts prüfen und vereinheitlichen; gibt { ort } oder { fehler } zurück
+  const wetter_ort_pruefen = async (body, mit_nr) => {
+    const zahl = (wert) => Number(String(wert ?? "").trim().replace(",", "."));
+    const ort = {
+      id: body.id,
+      nr: String(body.nr ?? "").trim(),
+      name: String(body.name ?? "").trim().slice(0, 100),
+      lat: zahl(body.lat),
+      lon: zahl(body.lon),
+      warncell_id: String(body.warncell_id ?? "").trim(),
+    };
+    if (mit_nr && (!/^\d+$/.test(ort.nr) || ![1, 2, 4, 6].includes(ort.nr.length))) {
+      return { fehler: "Die Nummer muss 1 (Leitstelle), 2 (Kreis), 4 (Träger) oder 6 (Wache) Ziffern haben." };
+    }
+    if (!String(body.lat ?? "").trim() || !isFinite(ort.lat) || ort.lat < -90 || ort.lat > 90) return { fehler: "Die Breite (Lat) ist ungültig, z.B. 52.41787." };
+    if (!String(body.lon ?? "").trim() || !isFinite(ort.lon) || ort.lon < -180 || ort.lon > 180) return { fehler: "Die Länge (Lon) ist ungültig, z.B. 12.53254." };
+    if (ort.warncell_id && !/^\d{6,10}$/.test(ort.warncell_id)) return { fehler: "Die Warnzelle muss eine Zahl (DWD-Warnzellen-ID) sein oder leer bleiben." };
+    ort.warncell_id = ort.warncell_id ? Number(ort.warncell_id) : null;
+    if (mit_nr && !ort.name) {
+      // Bezeichnung aus den Wachen übernehmen, falls nicht angegeben
+      try {
+        ort.name = (await sql.db_wache_vorhanden(ort.nr)).name;
+      } catch (e) {
+        ort.name = "";
+      }
+    }
+    return { ort };
+  };
+
+  // Wetter-Standorte anzeigen
+  app.get("/adm_edit_wetter", auth.ensureAdmin, async (req, res, next) => {
+    try {
+      const orte = await sql.db_wetter_orte_get_all();
+      res.render("admin/adm_edit_wetter", {
+        public: app_cfg.public,
+        title: "Wetter-Standorte verwalten",
+        user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
+        orte,
+        wetter_aktiv: widgets.wetter_aktiv,
+        brightsky_url: app_cfg.widgets.brightsky_url,
+        error: req.query.error || null,
+        success: req.query.success || null,
+      });
+    } catch (error) {
+      const err = new Error("Fehler beim Laden der Seite /adm_edit_wetter. " + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
+    }
+  });
+
+  // Wetter-Standort anlegen
+  app.post("/adm_edit_wetter/create", auth.ensureAdmin, async (req, res) => {
+    try {
+      const { ort, fehler } = await wetter_ort_pruefen(req.body, true);
+      if (fehler) return res.redirect("/adm_edit_wetter?error=" + encodeURIComponent(fehler));
+      await sql.db_wetter_ort_create(ort);
+      config_event(req, `Wetter-Standort ${ort.nr} wurde von ${req.user.user} angelegt.`, "wetter-ort-angelegt", "creation", { wetter_ort: ort.nr });
+      res.redirect("/adm_edit_wetter?success=" + encodeURIComponent(`Standort ${ort.nr} angelegt. Verbundene Monitore übernehmen ihn beim nächsten Aufruf.`));
+    } catch (error) {
+      const doppelt = String(error).includes("UNIQUE");
+      res.redirect("/adm_edit_wetter?error=" + encodeURIComponent(doppelt ? "Für diese Nummer gibt es bereits einen Standort." : "Fehler beim Anlegen des Standorts. " + error));
+    }
+  });
+
+  // Wetter-Standort bearbeiten
+  app.post("/adm_edit_wetter/edit", auth.ensureAdmin, async (req, res) => {
+    try {
+      const { ort, fehler } = await wetter_ort_pruefen(req.body, false);
+      if (fehler) return res.redirect("/adm_edit_wetter?error=" + encodeURIComponent(fehler));
+      await sql.db_wetter_ort_update(ort);
+      config_event(req, `Wetter-Standort ID ${ort.id} wurde von ${req.user.user} bearbeitet.`, "wetter-ort-geaendert", "change", { ziel_id: ort.id });
+      res.redirect("/adm_edit_wetter?success=" + encodeURIComponent("Standort gespeichert. Verbundene Monitore übernehmen ihn beim nächsten Aufruf."));
+    } catch (error) {
+      res.redirect("/adm_edit_wetter?error=" + encodeURIComponent("Fehler beim Bearbeiten des Standorts. " + error));
+    }
+  });
+
+  // Wetter-Standort löschen
+  app.post("/adm_edit_wetter/delete", auth.ensureAdmin, async (req, res) => {
+    try {
+      await sql.db_wetter_ort_delete(req.body.id);
+      config_event(req, `Wetter-Standort ID ${req.body.id} wurde von ${req.user.user} gelöscht.`, "wetter-ort-geloescht", "deletion", { ziel_id: req.body.id });
+      res.redirect("/adm_edit_wetter?success=" + encodeURIComponent("Standort gelöscht."));
+    } catch (error) {
+      res.redirect("/adm_edit_wetter?error=" + encodeURIComponent("Fehler beim Löschen des Standorts. " + error));
+    }
+  });
+
+  // Erreichbarkeit von Bright Sky für die Statusanzeige der Admin-Seite
+  app.post("/adm_edit_wetter/status", auth.ensureAdmin, checkContentType, async (req, res) => {
+    res.json(await widgets.brightsky_pruefen());
+  });
+
+  // Wetter und Warnungen für eine Nummer oder Koordinate testen (ohne Zwischenspeicher)
+  app.post("/adm_edit_wetter/test", auth.ensureAdmin, checkContentType, async (req, res) => {
+    try {
+      let ort = null;
+      if (req.body.nr) {
+        ort = sql.db_wetter_ort_ermitteln(String(req.body.nr).trim());
+        if (!ort) return res.status(404).json({ error: "Für diese Nummer wurde kein Standort gefunden (weder hier noch in den Wachen)." });
+      } else {
+        const { ort: geprueft, fehler } = await wetter_ort_pruefen(req.body, false);
+        if (fehler) return res.status(400).json({ error: fehler });
+        ort = geprueft;
+      }
+      const start = Date.now();
+      const ergebnis = await widgets.wetter_testen(ort);
+      res.json({ ort, ...ergebnis, dauer_ms: Date.now() - start });
+    } catch (error) {
+      logger.log("warn", `Wetter-Test fehlgeschlagen: ${error.message}`);
+      res.status(502).json({ error: "Bright Sky nicht erreichbar oder fehlerhaft: " + error.message });
     }
   });
 

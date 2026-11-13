@@ -1,0 +1,207 @@
+extends ../layout
+
+block content
+  main(role='main')
+    .container-fluid
+      +seitenkopf('Wetter-Standorte', 'Koordinaten und Warnzellen für Wetter und Unwetterwarnungen im Standby des Alarmmonitors.', 'bi-cloud-sun')
+      +meldungen(error, success)
+
+      .row.g-3.mb-4
+        .col-12.col-lg-8
+          .card.border-0.h-100
+            .card-body
+              h2.h6.card-title.d-flex.align-items-center.gap-2
+                i.bi.bi-diagram-3(aria-hidden='true')
+                span So wird der Standort eines Monitors bestimmt
+              p.card-text.text-body-secondary.mb-2
+                | Es gilt der genaueste Eintrag zur aufgerufenen Nummer: Wache (6-stellig) → Träger (4) → Kreis (2) → Leitstelle (1).
+                | Gibt es keinen Eintrag, wird die Koordinate der Wache aus den Wachen-Stammdaten verwendet (bei Träger, Kreis und Leitstelle der Mittelpunkt ihrer Wachen).
+              p.card-text.text-body-secondary.mb-0
+                | Warnzelle leer = Bright Sky ermittelt sie aus der Koordinate (Gemeinde). Für Kreis- oder Leitstellen-Monitore lohnt sich eine feste Warnzelle.
+                | Massenimport per SQL in die Tabelle
+                code.ms-1 waip_wetter_orte
+                |  (nr, name, lat, lon, warncell_id).
+        .col-12.col-lg-4
+          .card.border-0.h-100
+            .card-body
+              h2.h6.card-title.d-flex.align-items-center.gap-2
+                i.bi.bi-hdd-network(aria-hidden='true')
+                span Wetterdienst
+              .d-flex.flex-column.gap-1.text-body-secondary
+                .d-flex.justify-content-between.gap-2
+                  span Bright Sky
+                  if wetter_aktiv
+                    code.text-break= brightsky_url
+                  else
+                    span.badge.text-bg-secondary.align-self-center nicht eingerichtet
+                .d-flex.justify-content-between.gap-2
+                  span Status
+                  span#wetter_status.badge.text-bg-secondary.align-self-center unbekannt
+              p.small.text-body-secondary.mt-2.mb-0
+                | Adresse und Intervalle werden in der
+                code.mx-1 .env
+                | eingestellt (WIDGET_BRIGHTSKY_URL usw.).
+
+      h2.h5.mt-2 Neuen Standort anlegen
+      form.row.g-2.align-items-end.mb-4(action='/adm_edit_wetter/create', method='post')
+        input(type='hidden', name='_csrf', value=csrf_token)
+        .col-6.col-md-2
+          label.form-label(for='neu_nr') Nummer
+          input#neu_nr.form-control(type='text', name='nr', required, pattern='\\d{1}|\\d{2}|\\d{4}|\\d{6}', maxlength='6', inputmode='numeric', placeholder='z. B. 5100', title='1, 2, 4 oder 6 Ziffern')
+        .col-6.col-md-3
+          label.form-label(for='neu_name') Bezeichnung
+          input#neu_name.form-control(type='text', name='name', maxlength='100', placeholder='leer = aus den Wachen übernehmen')
+        .col-6.col-md-2
+          label.form-label(for='neu_lat') Breite (Lat)
+          input#neu_lat.form-control(type='text', name='lat', required, inputmode='decimal', pattern='-?\\d{1,2}([.,]\\d+)?', placeholder='52.41787')
+        .col-6.col-md-2
+          label.form-label(for='neu_lon') Länge (Lon)
+          input#neu_lon.form-control(type='text', name='lon', required, inputmode='decimal', pattern='-?\\d{1,3}([.,]\\d+)?', placeholder='12.53254')
+        .col-6.col-md-2
+          label.form-label(for='neu_zelle') Warnzelle (optional)
+          input#neu_zelle.form-control(type='text', name='warncell_id', inputmode='numeric', pattern='\\d{6,10}', placeholder='9-stellig')
+        .col-6.col-md-1.d-grid
+          button.btn.btn-success(type='submit') Anlegen
+
+      .d-flex.flex-wrap.align-items-end.justify-content-between.gap-2.mt-2.mb-2
+        h2.h5.mb-0 Standorte bearbeiten
+        form.d-flex.gap-2#test_nr_form
+          label.visually-hidden(for='test_nr') Nummer testen
+          input#test_nr.form-control.form-control-sm(type='text', inputmode='numeric', placeholder='Nummer testen, z. B. 510001', style='width: 220px')
+          button.btn.btn-sm.btn-outline-info.text-nowrap(type='submit')
+            i.bi.bi-eye.me-1(aria-hidden='true')
+            | Testen
+
+      if orte.length === 0
+        p.text-body-secondary Noch keine eigenen Standorte. Alle Monitore verwenden die Koordinaten aus den Wachen-Stammdaten.
+      else
+        .table-responsive
+          table.table.table-striped.align-middle(style='min-width: 1000px')
+            thead
+              tr
+                th(scope='col', style='width: 110px') Ebene
+                th(scope='col', style='width: 100px') Nummer
+                th(scope='col') Bezeichnung
+                th(scope='col', style='width: 140px') Breite
+                th(scope='col', style='width: 140px') Länge
+                th(scope='col', style='width: 150px') Warnzelle
+                th(scope='col', style='width: 230px') Aktion
+            tbody
+              each o in orte
+                - const ebene = { 1: 'Leitstelle', 2: 'Kreis', 4: 'Träger', 6: 'Wache' }[String(o.nr).length] || '?'
+                - const badge = { 1: 'text-bg-secondary', 2: 'text-bg-secondary', 4: 'text-bg-info', 6: 'text-bg-primary' }[String(o.nr).length] || 'text-bg-dark'
+                - const formular = 'ort_' + o.id
+                tr
+                  td
+                    span.badge(class=badge)= ebene
+                  td
+                    code= o.nr
+                  td
+                    input.form-control.form-control-sm(type='text', name='name', value=o.name, maxlength='100', form=formular, aria-label='Bezeichnung')
+                  td
+                    input.form-control.form-control-sm(type='text', name='lat', value=o.lat, required, form=formular, aria-label='Breite')
+                  td
+                    input.form-control.form-control-sm(type='text', name='lon', value=o.lon, required, form=formular, aria-label='Länge')
+                  td
+                    input.form-control.form-control-sm(type='text', name='warncell_id', value=o.warncell_id, placeholder='automatisch', form=formular, aria-label='Warnzelle')
+                  td
+                    form.d-flex.gap-1(id=formular, action='/adm_edit_wetter/edit', method='post')
+                      input(type='hidden', name='_csrf', value=csrf_token)
+                      input(type='hidden', name='id', value=o.id)
+                      button.btn.btn-sm.btn-primary(type='submit') Speichern
+                      button.btn.btn-sm.btn-outline-info.wetter-test(type='button', data-nr=o.nr, title='Aktuelles Wetter und Warnungen für diesen Standort abrufen')
+                        i.bi.bi-eye.me-1(aria-hidden='true')
+                        | Test
+                      button.btn.btn-sm.btn-outline-danger(type='submit', formaction='/adm_edit_wetter/delete', formnovalidate, aria-label='Standort ' + o.nr + ' löschen', onclick="return confirm('Standort " + o.nr + " wirklich löschen?')")
+                        i.bi.bi-trash(aria-hidden='true')
+
+      #test_karte.card.border-0.mt-3.d-none
+        .card-body
+          h2.h6.card-title.d-flex.align-items-center.gap-2
+            i.bi.bi-eye(aria-hidden='true')
+            span#test_titel Test
+          #test_inhalt.d-flex.flex-wrap.gap-4.text-body-secondary
+
+  script#wetter_daten(type='application/json')!= JSON.stringify({ csrf: csrf_token, aktiv: wetter_aktiv }).replace(/</g, '\\u003c')
+  script.
+    (function () {
+      const daten = JSON.parse(document.getElementById("wetter_daten").textContent);
+      const karte = document.getElementById("test_karte");
+      const titel = document.getElementById("test_titel");
+      const inhalt = document.getElementById("test_inhalt");
+      const status = document.getElementById("wetter_status");
+      const STUFEN = { 1: ["Wetterwarnung", "text-bg-warning"], 2: ["Markante Wetterwarnung", "text-bg-warning"], 3: ["Unwetterwarnung", "text-bg-danger"], 4: ["Extremes Unwetter", "text-bg-danger"] };
+      const SYMBOLE = { "clear-day": "klar", "clear-night": "klar", "partly-cloudy-day": "teils bewölkt", "partly-cloudy-night": "teils bewölkt", cloudy: "bewölkt", fog: "Nebel", wind: "windig", rain: "Regen", sleet: "Schneeregen", snow: "Schnee", hail: "Hagel", thunderstorm: "Gewitter" };
+
+      function eintrag(text, klasse) {
+        const span = document.createElement("span");
+        if (klasse) span.className = klasse;
+        span.textContent = text;
+        return span;
+      }
+
+      function status_setzen(ok, text) {
+        status.className = "badge align-self-center " + (ok ? "text-bg-success" : "text-bg-danger");
+        status.textContent = text;
+      }
+
+      async function testen(nr) {
+        karte.classList.remove("d-none");
+        titel.textContent = "Test: " + nr + " …";
+        inhalt.replaceChildren(eintrag("wird abgerufen …"));
+        try {
+          const res = await fetch("/adm_edit_wetter/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _csrf: daten.csrf, nr: nr }),
+          });
+          const r = await res.json();
+          if (!res.ok) throw new Error(r.error || "HTTP " + res.status);
+          status_setzen(true, "erreichbar");
+          titel.textContent = "Test: " + nr + (String(r.ort.nr) !== String(nr) ? " → " + r.ort.nr : "") + " · " + (r.ort.name || "") + (r.ort.quelle === "wachen" ? " (aus Wachen-Stammdaten)" : "");
+          const a = r.aktuell || {};
+          const teile = [
+            eintrag("Quelle: " + (r.aktuell_quelle || "–")),
+            eintrag((a.temperatur ?? "–") + " °C" + (a.icon ? ", " + (SYMBOLE[a.icon] || a.icon) : "")),
+            eintrag("Wind " + (a.wind ?? "–") + " km/h, Böen " + (a.boeen ?? "–") + " km/h"),
+            eintrag("Koordinate " + Number(r.ort.lat).toFixed(5) + ", " + Number(r.ort.lon).toFixed(5)),
+            eintrag("Warngebiet: " + ((r.warnungen && r.warnungen.gebiet) || "–")),
+            eintrag("Antwort in " + r.dauer_ms + " ms"),
+          ];
+          const liste = (r.warnungen && r.warnungen.liste) || [];
+          if (liste.length === 0) teile.push(eintrag("keine Warnungen", "badge text-bg-success align-self-center"));
+          liste.forEach(function (w) {
+            const s = STUFEN[w.stufe] || STUFEN[1];
+            teile.push(eintrag(s[0] + ": " + w.ereignis, "badge align-self-center " + s[1]));
+          });
+          inhalt.replaceChildren.apply(inhalt, teile);
+        } catch (e) {
+          status_setzen(false, "Fehler");
+          titel.textContent = "Test: " + nr;
+          inhalt.replaceChildren(eintrag(e.message, "text-danger"));
+        }
+      }
+
+      // Status von Bright Sky beim Laden der Seite prüfen
+      if (daten.aktiv) {
+        fetch("/adm_edit_wetter/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ _csrf: daten.csrf }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (r) { status_setzen(r.ok, r.ok ? "erreichbar (" + r.dauer_ms + " ms)" : "nicht erreichbar"); if (!r.ok) status.title = r.fehler || ""; })
+          .catch(function () { status_setzen(false, "nicht erreichbar"); });
+      } else {
+        status_setzen(false, "nicht eingerichtet");
+      }
+
+      document.querySelectorAll(".wetter-test").forEach(function (btn) {
+        btn.addEventListener("click", function () { testen(btn.dataset.nr); });
+      });
+      document.getElementById("test_nr_form").addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        const nr = document.getElementById("test_nr").value.trim();
+        if (nr) testen(nr);
+      });
+    })();

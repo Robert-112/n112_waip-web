@@ -1,4 +1,4 @@
-module.exports = (io, sql, app_cfg, logger, waip) => {
+module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
   // Socket.IO-Konfigurationen
 
   // Fehlgeschlagene Verbindungsaufbauten (z.B. unbekannte Session-ID nach Neustart, ungültiger Transport)
@@ -104,6 +104,7 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
       });
       sql.db_client_delete(socket);
       clearInterval(session_timer);
+      widgets.monitor_trennen(socket);
     });
 
     // bei jedem Connect die Server-Version senden, damit der Client diese prueft und die Seite ggf. neu laedt
@@ -179,6 +180,9 @@ module.exports = (io, sql, app_cfg, logger, waip) => {
           waip.standby_verteilen_socket(socket);
           logger.log("log", `Kein Einsatz für Wache ${wachen_nr} vorhanden, gehe in Standby.`);
         }
+
+        // Standby-Widgets (Wetter, Warnungen, Kalender) einrichten und erste Daten senden
+        widgets.monitor_starten(socket);
       } catch (error) {
         const logMessage = `Fehler beim Aufruf des Alarmmonitors Nr. ${wachen_nr} von ${remote_ip} (${socket.id})! ${error}`;
         logger.event(logMessage, {
