@@ -3,59 +3,146 @@ extends ../layout
 block content
   main(role='main')
     .container-fluid
-      +seitenkopf('Ersetzungen', 'Ersetzungen für die Sprachausgabe anlegen, bearbeiten und löschen.', 'bi-arrow-left-right')
-      +meldungen(error, success)
-      .row
+      +seitenkopf('Ersetzungen', 'Ersetzungen anlegen, bearbeiten und löschen. Ersetzungen für die Sprachansage lassen sich direkt probehören.', 'bi-arrow-left-right')
+      +meldungen(error, null)
+      //- Rückmeldungen der Aktionen auf dieser Seite (vom Skript befüllt)
+      #rp_meldung
+
+      .row.g-3
+        //- Linke Spalte: Ersetzung bearbeiten
+        .col-lg-6
+          .card.h-100
+            .card-header.d-flex.align-items-center.gap-2
+              i.bi.bi-pencil-square.text-info(aria-hidden='true')
+              h2.h6.mb-0#rp_form_titel Neue Ersetzung
+            .card-body
+              form#rp_form(autocomplete="off")
+                input#rp_id(type="hidden")
+                .row.g-2
+                  .mb-3.col-md-6
+                    label.form-label(for="rp_typ") Typ
+                    select#rp_typ.form-select
+                  .mb-3.col-md-6
+                    label#rp_input_label.form-label(for="rp_input") Eingabewert
+                    input#rp_input.form-control.font-monospace(type="text" required)
+                    #rp_input_hilfe.form-text
+                .mb-3
+                  label#rp_output_label.form-label(for="rp_output") Ausgabewert
+                  input#rp_output.form-control(type="text" required)
+                  #rp_output_hilfe.form-text
+                  #rp_output_warnung.form-text.text-warning.d-none
+                    i.bi.bi-exclamation-triangle-fill.me-1(aria-hidden='true')
+                    | Bindestrich, Doppelpunkt und Schrägstrich werden vor der Ansage durch Leerzeichen ersetzt.
+                p#rp_status.small.mb-3
+                .d-flex.flex-wrap.gap-2
+                  button#btn_probe.btn.btn-primary(type="button")
+                    i.bi.bi-play-fill.me-1(aria-hidden='true')
+                    | Probehören
+                  button#btn_speichern.btn.btn-success(type="submit")
+                    i.bi.bi-floppy-fill.me-1(aria-hidden='true')
+                    | Speichern
+                  button#btn_neu.btn.btn-secondary(type="button")
+                    i.bi.bi-plus-lg.me-1(aria-hidden='true')
+                    | Neu
+                  button#btn_loeschen.btn.btn-outline-danger.ms-auto.d-none(type="button")
+                    i.bi.bi-trash.me-1(aria-hidden='true')
+                    | Löschen
+
+        //- Rechte Spalte: Sprachansage probehören
+        .col-lg-6
+          .card.h-100
+            .card-header.d-flex.align-items-center.gap-2
+              i.bi.bi-volume-up-fill.text-info(aria-hidden='true')
+              h2.h6.mb-0 Sprachansage probehören
+              span.ms-auto.small.text-body-secondary.text-truncate(title="Aktive Sprachausgabe")
+                i.bi.bi-soundwave.me-1(aria-hidden='true')
+                = tts_provider
+                if tts_stimme
+                  = ' · ' + tts_stimme
+            .card-body
+              .mb-3
+                label.form-label(for="tts_text") Testtext
+                textarea#tts_text.form-control(rows="3" maxlength=max_laenge placeholder="z.B. Brandeinsatz, B 2 Wohnung. Wohnhaus, Lübben (Spreewald), Steinkirchen")
+                .form-text
+                  | So eingeben, wie es in der Alarmierung steht (Ort, Ortsteil, Objekt). Ein Wort markieren und
+                  | „Markierung übernehmen“ klicken, um dafür eine Ersetzung anzulegen. Strg+Enter spricht den Text mit Ersetzungen.
+              .d-flex.flex-wrap.gap-2.mb-3
+                button#btn_mit.btn.btn-primary(type="button")
+                  i.bi.bi-play-fill.me-1(aria-hidden='true')
+                  | Mit Ersetzungen
+                button#btn_ohne.btn.btn-secondary(type="button")
+                  i.bi.bi-play-fill.me-1(aria-hidden='true')
+                  | Ohne Ersetzungen
+                button#btn_markierung.btn.btn-outline-info(type="button")
+                  i.bi.bi-box-arrow-in-left.me-1(aria-hidden='true')
+                  | Markierung übernehmen
+
+              #tts_ergebnis.d-none
+                audio#tts_audio.w-100.mb-3(controls style="display:block")
+                .small.text-body-secondary.mb-1#tts_ergebnis_titel Gesprochen wurde:
+                p#tts_gesprochen.border.rounded.p-2.mb-3.fw-semibold
+                #tts_treffer
+                #tts_fehlerhaft
+
+              .accordion.mt-3#tts_tipps
+                .accordion-item
+                  h3.accordion-header
+                    button.accordion-button.collapsed(type="button" data-bs-toggle="collapse" data-bs-target="#tts_tipps_inhalt" aria-expanded="false" aria-controls="tts_tipps_inhalt")
+                      i.bi.bi-lightbulb.me-2(aria-hidden='true')
+                      | Tipps für eine bessere Aussprache
+                  #tts_tipps_inhalt.accordion-collapse.collapse(data-bs-parent="#tts_tipps")
+                    .accordion-body.small
+                      ul.mb-0.ps-3
+                        li Abkürzungen ausschreiben oder buchstabieren: „KDOW“ → „Ka De O We“, „Str.“ → „Straße“.
+                        li Zusammengesetzte Namen mit Leerzeichen trennen, wenn die Betonung falsch ist: „Lübbenau“ → „Lübben au“.
+                        li Schreibweise an die Aussprache anpassen: „Cottbus“ → „Kottbus“, „Spreewald“ → „Schpree wald“.
+                        li Bindestriche wirken nicht, sie werden vor der Ansage entfernt. Ein Komma erzeugt eine kurze Pause.
+                        li.
+                          Ortsdaten-Suchtexte sind reguläre Ausdrücke und gelten ohne Rücksicht auf Groß-/Kleinschreibung,
+                          auch mitten im Wort. Mit #[code \b] am Anfang und Ende nur ganze Wörter treffen, z.B. #[code \bStr\.] –
+                          Punkt, Klammern, Plus usw. mit #[code \] davor schützen.
+                        li Die Ersetzungen werden nacheinander angewendet, ein späterer Eintrag sieht das Ergebnis der früheren.
+                        li Bereits erzeugte Ansagen laufender Einsätze werden nicht neu erstellt, die Änderung wirkt ab dem nächsten Einsatz.
+
+      //- Liste aller Ersetzungen
+      .row.mt-5
         .col-12
-          h2.h5.mt-2 Neue Ersetzung anlegen
-        .col-12
-          form(action="/adm_edit_replace/create" method="post")
-            input(type="hidden" name="_csrf" value=csrf_token)
-            .row.g-2
-              .mb-3.col-md-3
-                label.form-label Typ
-                input.form-control(type="text" name="rp_typ" required list="rp_typ_vorschlaege" title="z.B. em_tts oder orte_tts")
-              .mb-3.col-md-4
-                label.form-label Eingabewert
-                input.form-control(type="text" name="rp_input" required)
-              .mb-3.col-md-4
-                label.form-label Ausgabewert
-                input.form-control(type="text" name="rp_output" required)
-            datalist#rp_typ_vorschlaege
-              option(value="em_tts")
-              option(value="orte_tts")
-            button.btn.btn-success(type="submit") Anlegen
-        .col-12
-          h2.h5.mt-5 Ersetzungen bearbeiten
-          p Hier können Ersetzungen angelegt, bearbeitet und gelöscht werden.
-        .col-12
-          table.table.table-striped
-            thead
-              tr
-                th ID
-                th Typ
-                th Eingabewert
-                th Ausgabewert
-                th Aktion
-            tbody
-              each r in replace
+          h2.h5 Vorhandene Ersetzungen
+          .row.g-2.mt-1
+            .mb-3.col-md-6
+              .input-group
+                span.input-group-text
+                  i.bi.bi-search(aria-hidden='true')
+                input#liste_filter.form-control(type="search" placeholder="Suchen …" aria-label="Ersetzungen durchsuchen")
+            .mb-3.col-md-3
+              select#liste_typ.form-select(aria-label="Typ filtern")
+          .table-responsive
+            table.table.table-striped.table-hover.table-sm.align-middle
+              thead
                 tr
-                  // Formular für Bearbeitung der Ersetzung (eine Zeile = ein Formular)
-                  form(action="/adm_edit_replace/edit" method="post")
-                    input(type="hidden" name="_csrf" value=csrf_token)
-                    input(type="hidden" name="id" value=r.id)
-                    td= r.id
-                    td
-                      .input-group.input-group-sm
-                        input.form-control(type="text" name="rp_typ" value=r.rp_typ required list="rp_typ_vorschlaege")
-                    td
-                      .input-group.input-group-sm
-                        input.form-control(type="text" name="rp_input" value=r.rp_input required)
-                    td
-                      .input-group.input-group-sm
-                        input.form-control(type="text" name="rp_output" value=r.rp_output required)
-                    td
-                      .btn-group(role="group")
-                        button.btn.btn-primary.btn-sm(type="submit") Speichern
-                        // Lösch-Button nutzt dasselbe Formularfeld 'id', aber eigenes Ziel via formaction
-                        button.btn.btn-danger.btn-sm(type="submit" formaction="/adm_edit_replace/delete" formmethod="post" onclick="return confirm('Ersetzung wirklich löschen?')") Löschen
+                  th ID
+                  th Typ
+                  th Eingabewert
+                  th Ausgabewert
+                  th.text-end Aktion
+              tbody#liste_body
+          p#liste_leer.text-body-secondary.d-none Keine Ersetzungen gefunden.
+
+  //- Rückfrage vor dem Löschen
+  #loeschen_modal.modal.fade(tabindex="-1" aria-labelledby="loeschen_titel" aria-hidden="true")
+    .modal-dialog.modal-dialog-centered
+      .modal-content
+        .modal-header
+          h2#loeschen_titel.modal-title.h5 Ersetzung löschen?
+          button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Schließen")
+        .modal-body
+          p.mb-0#loeschen_text
+        .modal-footer
+          button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Abbrechen
+          button#loeschen_ok.btn.btn-danger(type="button")
+            i.bi.bi-trash.me-1(aria-hidden='true')
+            | Löschen
+
+  //- Daten für das Skript; "<" maskiert, damit Werte aus der Tabelle das Script-Element nicht beenden können
+  script#rp_daten(type="application/json")!= JSON.stringify({ ersetzungen: ersetzungen, tts_typen: tts_typen, csrf: csrf_token, max_laenge: max_laenge }).replace(/</g, '\\u003c')
+  script(src="/js/adm_edit_replace.js")

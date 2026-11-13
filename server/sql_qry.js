@@ -1149,28 +1149,54 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // Ortsdaten-Ersetzungen auf einen Text anwenden und die Treffer mitliefern. Wird von der
+  // Sprachansage und von der Aussprache-Testseite gemeinsam genutzt, damit beide identisch ersetzen.
+  // kandidat (optional): {id?, rp_input, rp_output} – noch nicht gespeicherte Ersetzung. Mit id ersetzt
+  // er den gespeicherten Eintrag an dessen Position, ohne id wird er wie ein neuer Eintrag hinten angehängt.
+  const tts_ersetzungen_anwenden = (text, kandidat) => {
+    const rows = db
+      .prepare(
+        `
+        SELECT id, rp_input, rp_output
+        FROM waip_replace
+        WHERE rp_typ = 'orte_tts';
+      `
+      )
+      .all();
+
+    let liste = rows;
+    if (kandidat && kandidat.rp_input) {
+      const k = { id: kandidat.id ? Number(kandidat.id) : null, rp_input: kandidat.rp_input, rp_output: kandidat.rp_output || "", kandidat: true };
+      const pos = k.id ? rows.findIndex((r) => r.id === k.id) : -1;
+      liste = pos >= 0 ? rows.map((r, i) => (i === pos ? k : r)) : [...rows, k];
+    }
+
+    const treffer = [];
+    const fehlerhaft = [];
+    // Einträge der Reihe nach anwenden: rp_input ist ein regulärer Ausdruck (Groß-/Kleinschreibung egal)
+    for (const replacement of liste) {
+      let regex;
+      try {
+        regex = new RegExp(`${replacement.rp_input}`, "gi");
+      } catch (error) {
+        // Ein fehlerhafter Ausdruck darf nicht die ganze Ansage verhindern, er wird übersprungen
+        fehlerhaft.push({ id: replacement.id, rp_input: replacement.rp_input, fehler: error.message });
+        continue;
+      }
+      const anzahl = (text.match(regex) || []).length;
+      if (anzahl > 0) {
+        text = text.replace(regex, replacement.rp_output);
+        treffer.push({ id: replacement.id, rp_input: replacement.rp_input, rp_output: replacement.rp_output, anzahl, kandidat: !!replacement.kandidat });
+      }
+    }
+    return { text, treffer, fehlerhaft };
+  };
+
   // Textersetzsungen für Ortsdaten
   const db_tts_ortsdaten = (text) => {
     return new Promise((resolve, reject) => {
       try {
-        // hinterlegte Ersetzungen aus DB laden
-        const stmt = db.prepare(`
-          SELECT rp_input, rp_output
-          FROM waip_replace
-          WHERE rp_typ = 'orte_tts';
-        `);
-        const row = stmt.all();
-
-        if (row === undefined) {
-          resolve(text);
-        } else {
-          // row durchgehen und prüfen ob rp_input in text enthalten, dann 1:1 durch rp_output ersetzen
-          for (const replacement of row) {
-            const regex = new RegExp(`${replacement.rp_input}`, "gi");
-            text = text.replace(regex, replacement.rp_output);
-          }
-          resolve(text);
-        }
+        resolve(tts_ersetzungen_anwenden(text).text);
       } catch (error) {
         reject(new Error(`Fehler beim Laden der Textersetzungen für Ortsdaten: ${error.message}`));
       }
@@ -2650,6 +2676,7 @@ module.exports = (db, app_cfg) => {
     db_routen_get,
     db_einsatz_get_uuid_by_id,
     db_replace_get_all_full,
+    tts_ersetzungen_anwenden,
     db_replace_update,
     db_replace_delete,
     db_replace_create,
