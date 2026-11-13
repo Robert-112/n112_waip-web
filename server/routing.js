@@ -145,15 +145,17 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // API-Token abrufen
-  app.post(
-    "/api/get_token",
-    passport.authenticate("local", {
-      //TODO bessere Rückmeldung ohne Umleitung auf Seite
-      failureRedirect: "/api",
-      failureFlash: "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.",
-      failureMessage: true,
-    }),
-    async (req, res) => {
+  // Ohne Session: die API arbeitet nur mit dem Token, fehlgeschlagene Anmeldungen bekommen 401 als JSON
+  // (vorher Umleitung mit failureFlash, ohne connect-flash endete das in "req.flash is not a function")
+  app.post("/api/get_token", (req, res, next) => {
+    passport.authenticate("local", { session: false }, async (err, user) => {
+      if (err) {
+        return next(err);
+      }
+      if (!user) {
+        return res.status(401).json({ msg: "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort." });
+      }
+      req.user = user;
       const new_token = await auth.ensureApi(req.user.id);
       logger.event(`API-Token für ${req.user.user} ${new_token ? "ausgestellt" : "verweigert (keine API-Berechtigung)"}.`, {
         ...logger.from_req(req),
@@ -169,8 +171,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       } else {
         res.status(401).json({ msg: "Keine Berechtigung zur Nutzung der Rest-API" });
       }
-    }
-  );
+    })(req, res, next);
+  });
 
   // POST von neuen oder aktualisierten Einsätzen
   app.post("/api/einsatzdaten", passport.authenticate("jwt", { session: false }), checkContentType, async (req, res) => {
@@ -477,6 +479,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         user: req.user,
         user_reset_counter: data.resetcounter,
         standby: sql.db_user_get_config_standby(req.user.id),
+        user_karte_breite: sql.db_user_get_config_karte(req.user.id),
         widgets_wetter_aktiv: widgets.wetter_aktiv || widgets.waldbrand_aktiv,
         widgets_kalender_erlaubt: widgets.erlaubte_kalender(),
         session_max_age: app_cfg.global.session_cookie_max_age,
@@ -498,6 +501,24 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       res.redirect("/einstellungen?success=" + encodeURIComponent("Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert"));
     } catch (error) {
       res.redirect("/einstellungen?error=" + encodeURIComponent("Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error));
+    }
+  });
+
+  // Einstellung zur Kartenbreite im Alarmmonitor speichern
+  app.post("/einstellungen_karte", auth.ensureAuthenticated, (req, res) => {
+    try {
+      const breite = sql.db_user_set_config_karte(req.user.id, req.body.karte_breite);
+      logger.event(`Kartenbreite von ${req.user.user} geändert (${breite === null ? "Standard" : breite + " %"}).`, {
+        ...logger.from_req(req),
+        action: "karte-einstellungen",
+        category: "configuration",
+        type: "change",
+        outcome: "success",
+      });
+      res.redirect("/einstellungen?success=" + encodeURIComponent("Kartenbreite wurde gespeichert. Geöffnete Alarmmonitore übernehmen sie nach dem Neuladen."));
+    } catch (error) {
+      logger.log("error", error);
+      res.redirect("/einstellungen?error=" + encodeURIComponent("Fehler beim Speichern der Kartenbreite."));
     }
   });
 
@@ -590,6 +611,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
           sound_off: soundOff,
           anim_off: animOff,
           wetter_param: wetterParam,
+          // persönliche Kartenbreite nur für angemeldete Benutzer (null = Standard-Layout)
+          karte_breite: req.user ? sql.db_user_get_config_karte(req.user.id) : null,
         });
       } else {
         const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);

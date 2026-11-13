@@ -116,3 +116,6 @@ misc/*
 # Claude
 .claude/
 .playwright-mcp/
+
+# lokales Handbuch (BookStack), nicht veröffentlichen
+.handbuch/

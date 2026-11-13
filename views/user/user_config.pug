@@ -28,7 +28,26 @@ block content
                               if(i+1 == user_reset_counter)
                                 option(selected)= i+1
                               else
-                                option= i+1              
+                                option= i+1
+          .row
+            .col-12.w-100.pb-3
+              .card.border-0
+                .card-body.p-4
+                  .row.g-3.align-items-center
+                    .col-12.col-md-8
+                      h2.h5.card-title.d-flex.align-items-center.gap-2
+                        i.bi.bi-map(aria-hidden='true')
+                        span Kartenbreite im Alarmmonitor
+                      p.card-text.text-body-secondary.mb-0 Anteil der Karte an der Bildschirmbreite (nur im Querformat). Bei weniger als 30 % wird die kleine Detailkarte ausgeblendet.
+                    .col-12.col-md-4
+                      form(action="/einstellungen_karte", method="POST")
+                        input(type="hidden" name="_csrf" value=csrf_token)
+                        .mb-3
+                          label.form-label(for='KarteBreiteSelect') Breite in Prozent
+                          select#KarteBreiteSelect.form-select(name='karte_breite', onchange='this.form.submit()')
+                            option(value='', selected=user_karte_breite == null) Standard
+                            each b in [20, 25, 30, 35, 40, 45, 50, 55, 60]
+                              option(value=b, selected=user_karte_breite === b)= b + ' %'
           .row
             .col-12.w-100.pb-3
               .card.border-0
