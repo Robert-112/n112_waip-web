@@ -145,15 +145,17 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // API-Token abrufen
-  app.post(
-    "/api/get_token",
-    passport.authenticate("local", {
-      //TODO bessere Rückmeldung ohne Umleitung auf Seite
-      failureRedirect: "/api",
-      failureFlash: "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort.",
-      failureMessage: true,
-    }),
-    async (req, res) => {
+  // Ohne Session: die API arbeitet nur mit dem Token, fehlgeschlagene Anmeldungen bekommen 401 als JSON
+  // (vorher Umleitung mit failureFlash, ohne connect-flash endete das in "req.flash is not a function")
+  app.post("/api/get_token", (req, res, next) => {
+    passport.authenticate("local", { session: false }, async (err, user) => {
+      if (err) {
+        return next(err);
+      }
+      if (!user) {
+        return res.status(401).json({ msg: "Authentifizierung fehlgeschlagen! Bitte prüfen Sie Benutzername und Passwort." });
+      }
+      req.user = user;
       const new_token = await auth.ensureApi(req.user.id);
       logger.event(`API-Token für ${req.user.user} ${new_token ? "ausgestellt" : "verweigert (keine API-Berechtigung)"}.`, {
         ...logger.from_req(req),
@@ -169,8 +171,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       } else {
         res.status(401).json({ msg: "Keine Berechtigung zur Nutzung der Rest-API" });
       }
-    }
-  );
+    })(req, res, next);
+  });
 
   // POST von neuen oder aktualisierten Einsätzen
   app.post("/api/einsatzdaten", passport.authenticate("jwt", { session: false }), checkContentType, async (req, res) => {

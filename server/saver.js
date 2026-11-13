@@ -120,8 +120,8 @@ module.exports = (app_cfg, sql, waip, logger) => {
   const save_einsatzstatus = (einsatzstatus_data, remote_addr) => {
     return new Promise(async (resolve, reject) => {
       try {
-        logger.log("log", `${rmld_data.length} Meldung(en) zu Einsatzstatus von ${remote_addr} erhalten.`);
-        logger.log("debug", `Eisnatzstatus von ${remote_addr} werden jetzt verarbeitet: ${JSON.stringify(einsatzstatus_data)}`);
+        logger.log("log", `Meldung zum Einsatzstatus von ${remote_addr} erhalten.`);
+        logger.log("debug", `Einsatzstatus von ${remote_addr} wird jetzt verarbeitet: ${JSON.stringify(einsatzstatus_data)}`);
 
         let valid = await validate_einsatzstatus(einsatzstatus_data);
         if (valid) {
