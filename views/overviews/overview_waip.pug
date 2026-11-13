@@ -60,6 +60,11 @@ block content
           .form-check.form-switch
             input#animOff.form-check-input(type='checkbox' role='switch')
             label.form-check-label(for='animOff') Animationen reduzieren (für leistungsschwache Geräte, z.B. Raspberry Pi 3)
+          if widgets_wetter_verfuegbar
+            .form-check.form-switch.mt-2
+              //- Standard an (WIDGET_WETTER_STANDARD): Schalter blendet aus, sonst blendet er ein
+              input#wetterSchalter.form-check-input(type='checkbox' role='switch' data-wert=(widgets_wetter_standard ? 'off' : 'on'))
+              label.form-check-label(for='wetterSchalter')= widgets_wetter_standard ? 'Wetter und Unwetterwarnungen im Standby ausblenden' : 'Wetter und Unwetterwarnungen im Standby anzeigen (auch ohne Anmeldung)'
     // Client-seitige Suchlogik + rmld=off Handling
     script.
       (function(){
@@ -69,6 +74,7 @@ block content
         var rmldToggle = document.getElementById('rmldOff');
         var soundToggle = document.getElementById('soundOff');
         var animToggle = document.getElementById('animOff');
+        var wetterToggle = document.getElementById('wetterSchalter');
         if(!input || !list) return;
         function sanitize(str){return String(str).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]);});}
         function buildUrl(base){
@@ -76,6 +82,7 @@ block content
           if(rmldToggle && rmldToggle.checked){ params.push('rmld=off'); }
           if(soundToggle && soundToggle.checked){ params.push('sound=off'); }
           if(animToggle && animToggle.checked){ params.push('anim=off'); }
+          if(wetterToggle && wetterToggle.checked){ params.push('wetter=' + wetterToggle.getAttribute('data-wert')); }
           if(!params.length) return base;
           return base + (base.indexOf('?')===-1?'?':'&') + params.join('&');
         }
@@ -108,7 +115,7 @@ block content
         // Links der Karten / Dropdowns dynamisch anreichern
         document.querySelectorAll('a[href^="/waip/"]').forEach(function(a){
           a.addEventListener('click', function(ev){
-            if((rmldToggle && rmldToggle.checked) || (soundToggle && soundToggle.checked) || (animToggle && animToggle.checked)){
+            if((rmldToggle && rmldToggle.checked) || (soundToggle && soundToggle.checked) || (animToggle && animToggle.checked) || (wetterToggle && wetterToggle.checked)){
               ev.preventDefault();
               var url = buildUrl(a.getAttribute('href'));
               window.location.href = url;

@@ -111,8 +111,12 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
     socket.emit("io.version", app_cfg.global.app_id);
 
     // Aufruf des Alarmmonitors einer bestimmten Wache verarbeiten
-    socket.on("WAIP", async (wachen_nr) => {
+    socket.on("WAIP", async (wachen_nr, optionen) => {
       try {
+        // Monitor-Optionen aus der Adresse (z.B. ?wetter=on), nur bekannte Werte übernehmen
+        const wetter_option = optionen && typeof optionen === "object" ? optionen.wetter : null;
+        socket.data.widgets_parameter = { wetter: wetter_option === "on" || wetter_option === "off" ? wetter_option : null };
+
         // prüfen ob Wachenummer in der Datenbank hinterlegt ist
         const result = await sql.db_wache_vorhanden(wachen_nr);
         if (!result) {

@@ -2738,6 +2738,25 @@ module.exports = (db, app_cfg) => {
     }
   };
 
+  // Kreise (Nummer und Name) zu einer Monitor-Nummer, z.B. für die Waldbrandgefahrenstufe.
+  // Wache/Träger/Kreis: der Kreis aus den ersten beiden Ziffern, Leitstelle: alle ihre Kreise.
+  const db_kreise_fuer_nr = (wachen_nr) => {
+    try {
+      const nr = String(wachen_nr ?? "").trim();
+      if (!/^\d+$/.test(nr)) return [];
+      if (nr.length === 1) {
+        if (nr === "0") return [];
+        return db.prepare(`SELECT DISTINCT nr_kreis, name_kreis FROM waip_wachen WHERE nr_leitstelle = ? AND aktiv = 1;`).all(nr);
+      }
+      if ([2, 4, 6].includes(nr.length)) {
+        return db.prepare(`SELECT DISTINCT nr_kreis, name_kreis FROM waip_wachen WHERE nr_kreis = ? AND aktiv = 1;`).all(nr.slice(0, 2));
+      }
+      return [];
+    } catch (error) {
+      throw new Error(`Fehler beim Ermitteln der Kreise für ${wachen_nr}. ` + error);
+    }
+  };
+
   // Standby-Einstellungen eines Benutzers laden (Wetter/Kalender an, Kalender-Adresse)
   const db_user_get_config_standby = (user_id) => {
     try {
@@ -2785,6 +2804,7 @@ module.exports = (db, app_cfg) => {
     db_wetter_ort_update,
     db_wetter_ort_delete,
     db_wetter_ort_ermitteln,
+    db_kreise_fuer_nr,
     db_user_get_config_standby,
     db_user_set_config_standby,
     db_alarmdaten_filter_aktiv,

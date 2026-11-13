@@ -26,7 +26,7 @@ block content
             .card-body
               h2.h6.card-title.d-flex.align-items-center.gap-2
                 i.bi.bi-hdd-network(aria-hidden='true')
-                span Wetterdienst
+                span Dienste
               .d-flex.flex-column.gap-1.text-body-secondary
                 .d-flex.justify-content-between.gap-2
                   span Bright Sky
@@ -37,10 +37,23 @@ block content
                 .d-flex.justify-content-between.gap-2
                   span Status
                   span#wetter_status.badge.text-bg-secondary.align-self-center unbekannt
+                .d-flex.justify-content-between.gap-2.mt-2
+                  span Waldbrand
+                  if waldbrand_url
+                    code.text-break= waldbrand_url
+                  else
+                    span.badge.text-bg-secondary.align-self-center nicht eingerichtet
+                .d-flex.justify-content-between.gap-2
+                  span Status
+                  span#waldbrand_status.badge.text-bg-secondary.align-self-center unbekannt
+                if waldbrand_url
+                  .d-flex.justify-content-between.gap-2
+                    span Anzeige
+                    span ab Stufe #{waldbrand_ab_stufe}
               p.small.text-body-secondary.mt-2.mb-0
-                | Adresse und Intervalle werden in der
+                | Adressen und Intervalle werden in der
                 code.mx-1 .env
-                | eingestellt (WIDGET_BRIGHTSKY_URL usw.).
+                | eingestellt (WIDGET_BRIGHTSKY_URL, WIDGET_WALDBRAND_URL usw.).
 
       h2.h5.mt-2 Neuen Standort anlegen
       form.row.g-2.align-items-end.mb-4(action='/adm_edit_wetter/create', method='post')
@@ -122,7 +135,7 @@ block content
             span#test_titel Test
           #test_inhalt.d-flex.flex-wrap.gap-4.text-body-secondary
 
-  script#wetter_daten(type='application/json')!= JSON.stringify({ csrf: csrf_token, aktiv: wetter_aktiv }).replace(/</g, '\\u003c')
+  script#wetter_daten(type='application/json')!= JSON.stringify({ csrf: csrf_token, aktiv: wetter_aktiv, waldbrand: Boolean(waldbrand_url) }).replace(/</g, '\\u003c')
   script.
     (function () {
       const daten = JSON.parse(document.getElementById("wetter_daten").textContent);
@@ -140,9 +153,10 @@ block content
         return span;
       }
 
-      function status_setzen(ok, text) {
-        status.className = "badge align-self-center " + (ok ? "text-bg-success" : "text-bg-danger");
-        status.textContent = text;
+      function status_setzen(ok, text, element) {
+        const el = element || status;
+        el.className = "badge align-self-center " + (ok ? "text-bg-success" : "text-bg-danger");
+        el.textContent = text;
       }
 
       async function testen(nr) {
@@ -169,6 +183,8 @@ block content
             eintrag("Antwort in " + r.dauer_ms + " ms"),
           ];
           const liste = (r.warnungen && r.warnungen.liste) || [];
+          if (r.waldbrand && r.waldbrand.fehler) teile.push(eintrag("Waldbrand: " + r.waldbrand.fehler, "text-danger"));
+          else if (r.waldbrand) teile.push(eintrag("Waldbrandgefahr Stufe " + r.waldbrand.stufe + " (" + r.waldbrand.gebiet + ", " + r.waldbrand.datum + ")" + (r.waldbrand.stufe >= r.waldbrand_ab ? " – wird angezeigt" : " – unter Anzeigeschwelle " + r.waldbrand_ab), "badge align-self-center " + (r.waldbrand.stufe >= r.waldbrand_ab ? "text-bg-warning" : "text-bg-secondary")));
           if (liste.length === 0) teile.push(eintrag("keine Warnungen", "badge text-bg-success align-self-center"));
           liste.forEach(function (w) {
             const s = STUFEN[w.stufe] || STUFEN[1];
@@ -182,19 +198,21 @@ block content
         }
       }
 
-      // Status von Bright Sky beim Laden der Seite prüfen
-      if (daten.aktiv) {
-        fetch("/adm_edit_wetter/status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ _csrf: daten.csrf }),
-        })
-          .then(function (res) { return res.json(); })
-          .then(function (r) { status_setzen(r.ok, r.ok ? "erreichbar (" + r.dauer_ms + " ms)" : "nicht erreichbar"); if (!r.ok) status.title = r.fehler || ""; })
-          .catch(function () { status_setzen(false, "nicht erreichbar"); });
-      } else {
-        status_setzen(false, "nicht eingerichtet");
-      }
+      // Status von Bright Sky und Waldbrand-Dienst beim Laden der Seite prüfen
+      const wb_status = document.getElementById("waldbrand_status");
+      const dienst_anzeigen = function (d, el) {
+        if (!d || !d.aktiv) return status_setzen(false, "nicht eingerichtet", el);
+        status_setzen(d.ok, d.ok ? "erreichbar (" + d.dauer_ms + " ms" + (d.datum ? ", Stand " + d.datum : "") + ")" : "nicht erreichbar", el);
+        if (!d.ok) el.title = d.fehler || "";
+      };
+      fetch("/adm_edit_wetter/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _csrf: daten.csrf }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (r) { dienst_anzeigen(r.brightsky, status); dienst_anzeigen(r.waldbrand, wb_status); })
+        .catch(function () { status_setzen(false, "nicht erreichbar"); status_setzen(false, "nicht erreichbar", wb_status); });
 
       document.querySelectorAll(".wetter-test").forEach(function (btn) {
         btn.addEventListener("click", function () { testen(btn.dataset.nr); });

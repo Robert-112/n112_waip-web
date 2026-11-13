@@ -475,7 +475,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         user: req.user,
         user_reset_counter: data.resetcounter,
         standby: sql.db_user_get_config_standby(req.user.id),
-        widgets_wetter_aktiv: widgets.wetter_aktiv,
+        widgets_wetter_aktiv: widgets.wetter_aktiv || widgets.waldbrand_aktiv,
         widgets_kalender_erlaubt: widgets.erlaubte_kalender(),
         session_max_age: app_cfg.global.session_cookie_max_age,
         error: req.query.error || null,
@@ -551,6 +551,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         public: app_cfg.public,
         title: "Alarmmonitor",
         list_wachen: data,
+        widgets_wetter_verfuegbar: widgets.wetter_aktiv || widgets.waldbrand_aktiv,
+        widgets_wetter_standard: widgets.wetter_standard,
         user: req.user,
         session_max_age: app_cfg.global.session_cookie_max_age,
       });
@@ -569,6 +571,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       const rmldOff = req.query.rmld === "off"; // optionaler Parameter zum Deaktivieren der Rückmeldungen
       const soundOff = req.query.sound === "off"; // optionaler Parameter zum Deaktivieren der Audio-Blockadeprüfung
       const animOff = req.query.anim === "off"; // optionaler Parameter zum Reduzieren von Animationen (leistungsschwache Geräte)
+      // optionaler Parameter für Wetter/Warnungen im Standby (on/off), auch ohne Anmeldung
+      const wetterParam = req.query.wetter === "on" || req.query.wetter === "off" ? req.query.wetter : null;
       const wache = await sql.db_wache_vorhanden(parameter_id);
       if (wache) {
         res.render("waip", {
@@ -583,6 +587,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
           rmld_off: rmldOff,
           sound_off: soundOff,
           anim_off: animOff,
+          wetter_param: wetterParam,
         });
       } else {
         const err = new Error(`Wache ${parameter_id} nicht vorhanden!`);
@@ -851,6 +856,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         orte,
         wetter_aktiv: widgets.wetter_aktiv,
         brightsky_url: app_cfg.widgets.brightsky_url,
+        waldbrand_url: app_cfg.widgets.waldbrand_url,
+        waldbrand_ab_stufe: app_cfg.widgets.waldbrand_ab_stufe,
         error: req.query.error || null,
         success: req.query.success || null,
       });
@@ -902,7 +909,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
 
   // Erreichbarkeit von Bright Sky für die Statusanzeige der Admin-Seite
   app.post("/adm_edit_wetter/status", auth.ensureAdmin, checkContentType, async (req, res) => {
-    res.json(await widgets.brightsky_pruefen());
+    res.json(await widgets.dienste_pruefen());
   });
 
   // Wetter und Warnungen für eine Nummer oder Koordinate testen (ohne Zwischenspeicher)
@@ -918,7 +925,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         ort = geprueft;
       }
       const start = Date.now();
-      const ergebnis = await widgets.wetter_testen(ort);
+      const ergebnis = await widgets.wetter_testen(ort, req.body.nr ? String(req.body.nr).trim() : null);
       res.json({ ort, ...ergebnis, dauer_ms: Date.now() - start });
     } catch (error) {
       logger.log("warn", `Wetter-Test fehlgeschlagen: ${error.message}`);
