@@ -1,23 +1,23 @@
 // BUG: Darstellung in Safari-Mobil fehlerhaft (generell Mobil, ggf. extra Darstellung)
 #waiptableau
   .fullheight
-    #einsatz_art.row.no-gutters.h-12-5_ls.h-7_p.w-100.mb-2.bg-dark.rounded
-      .col-8.d-flex.align-items-center.font-weight-bold.h-100.px-3.tf_singleline
-        #einsatz_stichwort.ion-md-apps  -Stichwort-
+    #einsatz_art.row.g-0.h-12-5_ls.h-7_p.w-100.mb-2.bg-dark.rounded
+      .col-8.d-flex.align-items-center.fw-bold.h-100.px-3.tf_singleline
+        #einsatz_stichwort.bi-grid-3x3-gap-fill  -Stichwort-
       .col-1.d-flex.align-items-center.justify-content-center.h-100.tf_singleline
-        #sondersignal.ion-md-apps
+        #sondersignal.bi-grid-3x3-gap-fill
       .col-1.h-100
         .h-50.w-100.d-flex.align-items-center.justify-content-center
-          button#replay.btn(type="button").btn-block.p-0.h-100.tf_singleline
-            .ion-md-play-circle
+          button#replay.btn(type="button").d-block.w-100.p-0.h-100.tf_singleline
+            .bi-play-circle-fill
         .h-50.w-100.d-flex.align-items-center.justify-content-center
-          button#volume.btn(type="button").btn-block.p-0.h-100.tf_singleline
-            .ion-md-volume-high  
+          button#volume.btn(type="button").d-block.w-100.p-0.h-100.tf_singleline
+            .bi-volume-up-fill  
       .col-2.h-100.d-flex.align-items-center.px-3.py-1.tf_singleline
-        #wachenname.h-30.ion-md-business= ' ' + (data_wache || ' -Wachenname-')
-        #einsatznummer.ion-md-clipboard.h-30= ' -Einsatznummer-'
-        #alert_time.ion-md-time.h-30=' -Uhrzeit-'
-    .row.no-gutters.h-87-5_ls.h-93_p
+        #wachenname.h-30.bi-building= ' ' + (data_wache || ' -Wachenname-')
+        #einsatznummer.bi-clipboard.h-30= ' -Einsatznummer-'
+        #alert_time.bi-clock.h-30=' -Uhrzeit-'
+    .row.g-0.h-87-5_ls.h-93_p
       .col-12.col-5_ls.h-100_ls.h-40_p.pr-3_ls
         .h-4_ls.h-5_p.d-flex.align-items-end.justify-content-center.pb-1 
           .progress.h-100.flex-fill.position-relative
@@ -28,51 +28,51 @@
           #map-inset.d-none
           // Vorausgelagerter Toast für blockierte Audioausgabe (initial versteckt)
           #audio-toast-container.d-none
-            .toast.bg-danger.text-white.audio-blocked-toast(id='audio-blocked-toast' role='alert' aria-live='assertive' aria-atomic='true' data-autohide='false')
+            .toast.bg-danger.text-white.audio-blocked-toast(id='audio-blocked-toast' role='alert' aria-live='assertive' aria-atomic='true' data-bs-autohide='false')
               .toast-body.p-1.d-flex.align-items-start
-                span.mr-1.ion-md-volume-off
+                span.me-1.bi-volume-mute-fill
                 .flex-fill
                   | Tonausgabe durch Browser blockiert
                   br
                   small.text-secondary zum aktivieren auf die Webseite klicken
-                button.close.text-secondary(type='button' aria-label='Schließen') &times;
+                button.btn-close.ms-1(type='button' aria-label='Schließen')
       .col-12.col-7_ls.h-100_ls.h-60_p
-        .row.no-gutters.h-100
+        .row.g-0.h-100
           #container_rmld.w-100.h-35
-            .row.no-gutters.h-100
+            .row.g-0.h-100
               .col-8.h-100
-                #rmld_progressbars.row.no-gutters.h-100.d-flex.justify-content-end.align-items-end
+                #rmld_progressbars.row.g-0.h-100.d-flex.justify-content-end.align-items-end
               .col-4.h-100.text-center
-                .row.no-gutters.h-100
+                .row.g-0.h-100
                   .col-12.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
-                    .font-weight-bold Rückmeldungen&nbsp;
-                      #gs-counter.badge.badge-primary.badge.font-weight-bold.p-1 0
+                    .fw-bold Rückmeldungen&nbsp;
+                      #gs-counter.badge.bg-primary.badge.fw-bold.p-1 0
                   .col-6.text-success.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
                     div EK&nbsp;
-                      #ek-counter.badge.badge-success.badge.p-1 0
+                      #ek-counter.badge.bg-success.badge.p-1 0
                   .col-6.border.rounded-top.border-warning.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
                     div.text-warning AGT&nbsp;
-                      #agt-counter.badge.badge-warning.badge.p-1 0
+                      #agt-counter.badge.bg-warning.badge.p-1 0
                   .col-6.text-info.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
                     div GF&nbsp;
-                      #gf-counter.badge.badge-info.badge.p-1 0
+                      #gf-counter.badge.bg-info.badge.p-1 0
                   .col-6.border.rounded-0.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
                     div MA&nbsp;
-                      #ma-counter.badge.badge-primary.badge.p-1 0
+                      #ma-counter.badge.bg-primary.badge.p-1 0
                   .col-6.text-light.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
                     div ZF&nbsp;
-                      #zf-counter.badge.badge-light.badge.p-1 0
+                      #zf-counter.badge.bg-light.text-dark.p-1 0
                   .col-6.border.rounded-0.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
                     div FZF&nbsp;
-                      #fzf-counter.badge.badge-primary.badge.p-1 0
+                      #fzf-counter.badge.bg-primary.badge.p-1 0
                   .col-6.text-danger.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
                     div VF&nbsp;
-                      #vf-counter.badge.badge-danger.badge.p-1 0
+                      #vf-counter.badge.bg-danger.badge.p-1 0
                   .col-6.border.rounded-bottom.h-20.d-flex.align-items-center.justify-content-center.p-1.tf_singleline
                     div MED&nbsp;
-                      #med-counter.badge.badge-primary.badge.p-1 0
+                      #med-counter.badge.bg-primary.badge.p-1 0
             // TODO: Rueckmedlung ohne Rueckmeldung ausbleden
-              .d-flex.fustify-content-between.font-weight-bold.h-30
+              .d-flex.fustify-content-between.fw-bold.h-30
               .list-group.list-group-horizontal.text-center.w-100.h-100
                 .list-group-item.flex-fill.text-success.py-0.align-self-center
                   a#ek-counter 0
@@ -87,9 +87,9 @@
                 .list-group-item.flex-fill.rounded.border.border-warning.text-warning.py-0.align-self-center
                   a#agt-counter 0
                   a &nbsp;AGT
-                a.badge.badge-warning 2&nbsp;AGT
+                a.badge.bg-warning 2&nbsp;AGT
               .row.h-70.pt-1
-                .col-4#pg-ek.pr-1
+                .col-4#pg-ek.pe-1
                   .progress.mt-1
                     .progress-bar.progress-bar-striped.bg-success(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 
                       a(style='') 2min
@@ -97,16 +97,16 @@
                     .progress-bar.progress-bar-striped.bg-success(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 
                       h 2min
                   .progress.mt-1
-                    .progress-bar.progress-bar-striped.bg-success.ion-md-checkmark-circle(role='progressbar', style='width: 100%', aria-valuenow='100', aria-valuemin='0', aria-valuemax='100')
+                    .progress-bar.progress-bar-striped.bg-success.bi-check-circle-fill(role='progressbar', style='width: 100%', aria-valuenow='100', aria-valuemin='0', aria-valuemax='100')
                 .col-4#pg-ma.px-1
                   .progress.mt-1
                     .progress-bar.progress-bar-striped.bg-info(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 3min
                   .progress.mt-1
                     .progress-bar.progress-bar-striped.bg-info(role='progressbar', style='width: 25%', aria-valuenow='25', aria-valuemin='0', aria-valuemax='100') 1min     
-                .col-4#pg-fk.pl-1
+                .col-4#pg-fk.ps-1
                   .progress.mt-1.border.border-warning
                     .progress-bar.progress-bar-striped.bg-light(role='progressbar', style='width: 50%', aria-valuenow='50', aria-valuemin='0', aria-valuemax='100') 10min    
-          #container_ortsdaten.col-5.h-45.d-flex.align-items-end.tf_multiline.pr-3
+          #container_ortsdaten.col-5.h-45.d-flex.align-items-end.tf_multiline.pe-3
             #ortsdaten -Objekt-
               br
               | -Ort-
@@ -138,7 +138,7 @@
                   .px-1.w-100.h-100.d-flex.align-items-center.rounded.bg-secondary Einsatzmittel 9
           #container_weitere.col-12.h-5.text-muted.h-100.d-flex.justify-content-center.p-1.tf_singleline
             #em_weitere -weiteres Einsatzmittel 1-, -weiteres Einsatzmittel 2-, -weiteres Einsatzmittel n-
-          #container_besonderheiten.col-12.h-15.rounded.bg-dark.font-weight-bold.text-info.d-flex.align-items-center.tf_multiline
+          #container_besonderheiten.col-12.h-15.rounded.bg-dark.fw-bold.text-info.d-flex.align-items-center.tf_multiline
             // TODO: Besonderheiten bei neuer Alarmierung neu in der größe angpassen
-            #besonderheiten.pr-2 -Besonderheiten-
+            #besonderheiten.pe-2 -Besonderheiten-
   audio#audio(controls='')

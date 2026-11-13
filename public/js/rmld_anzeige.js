@@ -5,6 +5,27 @@
 (function (root) {
   "use strict";
 
+  // Funktion (rmld_role) -> Typ (Zähler/Balkenfarbe) und Ersatztext, wenn kein Name übermittelt wird
+  // (z.B. bei Gästen entfernt der Server den Namen)
+  const ROLLEN = {
+    team_member: { typ: "ek", text: "Einsatzkraft" },
+    crew_leader: { typ: "gf", text: "Gruppenführer" },
+    division_chief: { typ: "zf", text: "Zugführer" },
+    group_commander: { typ: "vf", text: "Verbandsführer" },
+  };
+
+  // Typ und Anzeigename einer Rückmeldung ermitteln. Rückmeldungen ohne oder mit unbekannter
+  // Funktion (die Rückmelde-App liefert z.T. keine rmld_role) zählen als Einsatzkraft,
+  // sonst bliebe der Balken ohne Namen und die Rückmeldung fehlte in den Zählern.
+  function rmld_rolle(data) {
+    let rolle = ROLLEN[data.rmld_role];
+    if (!rolle) {
+      console.warn("Rückmeldung ohne bekannte Funktion (rmld_role=" + data.rmld_role + "), wird als Einsatzkraft angezeigt.");
+      rolle = ROLLEN.team_member;
+    }
+    return { typ: rolle.typ, name: data.rmld_alias || rolle.text };
+  }
+
   // Beschriftung eines Balkens einmalig anlegen; liefert das Element für die Restzeit
   function rmld_beschriftung_anlegen(overlay, text) {
     overlay.textContent = "";
@@ -24,7 +45,7 @@
   // Ankunftszeit erreicht: Restzeit durch Haken ersetzen, Name (ggf. mit Ticker) bleibt stehen
   function rmld_angekommen(zeit) {
     zeit.textContent = "";
-    zeit.classList.add("ion-md-checkmark-circle");
+    zeit.classList.add("bi-check-circle-fill");
   }
 
   // Ticker für alle Namen unterhalb von bereich (Standard: ganze Seite) setzen oder entfernen.
@@ -61,6 +82,7 @@
     });
   }
 
+  root.rmld_rolle = rmld_rolle;
   root.rmld_beschriftung_anlegen = rmld_beschriftung_anlegen;
   root.rmld_angekommen = rmld_angekommen;
   root.rmld_ticker_aktualisieren = rmld_ticker_aktualisieren;
