@@ -443,12 +443,24 @@ audio {
   overflow: hidden;
 }
 
-/*** Standby: Uhr + Warnung + Widgets als ein Block, der als Ganzes wandert (Einbrennschutz) ***/
+/*** Standby: Uhr, Gefahrenhinweise und Widgets als ein Block, der als Ganzes wandert (Einbrennschutz).
+     Querformat: links Uhr + Gefahren, rechts Wetter + Termine. Hochformat (siehe unten): untereinander. ***/
+/* Grundschrift für Gefahren, Widgets und Wachenname, folgt Breite und Höhe des Bildschirms */
+#waipclock {
+  --standby-schrift: clamp(10px, min(0.85vw, 1.6vh), 28px);
+}
+
+/* Wachenname unten: so groß wie die Widgets, damit er zum übrigen Inhalt passt */
+#wachenname_footer .h4 {
+  font-size: max(9px, calc(var(--standby-schrift) * 1.1));
+  margin-bottom: 0;
+}
+
 #standby_block {
   position: absolute;
   left: 0;
   top: 0;
-  /* ohne Widgets so groß wie die bisherige Uhr (h-60 w-50) */
+  /* nur Uhr: so groß wie die bisherige Uhr (h-60 w-50) */
   width: 50%;
   height: 60%;
   display: flex;
@@ -456,6 +468,10 @@ audio {
   /* transform statt left/top – Compositor-Thread, kein Layout-Reflow */
   transition: transform 0.5s ease-in-out;
   z-index: 1;
+}
+
+#standby_block.mit-gefahren {
+  height: 72%;
 }
 
 /* mit Widgets: kleiner als der Bildschirm, damit genug Bewegungsraum bleibt */
@@ -467,6 +483,7 @@ audio {
 #standby_links {
   flex: 1 1 0;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -478,75 +495,96 @@ audio {
   width: 100%;
 }
 
-/* Unwetterwarnung unter der Uhr, Farben nach DWD-Warnstufe */
-#standby_warnung {
-  --warn: #e3d14b;
+/* Datum etwas kleiner als früher (80/20), damit unter der Uhr Platz für Gefahren bleibt */
+#time {
+  height: 84%;
+}
+
+#day {
+  height: 16%;
+}
+
+/* Gefahrenhinweise unter der Uhr: Unwetterwarnung (DWD) und Waldbrandgefahr */
+#standby_gefahren {
   flex: none;
-  margin-top: 1.2em;
-  padding: 0.9em 1.3em;
-  border-radius: 0.7em;
   display: flex;
-  gap: 1.1em;
+  flex-direction: column;
+  gap: 0.6em;
+  margin-top: 1em;
+  font-size: calc(var(--standby-schrift) * 1.15);
+  line-height: 1.25;
+}
+
+.standby-gefahr {
+  --farbe: #e3d14b;
+  display: flex;
+  gap: 1em;
   align-items: center;
-  font-size: clamp(11px, 1.05vw, 34px);
+  padding: 0.8em 1.1em;
+  border-radius: 0.7em;
   background: rgba(227, 209, 75, 0.12);
 }
 
-#standby_warnung.stufe-2 {
-  --warn: #f0a23a;
+.standby-gefahr.farbe-gruen {
+  --farbe: #7fb069;
+  background: rgba(127, 176, 105, 0.12);
+}
+
+.standby-gefahr.farbe-orange {
+  --farbe: #f0a23a;
   background: rgba(240, 162, 58, 0.14);
 }
 
-#standby_warnung.stufe-3 {
-  --warn: #ff6b5e;
+.standby-gefahr.farbe-rot {
+  --farbe: #ff6b5e;
   background: rgba(255, 107, 94, 0.14);
 }
 
-#standby_warnung.stufe-4 {
-  --warn: #c98bff;
+.standby-gefahr.farbe-violett {
+  --farbe: #c98bff;
   background: rgba(201, 139, 255, 0.16);
 }
 
-#standby_warnung > .bi {
-  font-size: 2.6em;
+.standby-gefahr > .bi {
+  font-size: 2.3em;
   line-height: 1;
-  color: var(--warn);
+  color: var(--farbe);
 }
 
-.standby-warnung-text {
+.standby-gefahr-text {
   min-width: 0;
 }
 
-.standby-warnung-stufe {
-  font-size: 0.8em;
+.standby-gefahr-art {
+  font-size: 0.75em;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--warn);
+  color: var(--farbe);
 }
 
-.standby-warnung-titel {
-  font-size: 1.6em;
+.standby-gefahr-titel {
+  font-size: 1.45em;
   font-weight: 700;
   line-height: 1.15;
-  color: var(--warn);
+  color: var(--farbe);
 }
 
-.standby-warnung-zeit {
+.standby-gefahr-info {
+  font-size: 0.9em;
   color: #999;
 }
 
-/* Widget-Spalte (Wetter, Termine); Größen in em, Grundgröße folgt der Bildschirmbreite */
+/* Widget-Spalte (Wetter, Termine); passt der Inhalt nicht, verkleinert widgets_einpassen() die Schrift */
 #standby_widgets {
   flex: 0 0 30%;
   min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1.6em;
+  gap: 1.4em;
   overflow: hidden;
-  /* Grundgröße nach Breite und Höhe; passt der Inhalt nicht, verkleinert widgets_einpassen() weiter */
-  font-size: clamp(10px, min(0.85vw, 1.6vh), 28px);
+  font-size: var(--standby-schrift);
   color: #aaa;
   line-height: 1.25;
 }
@@ -559,14 +597,8 @@ audio {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #777;
+  color: #888;
   min-width: 0;
-}
-
-.standby-label > span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .standby-klein {
@@ -588,63 +620,39 @@ audio {
 .standby-wetter-jetzt {
   display: flex;
   align-items: center;
-  gap: 0.9em;
+  gap: 0.7em;
 }
 
 .standby-wetter-icon {
-  font-size: 4.4em;
+  font-size: 4em;
   line-height: 1;
   color: #999;
 }
 
 .standby-wetter-temp {
-  font-size: 5.2em;
+  font-size: 4.8em;
   font-weight: 700;
   line-height: 1;
   color: #aaa;
   white-space: nowrap;
 }
 
-.standby-wetter-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2em;
-  font-size: 1.25em;
-  min-width: 0;
-}
-
 .standby-wetter-minmax {
+  font-size: 1.3em;
   color: #888;
   white-space: nowrap;
 }
 
-.standby-wetter-fakten,
 .standby-wetter-tage {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.7em;
-}
-
-.standby-wetter-tage {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding-top: 0.2em;
-}
-
-.standby-wetter-fakten > div,
-.standby-tag-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.standby-wetter-fakten > div > span:last-child {
-  font-size: 1.3em;
+  gap: 0.8em;
 }
 
 .standby-tag {
   display: flex;
   align-items: center;
-  gap: 0.7em;
+  gap: 0.6em;
   min-width: 0;
 }
 
@@ -654,14 +662,29 @@ audio {
   color: #999;
 }
 
+.standby-tag-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .standby-tag-temp {
-  font-size: 1.18em;
+  font-size: 1.2em;
   white-space: nowrap;
 }
 
-.standby-tag-temp > span,
-.standby-tag-text > span:last-child {
+.standby-tag-temp > span {
   color: #777;
+}
+
+.standby-wetter-quelle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.standby-quelle-dwd {
+  cursor: help;
 }
 
 /* Termine als eigene, leicht abgesetzte Kachel */
@@ -672,7 +695,7 @@ audio {
   padding: 0.9em 1.2em 1em;
   display: flex;
   flex-direction: column;
-  gap: 0.7em;
+  gap: 0.6em;
   min-height: 0;
   overflow: hidden;
 }
@@ -684,21 +707,17 @@ audio {
   gap: 1em;
 }
 
-.standby-kalender-kopf .standby-label {
-  color: #888;
-}
-
 .standby-kalender-liste {
   display: flex;
   flex-direction: column;
-  gap: 0.7em;
+  gap: 0.6em;
 }
 
 .standby-tag-gruppe {
   display: flex;
   flex-direction: column;
   gap: 0.35em;
-  padding-top: 0.6em;
+  padding-top: 0.55em;
   border-top: 1px solid #262626;
 }
 
@@ -714,11 +733,21 @@ audio {
   color: #bbb;
 }
 
-.standby-tag-name.heute {
+/* "Heute" und "Morgen" als dezente graue Badges, "Heute" etwas heller */
+.standby-tag-name.heute,
+.standby-tag-name.morgen {
   padding: 0.05em 0.6em;
   border-radius: 999px;
-  background: rgba(52, 152, 219, 0.18);
-  color: #8cc4ea;
+}
+
+.standby-tag-name.heute {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ddd;
+}
+
+.standby-tag-name.morgen {
+  background: rgba(255, 255, 255, 0.07);
+  color: #bbb;
 }
 
 .standby-tag-datum {
@@ -728,7 +757,8 @@ audio {
 
 .standby-termin {
   display: grid;
-  grid-template-columns: 5.6em minmax(0, 1fr);
+  /* Platz für "19:00 – 21:30" */
+  grid-template-columns: 7em minmax(0, 1fr);
   column-gap: 0.7em;
   align-items: baseline;
 }
@@ -765,6 +795,67 @@ audio {
 .standby-kalender-leer {
   font-size: 0.95em;
   color: #777;
+}
+
+/* Hochformat (Tablet, Smartphone, hochkant montierter Monitor): alles untereinander */
+@media (max-aspect-ratio: 1/1) {
+  #waipclock {
+    --standby-schrift: clamp(10px, min(2.6vw, 1.45vh), 30px);
+  }
+
+  #standby_block {
+    flex-direction: column;
+    width: 90%;
+    height: 50%;
+    gap: 3vh;
+  }
+
+  #standby_block.mit-gefahren {
+    height: 70%;
+  }
+
+  #standby_block.mit-widgets {
+    width: 92%;
+    height: 92%;
+  }
+
+  #standby_widgets {
+    flex: 0 1 auto;
+    max-height: 58%;
+  }
+
+  #standby_gefahren {
+    font-size: calc(var(--standby-schrift) * 1.1);
+  }
+}
+
+/* sehr flache Bildschirme (z.B. Smartphone quer): kleinere Mindestschrift, Termine ohne Ortsangabe */
+@media (min-aspect-ratio: 1/1) and (max-height: 500px) {
+  #waipclock {
+    --standby-schrift: clamp(7px, min(0.85vw, 1.6vh), 28px);
+  }
+
+  #standby_gefahren {
+    font-size: var(--standby-schrift);
+  }
+
+  .standby-termin-ort {
+    display: none;
+  }
+}
+
+/* breites Hochformat (z.B. iPad): Wetter und Termine nebeneinander */
+@media (max-aspect-ratio: 1/1) and (min-width: 600px) {
+  #standby_widgets {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 2em;
+  }
+
+  #standby_widgets > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
 }
 
 .clock-seconds {

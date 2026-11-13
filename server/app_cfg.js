@@ -127,6 +127,13 @@ app_cfg.widgets = {
     })
     .filter((d) => d.host),
   zeitzone: process.env.WIDGET_TIMEZONE || "Europe/Berlin",
+  // Wetter, Unwetterwarnungen und Waldbrandgefahr auf allen Monitoren zeigen, auch ohne Anmeldung
+  // (z.B. öffentliche Installation ohne Login); einzelne Monitore lassen sich mit ?wetter=off ausnehmen
+  wetter_standard: (process.env.WIDGET_WETTER_STANDARD ?? "false") === "true",
+  // Waldbrandgefahrenstufen als JSON (Waldbrand-Dienst im Bright-Sky-Compose), leer = aus
+  waldbrand_url: process.env.WIDGET_WALDBRAND_URL || "",
+  // Waldbrandgefahr erst ab dieser Stufe (1–5) auf dem Monitor anzeigen
+  waldbrand_ab_stufe: Math.min(5, Math.max(1, Number(process.env.WIDGET_WALDBRAND_AB_STUFE) || 3)),
 };
 
 module.exports = app_cfg;

@@ -48,6 +48,12 @@ $(document).ready(function () {
   }
   updateWachennameAnimation();
   startRandomPositioning();
+  // Bootstrap-Tooltip für die Quellenangabe des Wetters
+  if (window.bootstrap && bootstrap.Tooltip) {
+    document.querySelectorAll('#waipclock [data-bs-toggle="tooltip"]').forEach(function (el) {
+      bootstrap.Tooltip.getOrCreateInstance(el);
+    });
+  }
 });
 
 let _resize_debounce = null;
@@ -711,7 +717,8 @@ let socket = io("/waip", {
 
 // Wachen-ID bei Connect an Server senden
 socket.on("connect", function () {
-  socket.emit("WAIP", wachen_id);
+  // Monitor-Optionen aus der Adresse mitgeben (z.B. ?wetter=on für Wetter ohne Anmeldung)
+  socket.emit("WAIP", wachen_id, { wetter: typeof wetter_param !== "undefined" ? wetter_param : null });
   $("#waipModal").modal("hide");
   // TODO: bei Reconnect des Clients durch Verbindungsabbruch, erneut Daten anfordern
   console.log("Socket-Verbindung hergestellt, WAIP:", wachen_id);
@@ -928,7 +935,7 @@ socket.on("io.standby", function (data) {
 // Wetter, Unwetterwarnungen und Termine kommen fertig aufbereitet vom Server (der Monitor selbst braucht
 // keinen Internetzugang). Teil-Updates werden zusammengeführt, die Anzeige wird einmal pro Minute geprüft
 // (veraltete Daten ausblenden, vergangene Termine entfernen, Tageswechsel).
-const widgetDaten = { aktiv: { wetter: false, kalender: false }, max_age: 180, wetter: null, warnungen: null, kalender: null };
+const widgetDaten = { aktiv: { wetter: false, kalender: false, waldbrand: false }, max_age: 180, waldbrand_ab: 3, wetter: null, warnungen: null, kalender: null, waldbrand: null };
 
 const WETTER_SYMBOLE = {
   "clear-day": ["bi-sun", "klar"],
@@ -945,6 +952,10 @@ const WETTER_SYMBOLE = {
   thunderstorm: ["bi-cloud-lightning-rain", "Gewitter"],
 };
 const WARN_STUFEN = { 1: "Wetterwarnung", 2: "Markante Wetterwarnung", 3: "Unwetterwarnung", 4: "Extremes Unwetter" };
+// Farben der Gefahrenhinweise: DWD-Warnstufen 1–4, Waldbrandgefahrenstufen 1–5
+const WARN_FARBEN = { 1: "farbe-gelb", 2: "farbe-orange", 3: "farbe-rot", 4: "farbe-violett" };
+const WALDBRAND_FARBEN = { 1: "farbe-gruen", 2: "farbe-gelb", 3: "farbe-orange", 4: "farbe-rot", 5: "farbe-violett" };
+const GEFAHR_FARBKLASSEN = ["farbe-gruen", "farbe-gelb", "farbe-orange", "farbe-rot", "farbe-violett"];
 const MINUTE_MS = 60 * 1000;
 
 function wetter_symbol(icon) {
@@ -993,18 +1004,24 @@ function termin_laeuft_noch(t, jetzt) {
   return Math.max(new Date(t.ende).getTime(), new Date(t.start).getTime() + 60 * MINUTE_MS) > jetzt;
 }
 
+// Gefahren-Kasten füllen (Unwetterwarnung oder Waldbrandgefahr)
+function gefahr_setzen(box, farbe, art, titel, info) {
+  box.classList.remove.apply(box.classList, GEFAHR_FARBKLASSEN);
+  box.classList.add(farbe);
+  box.querySelector(".standby-gefahr-art").textContent = art;
+  box.querySelector(".standby-gefahr-titel").textContent = titel;
+  box.querySelector(".standby-gefahr-info").textContent = info;
+  box.classList.remove("d-none");
+}
+
 function warnung_rendern(w) {
   const box = document.getElementById("standby_warnung");
   const liste = w && !veraltet(w.abgerufen) ? w.liste || [] : [];
   if (!widgetDaten.aktiv.wetter || liste.length === 0) {
     box.classList.add("d-none");
-    return;
+    return false;
   }
   const erste = liste[0];
-  box.classList.remove("stufe-1", "stufe-2", "stufe-3", "stufe-4");
-  box.classList.add("stufe-" + (erste.stufe || 1));
-  box.querySelector(".standby-warnung-stufe").textContent = WARN_STUFEN[erste.stufe] || WARN_STUFEN[1];
-  box.querySelector(".standby-warnung-titel").textContent = erste.ereignis || erste.titel || "";
   let zeit = "";
   const beginn = erste.beginn ? new Date(erste.beginn) : null;
   const ende = erste.ende ? new Date(erste.ende) : null;
@@ -1018,8 +1035,26 @@ function warnung_rendern(w) {
   }
   zeit += " · DWD";
   if (liste.length > 1) zeit += " · " + (liste.length - 1) + (liste.length === 2 ? " weitere Warnung" : " weitere Warnungen");
-  box.querySelector(".standby-warnung-zeit").textContent = zeit;
-  box.classList.remove("d-none");
+  gefahr_setzen(box, WARN_FARBEN[erste.stufe] || WARN_FARBEN[1], WARN_STUFEN[erste.stufe] || WARN_STUFEN[1], erste.ereignis || erste.titel || "", zeit);
+  return true;
+}
+
+// Waldbrandgefahrenstufe erst ab der eingestellten Stufe (WIDGET_WALDBRAND_AB_STUFE) anzeigen
+function waldbrand_rendern(wb) {
+  const box = document.getElementById("standby_waldbrand");
+  if (!widgetDaten.aktiv.waldbrand || !wb || veraltet(wb.abgerufen) || !(wb.stufe >= widgetDaten.waldbrand_ab)) {
+    box.classList.add("d-none");
+    return false;
+  }
+  let info = wb.gebiet || "";
+  const heute = new Date();
+  const heute_iso = heute.getFullYear() + "-" + zwei(heute.getMonth() + 1) + "-" + zwei(heute.getDate());
+  if (wb.datum && wb.datum !== heute_iso) {
+    const teile = wb.datum.split("-");
+    info += (info ? " · " : "") + "Stand " + teile[2] + "." + teile[1] + ".";
+  }
+  gefahr_setzen(box, WALDBRAND_FARBEN[wb.stufe] || "farbe-orange", "Waldbrandgefahr · Stufe " + wb.stufe, wb.text || "", info);
+  return true;
 }
 
 function wetter_rendern(w) {
@@ -1031,14 +1066,11 @@ function wetter_rendern(w) {
   const a = w.aktuell || {};
   const h = w.heute || {};
   const symbol = wetter_symbol(a.icon || h.icon);
-  box.querySelector(".standby-wetter-ort").textContent = w.ort || "";
-  box.querySelector(".standby-wetter-icon").className = "bi standby-wetter-icon " + symbol[0];
+  const icon = box.querySelector(".standby-wetter-icon");
+  icon.className = "bi standby-wetter-icon " + symbol[0];
+  icon.title = symbol[1];
   box.querySelector(".standby-wetter-temp").textContent = grad(typeof a.temperatur === "number" ? a.temperatur : h.max);
-  box.querySelector(".standby-wetter-zustand").textContent = symbol[1];
   box.querySelector(".standby-wetter-minmax").textContent = "↓ " + grad(h.min) + "  ↑ " + grad(h.max);
-  box.querySelector(".standby-wetter-regen").textContent = typeof h.regen === "number" ? h.regen + " %" : "–";
-  box.querySelector(".standby-wetter-wind").textContent = typeof a.wind === "number" ? a.wind + " km/h" : "–";
-  box.querySelector(".standby-wetter-boeen").textContent = typeof a.boeen === "number" ? a.boeen + " km/h" : "–";
 
   const tage = box.querySelector(".standby-wetter-tage");
   const namen = ["Morgen", "Übermorgen"];
@@ -1051,14 +1083,17 @@ function wetter_rendern(w) {
     const temp = element("span", "standby-tag-temp", grad(t.max) + " ");
     temp.appendChild(element("span", null, "/ " + grad(t.min)));
     text.appendChild(temp);
-    text.appendChild(element("span", "standby-klein", s[1] + (typeof t.regen === "number" && t.regen >= 30 ? ", Regen " + t.regen + " %" : "")));
     tag.appendChild(text);
     return tag;
   });
   tage.replaceChildren.apply(tage, kinder);
 
   const stand = a.stand ? new Date(a.stand) : w.abgerufen ? new Date(w.abgerufen) : null;
-  box.querySelector(".standby-wetter-quelle").textContent = (stand ? "Stand " + uhrzeit(stand) + " · " : "") + "Quelle: Deutscher Wetterdienst";
+  // Ort (nur wenn er vom Wachennamen unten abweicht), Stand und Quelle in einer kleinen Zeile
+  const name_unten = (document.querySelector("#wachenname_footer .h4") || {}).textContent || "";
+  const ort = w.ort && w.ort.trim().toLowerCase() !== name_unten.trim().toLowerCase() ? w.ort : null;
+  const vorne = [ort, stand ? "Stand " + uhrzeit(stand) : null].filter(Boolean).join(" · ");
+  box.querySelector(".standby-wetter-stand").textContent = vorne ? vorne + " · " : "";
   box.classList.remove("d-none");
   return true;
 }
@@ -1083,10 +1118,15 @@ function kalender_rendern(k) {
       gruppe = { tag: tag, termine: [] };
       gruppen.push(gruppe);
     }
+    // Zeit "von – bis"; mehrtägige Termine: "ab …" bzw. "bis …"
+    const ende = new Date(t.ende);
+    const ende_gleicher_tag = ende.getTime() <= tages_start(start, 1);
     let zeit;
     if (t.ganztaegig) zeit = "ganztägig";
-    else if (start.getTime() < heute) zeit = "läuft";
-    else zeit = uhrzeit(start);
+    else if (start.getTime() < heute) zeit = ende.getTime() <= tages_start(jetzt, 1) ? "bis " + uhrzeit(ende) : "läuft";
+    else if (ende.getTime() <= start.getTime()) zeit = uhrzeit(start);
+    else if (ende_gleicher_tag) zeit = uhrzeit(start) + "\u2009–\u2009" + uhrzeit(ende);
+    else zeit = "ab " + uhrzeit(start);
     gruppe.termine.push({ zeit: zeit, titel: t.titel, ort: t.ort });
   });
 
@@ -1102,7 +1142,7 @@ function kalender_rendern(k) {
         const kopf = element("div", "standby-tag-kopf");
         let name;
         if (g.tag === heute) name = element("span", "standby-tag-name heute", "Heute");
-        else if (g.tag === tages_start(jetzt, 1)) name = element("span", "standby-tag-name", "Morgen");
+        else if (g.tag === tages_start(jetzt, 1)) name = element("span", "standby-tag-name morgen", "Morgen");
         else name = element("span", "standby-tag-name", datum.toLocaleDateString("de-DE", { weekday: "long" }));
         kopf.appendChild(name);
         const kurz = datum.toLocaleDateString("de-DE", { weekday: "short" }).replace(".", "");
@@ -1134,28 +1174,86 @@ function widgets_einpassen() {
   const inhalt_hoehe = function () {
     const kinder = Array.from(box.children).filter((el) => !el.classList.contains("d-none"));
     if (kinder.length === 0) return 0;
-    return kinder[kinder.length - 1].getBoundingClientRect().bottom - kinder[0].getBoundingClientRect().top;
+    // höchste Unterkante minus niedrigste Oberkante (gilt untereinander und nebeneinander)
+    const rects = kinder.map((el) => el.getBoundingClientRect());
+    return Math.max(...rects.map((r) => r.bottom)) - Math.min(...rects.map((r) => r.top));
   };
   let groesse = parseFloat(getComputedStyle(box).fontSize);
-  for (let i = 0; i < 30 && inhalt_hoehe() > box.clientHeight && groesse > 8; i++) {
+  for (let i = 0; i < 30 && inhalt_hoehe() > box.clientHeight && groesse > 7; i++) {
     groesse -= 0.5;
     box.style.fontSize = groesse + "px";
   }
+  // passt es auch mit kleinster Schrift nicht: die letzten Termine weglassen statt sie abzuschneiden
+  const termine = Array.from(box.querySelectorAll(".standby-termin"));
+  while (inhalt_hoehe() > box.clientHeight && termine.length > 1) {
+    const termin = termine.pop();
+    const gruppe = termin.parentElement;
+    termin.remove();
+    if (gruppe && !gruppe.querySelector(".standby-termin")) gruppe.remove();
+  }
+  widgets_ausrichten();
+}
+
+// Querformat: rechte Spalte an der Mitte des sichtbaren Inhalts links ausrichten (Ziffern der Uhr bis
+// Datum bzw. Gefahrenhinweise), statt an der Mitte des Blocks – die Ziffern sitzen unten in ihrem Kasten
+function widgets_ausrichten() {
+  const box = document.getElementById("standby_widgets");
+  const block = document.getElementById("standby_block");
+  if (!box || !block) return;
+  // aktuelle Verschiebung herausrechnen statt sie zum Messen zurückzusetzen: ein kurzes Zurücksetzen
+  // ließe die Spalte unter dem Mauszeiger wegspringen (z.B. Tooltip der Quellenangabe verschwindet)
+  const treffer = /translateY\((-?[\d.]+)px\)/.exec(box.style.transform || "");
+  const bisher = treffer ? parseFloat(treffer[1]) : 0;
+  const setzen = (wert) => {
+    const neu = Math.abs(wert) >= 1 ? "translateY(" + Math.round(wert) + "px)" : "";
+    if (box.style.transform !== neu) box.style.transform = neu;
+  };
+  if (box.classList.contains("d-none") || getComputedStyle(block).flexDirection !== "row") return setzen(0);
+  const uhr = document.querySelector("#time span");
+  const datum = document.querySelector("#day span");
+  const gefahren = document.getElementById("standby_gefahren");
+  if (!uhr || !datum) return;
+  const kinder = Array.from(box.children).filter((el) => !el.classList.contains("d-none"));
+  if (kinder.length === 0) return;
+  // Oberkante der Ziffern: Textkasten minus Abstand über den Ziffern (Lato: ca. 0,2 em)
+  const uhr_rect = uhr.getBoundingClientRect();
+  const links_oben = uhr_rect.top + parseFloat(getComputedStyle(uhr).fontSize) * 0.2;
+  const links_unten = gefahren.classList.contains("d-none") ? datum.getBoundingClientRect().bottom : gefahren.getBoundingClientRect().bottom;
+  const rects = kinder.map((el) => el.getBoundingClientRect());
+  const rechts_oben = Math.min(...rects.map((r) => r.top)) - bisher;
+  const rechts_unten = Math.max(...rects.map((r) => r.bottom)) - bisher;
+  const b = block.getBoundingClientRect();
+  let versatz = (links_oben + links_unten) / 2 - (rechts_oben + rechts_unten) / 2;
+  // im Block bleiben
+  versatz = Math.min(versatz, b.bottom - rechts_unten);
+  versatz = Math.max(versatz, b.top - rechts_oben);
+  if (Math.abs(versatz - bisher) >= 1) setzen(versatz);
+}
+
+// nach dem Laden der Schriften stimmen die Maße der Uhr erst endgültig
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(function () {
+    widgets_ausrichten();
+  });
 }
 
 function widgets_rendern() {
   try {
-    warnung_rendern(widgetDaten.warnungen);
+    const mit_warnung = warnung_rendern(widgetDaten.warnungen);
+    const mit_waldbrand = waldbrand_rendern(widgetDaten.waldbrand);
     const mit_wetter = wetter_rendern(widgetDaten.wetter);
     const mit_kalender = kalender_rendern(widgetDaten.kalender);
     const mit_widgets = mit_wetter || mit_kalender;
+    const mit_gefahren = mit_warnung || mit_waldbrand;
     const block = document.getElementById("standby_block");
-    const vorher = block.classList.contains("mit-widgets");
+    const vorher = block.className;
     document.getElementById("standby_widgets").classList.toggle("d-none", !mit_widgets);
+    document.getElementById("standby_gefahren").classList.toggle("d-none", !mit_gefahren);
     block.classList.toggle("mit-widgets", mit_widgets);
+    block.classList.toggle("mit-gefahren", mit_gefahren);
     widgets_einpassen();
     // Uhrgröße und Position neu berechnen, wenn sich das Layout geändert hat
-    if (vorher !== mit_widgets && $("#waipclock").is(":visible")) {
+    if (vorher !== block.className && $("#waipclock").is(":visible")) {
       setTimeout(function () {
         resize_text(true);
         updateRandomPosition();
@@ -1170,7 +1268,8 @@ socket.on("io.widgets", function (data) {
   if (!data) return;
   if (data.aktiv) widgetDaten.aktiv = data.aktiv;
   if (data.max_age) widgetDaten.max_age = data.max_age;
-  ["wetter", "warnungen", "kalender"].forEach(function (teil) {
+  if (data.waldbrand_ab) widgetDaten.waldbrand_ab = data.waldbrand_ab;
+  ["wetter", "warnungen", "kalender", "waldbrand"].forEach(function (teil) {
     if (Object.prototype.hasOwnProperty.call(data, teil)) widgetDaten[teil] = data[teil];
   });
   widgets_rendern();

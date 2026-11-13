@@ -265,7 +265,7 @@ module.exports = (io, sql, app_cfg, logger) => {
 
   // Abruf bei Bright Sky mit Statusmeldung (Ausfall/Wiederherstellung je Dienst einmal ins Log), auch wenn
   // der Monitor währenddessen noch den letzten Stand aus dem Zwischenspeicher bekommt
-  const mit_status = (dienst, laden) => () =>
+  const mit_status = (dienst, laden, felder = { brightsky_url: cfg.brightsky_url }) => () =>
     laden().then(
       (daten) => {
         status_melden(dienst, true);
@@ -274,7 +274,7 @@ module.exports = (io, sql, app_cfg, logger) => {
       (error) => {
         // 4xx (z.B. "No sources match your criteria") heißt: Dienst erreichbar, nur keine Daten für den Ort
         const erreichbar = error.status >= 400 && error.status < 500;
-        status_melden(dienst, erreichbar, error, { brightsky_url: cfg.brightsky_url });
+        status_melden(dienst, erreichbar, error, felder);
         throw error;
       }
     );
@@ -532,6 +532,55 @@ module.exports = (io, sql, app_cfg, logger) => {
     });
   };
 
+  /* ######################################################## */
+  /* ##### Waldbrandgefahrenstufe (eigener Waldbrand-Dienst) ## */
+  /* ######################################################## */
+
+  // Der Waldbrand-Dienst (Docker, neben Bright Sky) lädt die Stufen des Landes und liefert
+  // {"datum": "YYYY-MM-DD", "kreise": {"52": {"stufe": 1, "gebiet": "…"}, …}}
+  const waldbrand_aktiv = Boolean(cfg.waldbrand_url);
+  const TTL_WALDBRAND = 10 * MINUTE;
+  const cache_waldbrand = erstelle_cache();
+  const WALDBRAND_TEXT = { 1: "Sehr geringe Gefahr", 2: "Geringe Gefahr", 3: "Mittlere Gefahr", 4: "Hohe Gefahr", 5: "Sehr hohe Gefahr" };
+
+  const lade_waldbrand = async () => {
+    const res = await fetch(cfg.waldbrand_url, { signal: AbortSignal.timeout(HTTP_TIMEOUT), headers: { "User-Agent": USER_AGENT } });
+    if (!res.ok) {
+      const err = new Error(`Waldbrand-Dienst antwortete mit HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    const daten = await res.json();
+    if (!daten || typeof daten.kreise !== "object" || daten.kreise === null) throw new Error('Antwort des Waldbrand-Dienstes ohne "kreise".');
+    return { datum: daten.datum || null, kreise: daten.kreise };
+  };
+
+  // Waldbrandgefahrenstufe für eine Monitor-Nummer (Leitstelle: höchste Stufe ihrer Kreise)
+  const waldbrand_fuer_nr = async (wachen_nr) => {
+    if (!waldbrand_aktiv) return null;
+    const kreise = sql.db_kreise_fuer_nr(wachen_nr);
+    if (kreise.length === 0) return null;
+    const daten = await cache_holen(cache_waldbrand, "dienst", TTL_WALDBRAND, mit_status("Waldbrand-Dienst", lade_waldbrand, { waldbrand_url: cfg.waldbrand_url }));
+    // die Stufen gelten tageweise: älter als gestern wird nicht mehr angezeigt
+    if (daten.datum && daten.datum < datum_plus(-1)) return null;
+    let hoechste = null;
+    for (const k of kreise) {
+      const eintrag = daten.kreise[String(k.nr_kreis)];
+      const stufe = eintrag ? Number(eintrag.stufe) : NaN;
+      if (Number.isInteger(stufe) && stufe >= 1 && stufe <= 5 && (!hoechste || stufe > hoechste.stufe)) {
+        hoechste = { stufe: stufe, gebiet: kuerzen(eintrag.gebiet || "", 80) };
+      }
+    }
+    if (!hoechste) return null;
+    const cache_eintrag = cache_waldbrand.get("dienst");
+    return {
+      ...hoechste,
+      text: WALDBRAND_TEXT[hoechste.stufe] || "",
+      datum: daten.datum,
+      abgerufen: cache_eintrag && cache_eintrag.zeit ? new Date(cache_eintrag.zeit).toISOString() : null,
+    };
+  };
+
   /* ############################ */
   /* ##### Verteilung ########### */
   /* ############################ */
@@ -540,17 +589,31 @@ module.exports = (io, sql, app_cfg, logger) => {
   const monitor_konfiguration = (socket) => {
     const user = socket.data.user;
     const einstellungen = user && user.id ? sql.db_user_get_config_standby(user.id) : { wetter: false, kalender: false, ical_url: "" };
+    // Wetter: Benutzereinstellung, Monitor-Parameter ?wetter=on oder WIDGET_WETTER_STANDARD schalten ein,
+    // ?wetter=off schaltet für diesen Monitor in jedem Fall aus
+    const parameter = socket.data.widgets_parameter || {};
+    if (parameter.wetter === "off") einstellungen.wetter = false;
+    else if (parameter.wetter === "on" || cfg.wetter_standard) einstellungen.wetter = true;
     let ort = null;
     if (einstellungen.wetter && wetter_aktiv) {
       ort = sql.db_wetter_ort_ermitteln(socket.data.wachen_nr);
     }
     return {
       wetter: Boolean(einstellungen.wetter && wetter_aktiv && ort),
+      // Waldbrandgefahr gehört zum Schalter "Wetter und amtliche Unwetterwarnungen"
+      waldbrand: Boolean(einstellungen.wetter && waldbrand_aktiv),
       kalender: Boolean(einstellungen.kalender && einstellungen.ical_url),
       ical_url: einstellungen.ical_url,
       ort: ort,
     };
   };
+
+  // Kopf jedes io.widgets-Pakets: was ist eingeschaltet, Höchstalter, Anzeigeschwelle Waldbrand
+  const kopf_von = (k) => ({
+    aktiv: { wetter: k.wetter, kalender: k.kalender, waldbrand: k.waldbrand },
+    max_age: cfg.max_age,
+    waldbrand_ab: cfg.waldbrand_ab_stufe,
+  });
 
   // Ein Termin gilt als vorbei, wenn sein Ende erreicht ist (Termine ohne Dauer: 1 Stunde nach Beginn)
   const termin_laeuft_noch = (t, jetzt) => Math.max(new Date(t.ende).getTime(), new Date(t.start).getTime() + 60 * MINUTE) > jetzt;
@@ -570,7 +633,7 @@ module.exports = (io, sql, app_cfg, logger) => {
     if (!socket.connected) return;
     const k = socket.data.widgets;
     if (!k) return;
-    const payload = { aktiv: { wetter: k.wetter, kalender: k.kalender }, max_age: cfg.max_age };
+    const payload = kopf_von(k);
     const aufgaben = [];
     if (k.wetter && teile.wetter) {
       aufgaben.push(wetter_fuer_ort(k.ort).then((w) => (payload.wetter = w), () => (payload.wetter = null)));
@@ -581,6 +644,17 @@ module.exports = (io, sql, app_cfg, logger) => {
           payload.warnungen = w;
           if (w) socket.data.widgets_warn_hash = hash(w.liste);
         })
+      );
+    }
+    if (k.waldbrand && teile.warnungen) {
+      aufgaben.push(
+        waldbrand_fuer_nr(socket.data.wachen_nr).then(
+          (wb) => {
+            payload.waldbrand = wb;
+            if (wb) socket.data.widgets_wb_hash = hash([wb.stufe, wb.datum]);
+          },
+          () => (payload.waldbrand = null)
+        )
       );
     }
     if (k.kalender && teile.kalender) {
@@ -658,47 +732,75 @@ module.exports = (io, sql, app_cfg, logger) => {
         for (const s of gruppe) {
           if (s.data.widgets_warn_hash !== neu && s.connected) {
             s.data.widgets_warn_hash = neu;
-            s.emit("io.widgets", { aktiv: { wetter: s.data.widgets.wetter, kalender: s.data.widgets.kalender }, max_age: cfg.max_age, warnungen: warnungen });
+            s.emit("io.widgets", { ...kopf_von(s.data.widgets), warnungen: warnungen });
           }
         }
       }
-      for (const cache of [cache_aktuell, cache_vorhersage, cache_warnungen, cache_kalender]) cache_aufraeumen(cache);
+      // Waldbrandgefahrenstufe: Änderungen ebenfalls sofort verteilen
+      for (const s of monitore.values()) {
+        const k = s.data.widgets;
+        if (!k || !k.waldbrand || !s.connected) continue;
+        const wb = await waldbrand_fuer_nr(s.data.wachen_nr).catch(() => null);
+        if (!wb) continue;
+        const neu = hash([wb.stufe, wb.datum]);
+        if (s.data.widgets_wb_hash !== neu) {
+          s.data.widgets_wb_hash = neu;
+          s.emit("io.widgets", { ...kopf_von(k), waldbrand: wb });
+        }
+      }
+      for (const cache of [cache_aktuell, cache_vorhersage, cache_warnungen, cache_kalender, cache_waldbrand]) cache_aufraeumen(cache);
     } catch (error) {
       logger.log("error", `Standby-Widgets: Prüfung der Unwetterwarnungen fehlgeschlagen: ${error.message}`);
     }
   };
-  if (wetter_aktiv) {
+  if (wetter_aktiv || waldbrand_aktiv) {
     setInterval(warnungen_pruefen, cfg.alert_interval * MINUTE);
   }
 
-  // Erreichbarkeit von Bright Sky prüfen (Admin-Seite, Mittelpunkt Deutschlands)
-  const brightsky_pruefen = async () => {
-    if (!wetter_aktiv) return { aktiv: false };
-    const start = Date.now();
-    try {
-      await brightsky_get("/alerts", { lat: 51.16, lon: 10.45 });
-      return { aktiv: true, ok: true, dauer_ms: Date.now() - start };
-    } catch (error) {
-      return { aktiv: true, ok: false, fehler: error.message };
-    }
+  // Erreichbarkeit von Bright Sky (Mittelpunkt Deutschlands) und Waldbrand-Dienst prüfen (Admin-Seite)
+  const dienste_pruefen = async () => {
+    const pruefen = async (aktiv, abruf) => {
+      if (!aktiv) return { aktiv: false };
+      const start = Date.now();
+      try {
+        const daten = await abruf();
+        return { aktiv: true, ok: true, dauer_ms: Date.now() - start, datum: daten && daten.datum ? daten.datum : undefined };
+      } catch (error) {
+        return { aktiv: true, ok: false, fehler: error.message };
+      }
+    };
+    const [brightsky, waldbrand] = await Promise.all([
+      pruefen(wetter_aktiv, () => brightsky_get("/alerts", { lat: 51.16, lon: 10.45 })),
+      pruefen(waldbrand_aktiv, lade_waldbrand),
+    ]);
+    return { brightsky, waldbrand };
   };
 
   // Wetter-Test für die Admin-Seite (ohne Cache)
-  const wetter_testen = async (ort) => {
-    if (!wetter_aktiv) throw new Error("WIDGET_BRIGHTSKY_URL ist nicht gesetzt.");
+  const wetter_testen = async (ort, wachen_nr) => {
+    if (!wetter_aktiv && !waldbrand_aktiv) throw new Error("Weder WIDGET_BRIGHTSKY_URL noch WIDGET_WALDBRAND_URL ist gesetzt.");
+    let waldbrand = null;
+    if (waldbrand_aktiv && wachen_nr) {
+      waldbrand = await waldbrand_fuer_nr(wachen_nr).catch((error) => ({ fehler: error.message }));
+    }
+    const ab_stufe = cfg.waldbrand_ab_stufe;
+    if (!wetter_aktiv) return { aktuell: null, aktuell_quelle: "Bright Sky nicht eingerichtet", warnungen: null, waldbrand, waldbrand_ab: ab_stufe };
     const [aktuell, vorhersage, warnungen] = await Promise.allSettled([lade_aktuell(ort), lade_vorhersage(ort), lade_warnungen(ort)]);
     if (warnungen.status === "rejected" && vorhersage.status === "rejected") throw warnungen.reason;
     return {
       aktuell: aktuell.status === "fulfilled" ? aktuell.value : vorhersage.status === "fulfilled" ? vorhersage.value.jetzt : null,
       aktuell_quelle: aktuell.status === "fulfilled" ? "Station" : "Vorhersage (keine Station mit aktuellen Werten)",
       warnungen: warnungen.status === "fulfilled" ? warnungen.value : null,
+      waldbrand,
+      waldbrand_ab: ab_stufe,
     };
   };
 
   logger.log(
     "log",
     `Standby-Widgets: Wetter ${wetter_aktiv ? "über " + cfg.brightsky_url : "aus (WIDGET_BRIGHTSKY_URL leer)"}, ` +
-      `Kalender-Server: ${cfg.ical_domains.length ? cfg.ical_domains.map((d) => d.host + (d.proxy ? " (Proxy)" : "")).join(", ") : "keine"}.`
+      `Kalender-Server: ${cfg.ical_domains.length ? cfg.ical_domains.map((d) => d.host + (d.proxy ? " (Proxy)" : "")).join(", ") : "keine"}, ` +
+      `Waldbrandgefahr: ${waldbrand_aktiv ? cfg.waldbrand_url + " (ab Stufe " + cfg.waldbrand_ab_stufe + ")" : "aus"}.`
   );
 
   return {
@@ -707,8 +809,10 @@ module.exports = (io, sql, app_cfg, logger) => {
     benutzer_aktualisiert,
     kalender_url_pruefen,
     wetter_testen,
-    brightsky_pruefen,
+    dienste_pruefen,
     wetter_aktiv,
+    waldbrand_aktiv,
+    wetter_standard: cfg.wetter_standard,
     erlaubte_kalender: () => cfg.ical_domains.map((d) => d.host),
     KalenderFehler,
   };
