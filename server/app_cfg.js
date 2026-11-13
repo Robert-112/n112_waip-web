@@ -28,6 +28,8 @@ app_cfg.global = {
   mediapath: process.env.MEDIAPATH || "/media/",
   uuidNamespace: process.env.UUID_NAMESPACE || "59cc72ec-4ff5-499d-81e2-ec49c1d01252",
   time_to_delete_waip: Number(process.env.TIME_TO_DELETE_WAIP) || 30,
+  // Kurz-Archiv beendeter Brand-/Hilfeleistungseinsätze im Dashboard: Aufbewahrung in Tagen, 0 = aus
+  archive_days: Math.max(0, Number(process.env.ARCHIVE_DAYS ?? 3) || 0),
   default_time_for_standby: Number(process.env.DEFAULT_TIME_FOR_STANDBY) || 15,
   system_cleanup_time: Number(process.env.SYSTEM_CLEANUP_TIME) || 10000,
   defaultuser: process.env.DEFAULT_USER || "me",

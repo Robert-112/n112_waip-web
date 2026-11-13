@@ -497,12 +497,22 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
           });
         }
 
+        // Brand-/Hilfeleistungseinsätze vor dem Löschen ins Kurz-Archiv übernehmen (nur öffentliche Angaben).
+        // Muss vor io.deleted passieren, damit die Dashboards direkt ins Archiv weiterleiten können.
+        let archiviert = false;
+        try {
+          archiviert = sql.db_einsatz_archivieren(waip.id);
+          if (archiviert) logger.log("log", `Einsatz ${waip.id} wurde ins Kurz-Archiv übernommen.`);
+        } catch (error) {
+          logger.log("error", `Fehler beim Archivieren des Einsatzes ${waip.id}: ${error}`);
+        }
+
         // Dashboards trennen
         // io.deletet an alle Socket senden die im Namespace /dbrd im Raum der alte_einsaetze.uuid sind
         const dbrd_sockets = await io.of("/dbrd").in(waip.uuid.toString()).fetchSockets();
-        // io.deletet an dbrd_sockets senden
+        // io.deletet an dbrd_sockets senden (archiviert = Weiterleitung ins Archiv statt zur Startseite)
         dbrd_sockets.forEach((socket) => {
-          socket.emit("io.deleted", null);
+          socket.emit("io.deleted", { archiviert: archiviert });
           logger.log("log", `Dashboard mit dem Socket ${socket.id} wurde getrennt, Einsatz gelöscht.`);
         });
 
@@ -528,6 +538,14 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
           sql.db_client_update_status(socket, null);
         }
       }
+    }
+
+    // abgelaufene Einträge im Kurz-Archiv löschen (indizierte Abfrage, kostet ohne Treffer praktisch nichts)
+    try {
+      const archiv_geloescht = sql.db_archiv_aufraeumen();
+      if (archiv_geloescht > 0) logger.log("log", `${archiv_geloescht} abgelaufene(r) Eintrag/Einträge im Kurz-Archiv gelöscht.`);
+    } catch (error) {
+      logger.log("error", `Fehler beim Aufräumen des Kurz-Archivs: ${error}`);
     }
 
     // loeschen alter Sounddaten nach Alter

@@ -509,17 +509,20 @@ socket.on("io.error", function (data) {
 });
 
 // Daten löschen, Uhr anzeigen
-socket.on("io.deleted", function () {
+socket.on("io.deleted", function (data) {
   console.log("del");
-  // Einsatz nicht mehr vorhanden
+  // Einsatz nicht mehr vorhanden – Brand-/Hilfeleistungseinsätze liegen dann noch im Kurz-Archiv
+  const archiviert = !!(data && data.archiviert);
   $("#waipModal").modal("hide");
   setTimeout(function () {
     $("#waipModalTitle").html("ACHTUNG");
     $("#waipModalBody").html(`Der aufgerufene Einsatz wurde gel&ouml;scht und ist nicht mehr verfügbar.<br>
-    Sie werden gleich zur Startseite zurückgeleitet.`);
+    ${archiviert ? "Sie werden gleich zur Kurzübersicht im Archiv weitergeleitet." : "Sie werden gleich zur Startseite zurückgeleitet."}`);
     $("#waipModal").modal("show");
     setTimeout(function () {
-      window.location.href = window.location.origin;
+      window.location.href = archiviert
+        ? window.location.origin + "/dbrd?archiv=" + encodeURIComponent(dbrd_uuid)
+        : window.location.origin;
     }, Math.floor(Math.random() * (15000 - 1000 + 1)) + 1000);
   }, 1000);
 });
@@ -713,11 +716,18 @@ socket.on("io.Einsatz", function (data) {
     map.setView(new L.LatLng(data.wgs84_x, data.wgs84_y), 15);
     currentGeometry = { type: "point", coords: [data.wgs84_x, data.wgs84_y] };
   } else {
-    geojson = L.geoJSON(JSON.parse(data.geometry));
+    // ohne Koordinaten (z. B. Gast) den Einsatzbereich zeigen; fehlt auch der (keine Geometrie von der
+    // Leitstelle), bleibt die Karte ohne Einpassen statt mit "Bounds are not valid" abzubrechen
+    let bereich = null;
+    try { bereich = JSON.parse(data.geometry); } catch (_) {}
+    geojson = L.geoJSON(bereich);
     geojson.addTo(map);
-    map.fitBounds(geojson.getBounds());
-    map.setZoom(13);
-    currentGeometry = { type: "geojson", geojson: JSON.parse(data.geometry) };
+    const bounds = geojson.getBounds();
+    if (bounds.isValid()) {
+      map.fitBounds(bounds);
+      map.setZoom(13);
+    }
+    currentGeometry = bereich ? { type: "geojson", geojson: bereich } : null;
   }
 });
 
