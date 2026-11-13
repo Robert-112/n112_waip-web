@@ -538,17 +538,9 @@ let is4K = screen.width * (window.devicePixelRatio || 1) >= 3840 &&
            screen.height * (window.devicePixelRatio || 1) >= 2160;
 // Zoomstufe für Punkt-Einsätze ohne Routen bzw. Obergrenze beim Einpassen des Einsatzumkreises
 const kartenStartZoom = is4K ? 16 : 14;
-let markerSize = is4K ? [50, 82] : [25, 41];
-let markerAnchor = is4K ? [25, 82] : [12, 41];
-let markerShadowSize = is4K ? [82, 82] : [41, 41];
-let redIcon = new L.Icon({
-  iconUrl: "/media/marker-icon-2x-red.png",
-  shadowUrl: "/media/marker-shadow.png",
-  iconSize: markerSize,
-  iconAnchor: markerAnchor,
-  popupAnchor: [1, -34],
-  shadowSize: markerShadowSize,
-});
+// Zielmarker (Einsatzort), gemeinsam mit dem Dashboard (karte_routen.js)
+const zielGroesse = ziel_icon_groesse(is4K);
+let redIcon = ziel_icon(is4K);
 
 // Icon setzen
 let marker = L.marker(new L.LatLng(0, 0), {
@@ -567,11 +559,24 @@ let routeLayers = [];
 let currentRoutes = [];
 let insetMap = null;
 
+// Wachen-Punkte (mit Namensschild) der aktuell gezeichneten Routen, zum Einpassen der Karte
+let routenWachen = [];
+
 // Routen-Versatz ist pixelbasiert -> nach jedem Zoomwechsel neu zeichnen, damit der
 // Abstand zwischen mehreren Routen auf jeder Zoomstufe gleich breit wirkt.
-// fitBounds hier NICHT erneut aufrufen, sonst würde jeder (auch manuelle) Zoom
-// sofort wieder auf die berechneten Bounds zurückspringen.
-map.on("zoomend", function () { draw_routes(currentRoutes, false); });
+// Hier NICHT neu einpassen, sonst würde jeder (auch manuelle) Zoom sofort zurückspringen.
+map.on("zoomend", function () { draw_routes(currentRoutes); });
+
+// Leaflet bemerkt Größenänderungen der Karte nur beim Fenster-Resize. Ändert sich das Layout
+// (Tableau ein-/ausblenden, Scrollbalken, textFit, Monitor wacht auf), rechnete Leaflet mit der alten
+// Größe weiter und Wachen/Ziel lagen außerhalb. Der ResizeObserver meldet jede Änderung des Containers.
+if (window.ResizeObserver) {
+  let _roFrame = null;
+  new ResizeObserver(function () {
+    cancelAnimationFrame(_roFrame);
+    _roFrame = requestAnimationFrame(function () { map.invalidateSize({ debounceMoveend: true }); });
+  }).observe(document.getElementById("map"));
+}
 
 // Automatisches Einpassen nach Größenänderungen: Die Karte wird beim Alarm eingepasst, danach ändert
 // sich ihre Größe aber oft noch (Navbar/Footer blenden nach 3 s aus, Fenster, Drehung, Layout nach
@@ -583,15 +588,101 @@ map.on("dragstart", function () { karteManuellBewegt = true; });
   map.getContainer().addEventListener(ev, function () { karteManuellBewegt = true; }, { passive: true });
 });
 
+// Kartenausschnitt so wählen, dass Ziel, Einsatzumkreis, Routen, Wachen-Punkte UND deren Namensschilder
+// vollständig sichtbar sind (und nichts unter der Inset-Karte liegt).
+let _einpassenNachAnimation = false;
 function karte_einpassen() {
-  if (currentRoutes.length) {
-    draw_routes(currentRoutes, true);
-  } else if (showEinsatzkreisBounds) {
-    const gjBounds = geojson.getBounds();
-    if (gjBounds.isValid()) map.fitBounds(gjBounds, { padding: [50, 50], maxZoom: kartenStartZoom });
-  } else {
-    const mPos = marker.getLatLng();
-    if (mPos.lat !== 0 || mPos.lng !== 0) map.setView(mPos, kartenStartZoom);
+  // Während einer Zoom-Animation verwirft Leaflet jedes setView/fitBounds stillschweigend. Kam z.B.
+  // eine Größenänderung (Monitor wacht auf) in diese Zeit, blieb der falsche Ausschnitt stehen.
+  // Deshalb nach Ende der Animation mit dann aktueller Größe neu rechnen.
+  if (map._animatingZoom) {
+    if (!_einpassenNachAnimation) {
+      _einpassenNachAnimation = true;
+      map.once("zoomend", function () {
+        _einpassenNachAnimation = false;
+        karte_einpassen();
+      });
+    }
+    return;
+  }
+  const groesse = map.getSize();
+  if (!groesse.x || !groesse.y) return; // Karte (noch) unsichtbar
+
+  const mPos = marker.getLatLng();
+  const hatZiel = map.hasLayer(marker) && (mPos.lat !== 0 || mPos.lng !== 0);
+  if (!currentRoutes.length && !showEinsatzkreisBounds) {
+    if (hatZiel) map.setView(mPos, kartenStartZoom);
+    return;
+  }
+
+  // Elemente: Punkt + Ausdehnung in Pixeln um den Punkt [links, oben, rechts, unten]
+  const elemente = [];
+  const flaeche = function (bounds, rand) {
+    if (!bounds || !bounds.isValid()) return;
+    elemente.push({ ll: bounds.getSouthWest(), box: [-rand, -rand, rand, rand] });
+    elemente.push({ ll: bounds.getNorthEast(), box: [-rand, -rand, rand, rand] });
+  };
+  if (hatZiel) elemente.push({ ll: mPos, box: [-zielGroesse[0] / 2, -zielGroesse[1], zielGroesse[0] / 2, 0] });
+  if (showEinsatzkreisBounds) flaeche(geojson.getBounds(), 0);
+  // Routenlinien: Rand = größter seitlicher Versatz + halbe Schattenbreite
+  const linienRand = routen_versatz_max(currentRoutes) + 5;
+  currentRoutes.forEach(function (r) {
+    const co = r.geometry && r.geometry.coordinates;
+    if (co && co.length) flaeche(L.latLngBounds(co.map(function (c) { return [c[1], c[0]]; })), linienRand);
+  });
+  // Wachen-Punkt (Radius 8 + Rand 2) mit Namensschild darüber (Versatz 10 px + 6 px Pfeilabstand)
+  routenWachen.forEach(function (w) {
+    const t = w.getTooltip && w.getTooltip();
+    const el = t && t.getElement();
+    const b = el ? el.offsetWidth : 0;
+    const h = el ? el.offsetHeight : 0;
+    elemente.push({ ll: w.getLatLng(), box: [-Math.max(b / 2, 10), -(h ? h + 16 : 10), Math.max(b / 2, 10), 10] });
+  });
+  if (!elemente.length) return;
+
+  // Ränder: rundum 15 px, bei Inset-Karte zusätzlich ein Streifen daneben ODER darüber/darunter
+  const rand = showEinsatzkreisBounds && !currentRoutes.length ? 50 : 15;
+  let varianten = [{ tl: [rand, rand], br: [rand, rand] }];
+  const insetEl = document.getElementById("map-inset");
+  if (insetEl && !insetEl.classList.contains("d-none")) {
+    // Inset in die Ecke gegenüber der (ersten) Wache legen
+    const mitte = L.latLngBounds(elemente.map(function (e) { return e.ll; })).getCenter();
+    const start = routenWachen.length ? routenWachen[0].getLatLng() : null;
+    const wacheSued = start ? start.lat < mitte.lat : true;
+    const wacheWest = start ? start.lng < mitte.lng : true;
+    insetEl.style.top = wacheSued ? "auto" : "10px";
+    insetEl.style.bottom = wacheSued ? "10px" : "auto";
+    insetEl.style.left = wacheWest ? "auto" : "10px";
+    insetEl.style.right = wacheWest ? "10px" : "auto";
+    // Inset liegt in einer Ecke: Es genügt, auf EINER Achse Platz freizuhalten
+    const insetB = insetEl.offsetWidth + 12; // Breite/Höhe + 10 px Rand + 2 px Border
+    const insetH = insetEl.offsetHeight + 12;
+    varianten = [
+      { tl: [wacheWest ? rand : insetB, rand], br: [wacheWest ? insetB : rand, rand] }, // daneben
+      { tl: [rand, wacheSued ? rand : insetH], br: [rand, wacheSued ? insetH : rand] }, // darüber/darunter
+    ];
+  }
+
+  // Größte Zoomstufe suchen, bei der alle Elemente samt Pixel-Ausdehnung hineinpassen
+  const maxZoom = showEinsatzkreisBounds && !currentRoutes.length ? kartenStartZoom : Math.min(map.getMaxZoom() || 18, 18);
+  for (let z = maxZoom; z >= map.getMinZoom(); z--) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    elemente.forEach(function (e) {
+      const p = map.project(e.ll, z);
+      x0 = Math.min(x0, p.x + e.box[0]);
+      y0 = Math.min(y0, p.y + e.box[1]);
+      x1 = Math.max(x1, p.x + e.box[2]);
+      y1 = Math.max(y1, p.y + e.box[3]);
+    });
+    for (const v of varianten) {
+      const passt = x1 - x0 <= groesse.x - v.tl[0] - v.br[0] && y1 - y0 <= groesse.y - v.tl[1] - v.br[1];
+      if (passt || z === map.getMinZoom()) {
+        // Mittelpunkt wie bei Leaflets fitBounds um die ungleichen Ränder verschieben
+        const zentrum = L.point((x0 + x1 + v.br[0] - v.tl[0]) / 2, (y0 + y1 + v.br[1] - v.tl[1]) / 2);
+        map.setView(map.unproject(zentrum, z), z);
+        return;
+      }
+    }
   }
 }
 
@@ -1287,55 +1378,46 @@ socket.on("io.new_waip", function (data) {
   recount_rmld(data.uuid);
   // VIEW anpassen
   reset_view();
-  // Uhr ausblenden, Tableau einblenden – MUSS vor map.fitBounds passieren,
+  // Uhr ausblenden, Tableau einblenden – MUSS vor karte_einpassen passieren,
   // damit der Kartencontainer eine reale Größe hat wenn Leaflet rechnet
   $("#waipclock").addClass("d-none");
   $("#waiptableau").removeClass("d-none");
-  // Leaflet die tatsächliche Containergröße mitteilen, bevor fitBounds aufgerufen wird
+  // Leaflet die tatsächliche Containergröße mitteilen, bevor eingepasst wird
   map.invalidateSize();
   // neuer Einsatz: automatisches Einpassen wieder erlauben
   karteManuellBewegt = false;
 
-  const initialZoom = kartenStartZoom;
-
-  // Karte setzen (Punkt oder GeoJSON mit Rand zentrieren)
+  // Karte setzen (Punkt oder Einsatzumkreis), danach einpassen
+  showEinsatzkreisBounds = false;
   if (data.wgs84_x && data.wgs84_y) {
     const lat = data.wgs84_x;
     const lng = data.wgs84_y;
-    showEinsatzkreisBounds = false;
     marker = L.marker(new L.LatLng(lat, lng), { icon: redIcon, pane: "zielPane" }).addTo(map);
-    map.setView(new L.LatLng(lat, lng), initialZoom);
     // Inset-Karte nur bei Punkt-Einsatz mit Vollberechtigung
     if (data.permissions) {
       create_inset_map(lat, lng);
     }
-  } else {
+  } else if (data.geometry) {
     try {
       const gjData = JSON.parse(data.geometry);
       geojson = L.geoJSON(gjData).addTo(map);
       // Ohne Zielkoordinaten (fehlende Berechtigung) zeigen wir nur den Einsatzumkreis -
-      // dessen Bounds müssen auch beim Zeichnen der Wachen-Routen erhalten bleiben,
-      // damit der Kreis nicht durch einen späteren fitBounds auf eine einzelne Wache
-      // weggezoomt wird.
-      showEinsatzkreisBounds = true;
-      const gjBounds = geojson.getBounds();
-      if (gjBounds.isValid()) {
-        map.fitBounds(gjBounds, { padding: [50, 50], maxZoom: initialZoom });
-      } else {
-        map.setView(gjBounds.getCenter(), initialZoom);
-      }
+      // er muss auch beim Einpassen mit den Wachen-Routen sichtbar bleiben
+      showEinsatzkreisBounds = geojson.getBounds().isValid();
     } catch (e) {
       console.error("GeoJSON Parsing/Rendering Fehler", e);
     }
   }
+  karte_einpassen();
 
   resize_text(true);
 });
 
-// OSRM-Routen empfangen und auf der Karte zeichnen
+// OSRM-Routen empfangen, zeichnen und Karte darauf einpassen
 socket.on("io.routes", function (routes) {
   currentRoutes = routes || [];
   draw_routes(currentRoutes);
+  karte_einpassen();
 });
 
 socket.on("io.new_rmld", function (data) {
@@ -1910,176 +1992,13 @@ function alterClass(elementId, removeClassPattern, addClass) {
 function clear_route_layers() {
   routeLayers.forEach(function (l) { map.removeLayer(l); });
   routeLayers = [];
+  routenWachen = [];
 }
 
-// Versetzt eine Latlng-Liste um offsetPx Pixel senkrecht zur Linie. Wird bei jedem Redraw mit
-// dem aktuellen Zoom neu berechnet, damit der Versatz auf jeder Zoomstufe gleich breit wirkt
-// (analog zum Prinzip von Leaflet.PolylineOffset, hier ohne Zusatz-Abhängigkeit selbst umgesetzt).
-function offsetLatLngs(targetMap, latlngs, offsetPx) {
-  if (!offsetPx || latlngs.length < 2) return latlngs;
-  const zoom = targetMap.getZoom();
-  const pts = latlngs.map(function (ll) { return targetMap.project(ll, zoom); });
-  const n = pts.length;
-  const segPerp = [];
-  for (let i = 0; i < n - 1; i++) {
-    const dx = pts[i + 1].x - pts[i].x, dy = pts[i + 1].y - pts[i].y;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    segPerp.push({ x: -dy / len, y: dx / len });
-  }
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    let perp;
-    if (i === 0) perp = segPerp[0];
-    else if (i === n - 1) perp = segPerp[n - 2];
-    else {
-      const sx = segPerp[i - 1].x + segPerp[i].x, sy = segPerp[i - 1].y + segPerp[i].y;
-      const slen = Math.sqrt(sx * sx + sy * sy) || 1;
-      perp = { x: sx / slen, y: sy / slen };
-    }
-    out.push(L.point(pts[i].x + perp.x * offsetPx, pts[i].y + perp.y * offsetPx));
-  }
-  return out.map(function (p) { return targetMap.unproject(p, zoom); });
-}
-
-// Feste Reihenfolge nach Wachennummer, damit der Versatz zwischen Redraws stabil bleibt
-function assignRouteOffsets(routes) {
-  const step = 5; // Pixel Abstand zwischen benachbarten Routen
-  const sorted = routes.filter(function (r) { return r.geometry; })
-    .slice().sort(function (a, b) { return String(a.nr_wache).localeCompare(String(b.nr_wache)); });
-  const offsets = new Map();
-  sorted.forEach(function (r, i) { offsets.set(r, (i - (sorted.length - 1) / 2) * step); });
-  return offsets;
-}
-
-function draw_routes(routes, fit) {
-  if (fit === undefined) fit = true;
-  clear_route_layers();
-  if (!routes || !routes.length) return;
-
-  const allBounds = [];
-  const offsets = assignRouteOffsets(routes);
-
-  routes.forEach(function (route) {
-    if (!route.geometry) {
-      // Keine Route vorhanden (z.B. Wache liegt im Einsatzbereich) -> nur Label anzeigen
-      if (route.coords) {
-        const labelMarker = L.circleMarker([route.coords[0], route.coords[1]], {
-          radius: 8,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: route.color,
-          fillOpacity: 1.0,
-        }).addTo(map);
-        if (route.name_wache) labelMarker.bindTooltip(route.name_wache, { permanent: true, direction: "top", offset: [0, -10], className: "route-label" });
-        routeLayers.push(labelMarker);
-        try {
-          const b = L.latLngBounds([route.coords, route.coords]);
-          if (b.isValid()) allBounds.push(b);
-        } catch (_) {}
-      }
-      return;
-    }
-
-    const latlngs = route.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
-    const offsetLL = offsetLatLngs(map, latlngs, offsets.get(route) || 0);
-
-    // Schatten
-    const shadow = L.polyline(offsetLL, {
-      color: "#000000", weight: 10, opacity: 0.18, lineCap: "round", lineJoin: "round",
-    }).addTo(map);
-    routeLayers.push(shadow);
-
-    // Halo (weißer Hintergrund) für besseren Kontrast
-    const halo = L.polyline(offsetLL, {
-      color: "#ffffff", weight: 5, opacity: 0.65, lineCap: "round", lineJoin: "round",
-    }).addTo(map);
-    routeLayers.push(halo);
-
-    // Farbige Linie
-    const layer = L.polyline(offsetLL, {
-      color: route.color, weight: 4, opacity: 1.0, lineCap: "round", lineJoin: "round",
-    }).addTo(map);
-    routeLayers.push(layer);
-
-    // Startpunkt-Marker (Wache)
-    if (offsetLL.length) {
-      const startMarker = L.circleMarker(offsetLL[0], {
-        radius: 8,
-        color: "#ffffff",
-        weight: 2,
-        fillColor: route.color,
-        fillOpacity: 1.0,
-      }).addTo(map);
-      if (route.name_wache) startMarker.bindTooltip(route.name_wache, { permanent: true, direction: "top", offset: [0, -10], className: "route-label" });
-      routeLayers.push(startMarker);
-    }
-
-    try {
-      const bounds = layer.getBounds();
-      if (bounds.isValid()) allBounds.push(bounds);
-    } catch (_) {}
-  });
-
-  if (allBounds.length || showEinsatzkreisBounds) {
-    let combined = allBounds.length ? allBounds[0] : null;
-    for (let i = 1; i < allBounds.length; i++) combined = combined.extend(allBounds[i]);
-    // Einsatzumkreis einbeziehen, falls nur dieser (statt Zielkoordinaten) angezeigt wird -
-    // sonst würde der Kreis von den Bounds der Wachen-Marker/-Routen verdrängt
-    if (showEinsatzkreisBounds) {
-      try {
-        const gjBounds = geojson.getBounds();
-        if (gjBounds.isValid()) combined = combined ? combined.extend(gjBounds) : gjBounds;
-      } catch (_) {}
-    }
-    if (!combined) return;
-    // Marker-Position einbeziehen falls vorhanden
-    try {
-      const mPos = marker.getLatLng();
-      if (mPos.lat !== 0 || mPos.lng !== 0) combined = combined.extend(mPos);
-    } catch (_) {}
-
-    // Nur beim Eintreffen neuer Routendaten die Sicht anpassen, nicht bei jedem
-    // Zoomwechsel (sonst würde manuelles Zoomen sofort wieder überschrieben)
-    if (!fit) return;
-
-    const insetEl = document.getElementById("map-inset");
-    const insetVisible = insetEl && !insetEl.classList.contains("d-none");
-
-    if (insetVisible) {
-      // Inset in den Quadranten verschieben, der dem Routenstart (Wache) gegenüberliegt
-      const firstCoords = routes.length && routes[0].geometry && routes[0].geometry.coordinates;
-      const startCoord = firstCoords && firstCoords.length ? firstCoords[0] : null; // [lng, lat]
-      const center = combined.getCenter();
-      const stationSouth = startCoord ? startCoord[1] < center.lat : true;
-      const stationWest  = startCoord ? startCoord[0] < center.lng : true;
-
-      // Inset gegenüber der Wache positionieren
-      insetEl.style.top    = stationSouth ? "auto" : "10px";
-      insetEl.style.bottom = stationSouth ? "10px" : "auto";
-      insetEl.style.left   = stationWest  ? "auto" : "10px";
-      insetEl.style.right  = stationWest  ? "10px" : "auto";
-
-      // fitBounds-Padding aus tatsächlicher Inset-Größe lesen, damit responsive CSS-Änderungen
-      // (min(260px, 38%)) automatisch berücksichtigt werden. Das Inset liegt in einer Ecke: Es genügt,
-      // auf EINER Achse Platz freizuhalten (Streifen neben ODER über/unter dem Inset), dann kann nichts
-      // darunter liegen. Bisher wurde auf beiden Achsen freigehalten -> Karte unnötig weit herausgezoomt.
-      const insetB = insetEl.offsetWidth + 12; // Breite/Höhe + 10px Rand + 2px Border
-      const insetH = insetEl.offsetHeight + 12;
-      const nebenInset = { // Streifen links/rechts freihalten
-        paddingTopLeft: [stationWest ? 15 : insetB, 15],
-        paddingBottomRight: [stationWest ? insetB : 15, 15],
-      };
-      const ueberInset = { // Streifen oben/unten freihalten
-        paddingTopLeft: [15, stationSouth ? 15 : insetH],
-        paddingBottomRight: [15, stationSouth ? insetH : 15],
-      };
-      const zoomNeben = map.getBoundsZoom(combined, false, L.point(15 + insetB, 30));
-      const zoomUeber = map.getBoundsZoom(combined, false, L.point(30, 15 + insetH));
-      map.fitBounds(combined, zoomNeben >= zoomUeber ? nebenInset : ueberInset);
-    } else {
-      map.fitBounds(combined, { padding: [15, 15] });
-    }
-  }
+// Routen zeichnen (gemeinsam mit dem Dashboard, siehe karte_routen.js). Passt die Karte NICHT ein,
+// das macht karte_einpassen() (bei neuen Routendaten und nach Größenänderungen).
+function draw_routes(routes) {
+  routenWachen = routen_zeichnen(map, routes, routeLayers);
 }
 
 function create_inset_map(lat, lng) {

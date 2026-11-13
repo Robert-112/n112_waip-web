@@ -851,6 +851,19 @@ audio {
 }
 .leaflet-tooltip.route-label::before { display: none; }
 
+/* Zielmarker (Einsatzort): Stecknadel als SVG (karte_routen.js), darin ein weißer Punkt aus Bootstrap Icons */
+.ziel-marker svg { display: block; }
+.ziel-marker .bi {
+  position: absolute;
+  left: 50%;
+  top: 36%; /* Mitte des Nadelkopfs (16,5 von 46) */
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+}
+.ziel-marker-gross .bi { font-size: 20px; }
+
 /* Inset-Karte (Detailansicht Einsatzort im Alarmmonitor) */
 #map-inset {
   position: absolute;
