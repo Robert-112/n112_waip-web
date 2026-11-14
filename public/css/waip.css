@@ -1062,6 +1062,25 @@ audio {
   box-shadow: inset 0 0 0 2px var(--bs-info);
 }
 
+/* Seitenleiste im Archiv: Darkly färbt .pagination grün, hier Kartengrau + Navbar-Blau */
+#archiv .pagination {
+  --bs-pagination-bg: #303030;
+  --bs-pagination-color: var(--bs-body-color);
+  --bs-pagination-border-color: #444;
+  --bs-pagination-hover-bg: #383838;
+  --bs-pagination-hover-color: #fff;
+  --bs-pagination-hover-border-color: #555;
+  --bs-pagination-focus-bg: #383838;
+  --bs-pagination-focus-color: #fff;
+  --bs-pagination-focus-box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.35);
+  --bs-pagination-active-bg: #215d84;
+  --bs-pagination-active-color: #fff;
+  --bs-pagination-active-border-color: #215d84;
+  --bs-pagination-disabled-bg: #2a2a2a;
+  --bs-pagination-disabled-color: rgba(255, 255, 255, 0.35);
+  --bs-pagination-disabled-border-color: #444;
+}
+
 /*** Navbar: gedecktes Akzentblau (gleicher Farbton wie Icons/Akzente #3498db, nur dunkler),
      statt des grauen Stahlblaus von Darkly (#375a7f) - 2026-11-12 Variante N1 ***/
 .navbar.bg-primary {

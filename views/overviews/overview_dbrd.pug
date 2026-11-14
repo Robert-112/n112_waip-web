@@ -71,7 +71,8 @@ block content
                 .row.g-2.mb-3
                   .col-12.col-md
                     label.visually-hidden(for='archivSuche') Archiv durchsuchen
-                    input.form-control#archivSuche(type='search', placeholder='Ort, Stichwort oder Einsatzmittel suchen …', autocomplete='off')
+                    input.form-control#archivSuche(type='search', placeholder='Ort, Stichwort, Datum oder Einsatzmittel …', autocomplete='off', aria-describedby='archivSucheHilfe')
+                    .form-text#archivSucheHilfe Datum z. B. als „13.11.“, „Freitag“ oder „gestern“.
                   .col-12.col-md-auto
                     .btn-group.w-100(role='group', aria-label='Einsatzart')
                       input.btn-check#archivArtAlle(type='radio', name='archivArt', value='', checked)
@@ -88,6 +89,8 @@ block content
                   span.spinner-border.spinner-border-sm.me-2(aria-hidden='true')
                   | Archiv wird geladen …
                 .list-group.gap-2#archivListe
+                nav.d-none#archivSeitenNav(aria-label='Seiten des Archivs')
+                  ul.pagination.pagination-sm.justify-content-center.flex-wrap.mt-3.mb-0#archivSeiten
 
         script.
           // Kurz-Archiv: einmalig beim ersten Aufklappen laden, danach nur noch im Browser filtern
@@ -96,9 +99,14 @@ block content
             var liste = document.getElementById('archivListe');
             var status = document.getElementById('archivStatus');
             var suche = document.getElementById('archivSuche');
+            var seitenNav = document.getElementById('archivSeitenNav');
+            var seitenListe = document.getElementById('archivSeiten');
             var markiert = inhalt.getAttribute('data-markiert') || '';
             var eintraege = null;
             var geladen = false;
+            // Blättern nur im Browser: alle Einträge sind schon geladen, Suche/Filter wirken auf alle Seiten
+            var PRO_SEITE = 10;
+            var seite = 1;
             var ART = {
               Brandeinsatz: ['danger', 'bi-fire'],
               Hilfeleistungseinsatz: ['info', 'bi-tools'],
@@ -166,25 +174,111 @@ block content
               return li;
             }
 
+            // Kalendertag als Zahl (lokale Zeit), für "heute/gestern/vorgestern"
+            function tagnummer(t) {
+              return Math.round(new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime() / 86400000);
+            }
+
+            // Datum mit durchsuchbar machen: "13.11.", "13.11.2026", "freitag"
             function suchtext(d) {
-              return [d.einsatzart, d.stichwort, d.ort, d.ortsteil]
+              var teile = [d.einsatzart, d.stichwort, d.ort, d.ortsteil];
+              var t = new Date(String(d.alarmzeit || '').replace(' ', 'T'));
+              if (!isNaN(t)) {
+                d._tag = tagnummer(t);
+                teile.push(
+                  t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                  t.toLocaleDateString('de-DE', { weekday: 'long' })
+                );
+              }
+              return teile
                 .concat(d.einsatzmittel.map(function (e) { return e.f + ' ' + e.w; }))
                 .join(' ').toLowerCase();
             }
 
-            function anzeigen() {
-              if (!eintraege) return;
+            // relative Tage bei jeder Suche neu berechnen (Seite kann über Mitternacht offen bleiben);
+            // ab 3 Buchstaben reicht der Anfang, z. B. "gest"
+            var RELATIV = { heute: 0, gestern: 1, vorgestern: 2 };
+            function passt(d, w, heute) {
+              if (d._such.indexOf(w) !== -1) return true;
+              if (w.length < 3 || d._tag == null) return false;
+              return Object.keys(RELATIV).some(function (r) {
+                return r.indexOf(w) === 0 && heute - d._tag === RELATIV[r];
+              });
+            }
+
+            function treffer_ermitteln() {
               var art = (document.querySelector('input[name="archivArt"]:checked') || {}).value || '';
               var woerter = suche.value.toLowerCase().split(/\s+/).filter(Boolean);
-              var treffer = eintraege.filter(function (d) {
+              var heute = tagnummer(new Date());
+              return eintraege.filter(function (d) {
                 if (art && d.einsatzart !== art) return false;
-                return woerter.every(function (w) { return d._such.indexOf(w) !== -1; });
+                return woerter.every(function (w) { return passt(d, w, heute); });
               });
-              liste.replaceChildren.apply(liste, treffer.map(eintrag));
+            }
+
+            // Seitennummern kompakt: 1 … 4 5 6 … 12 (passt auch auf dem Smartphone in eine Zeile)
+            function seitennummern(akt, max) {
+              var s = [];
+              for (var i = 1; i <= max; i++) {
+                if (i === 1 || i === max || Math.abs(i - akt) <= 1) s.push(i);
+                else if (s[s.length - 1] !== '…') s.push('…');
+              }
+              return s;
+            }
+
+            function seitenknopf(text, ziel, aktiv, aus, label) {
+              var li = el('li', 'page-item' + (aktiv ? ' active' : '') + (aus ? ' disabled' : ''));
+              var link;
+              if (aktiv || aus) {
+                link = el('span', 'page-link', text);
+                if (aktiv) li.setAttribute('aria-current', 'page');
+              } else {
+                link = el('a', 'page-link', text);
+                link.href = '#archiv';
+                link.addEventListener('click', function (ev) {
+                  ev.preventDefault();
+                  seite = ziel;
+                  anzeigen();
+                  // zum Listenanfang, falls er aus dem Bild gerutscht ist (feste Navbar berücksichtigen)
+                  var oben = status.getBoundingClientRect().top;
+                  if (oben < 80 || oben > window.innerHeight) window.scrollTo({ top: window.scrollY + oben - 90, behavior: 'smooth' });
+                });
+              }
+              if (label) link.setAttribute('aria-label', label);
+              li.appendChild(link);
+              return li;
+            }
+
+            function anzeigen() {
+              if (!eintraege) return;
+              var treffer = treffer_ermitteln();
+              var seiten = Math.max(1, Math.ceil(treffer.length / PRO_SEITE));
+              seite = Math.min(Math.max(1, seite), seiten);
+              var von = (seite - 1) * PRO_SEITE;
+              var bis = Math.min(von + PRO_SEITE, treffer.length);
+              liste.replaceChildren.apply(liste, treffer.slice(von, bis).map(eintrag));
+
+              var gefiltert = treffer.length !== eintraege.length;
               if (eintraege.length === 0) status.textContent = 'Im Archiv sind derzeit keine Einsätze vorhanden.';
               else if (treffer.length === 0) status.textContent = 'Keine Einsätze gefunden.';
-              else status.textContent = treffer.length + (treffer.length === 1 ? ' Einsatz' : ' Einsätze') +
-                (treffer.length !== eintraege.length ? ' von ' + eintraege.length : '');
+              else if (seiten === 1) status.textContent = treffer.length + (treffer.length === 1 ? ' Einsatz' : ' Einsätze') +
+                (gefiltert ? ' von ' + eintraege.length : '');
+              else status.textContent = (von + 1) + '–' + bis + ' von ' + treffer.length +
+                (gefiltert ? ' Treffern (' + eintraege.length + ' gesamt)' : ' Einsätzen');
+
+              seitenNav.classList.toggle('d-none', seiten < 2);
+              var knoepfe = [seitenknopf('‹', seite - 1, false, seite === 1, 'Vorherige Seite')];
+              seitennummern(seite, seiten).forEach(function (n) {
+                knoepfe.push(n === '…' ? seitenknopf('…', null, false, true) : seitenknopf(String(n), n, n === seite, false, 'Seite ' + n));
+              });
+              knoepfe.push(seitenknopf('›', seite + 1, false, seite === seiten, 'Nächste Seite'));
+              seitenListe.replaceChildren.apply(seitenListe, knoepfe);
+            }
+
+            // Suche oder Filter geändert: wieder bei Seite 1 beginnen
+            function neu_filtern() {
+              seite = 1;
+              anzeigen();
             }
 
             function laden() {
@@ -194,6 +288,9 @@ block content
                 .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
                 .then(function (j) {
                   eintraege = (j.einsaetze || []).map(function (d) { d._such = suchtext(d); return d; });
+                  // von einem alten Dashboard-Link: direkt die Seite mit dem markierten Einsatz zeigen
+                  var idx = eintraege.findIndex(function (d) { return d.markiert; });
+                  seite = idx >= 0 ? Math.floor(idx / PRO_SEITE) + 1 : 1;
                   anzeigen();
                   var m = document.getElementById('archivMarkiert');
                   if (m) m.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -206,8 +303,8 @@ block content
 
             inhalt.addEventListener('show.bs.collapse', laden);
             if (inhalt.classList.contains('show')) laden();
-            suche.addEventListener('input', anzeigen);
-            document.querySelectorAll('input[name="archivArt"]').forEach(function (r) { r.addEventListener('change', anzeigen); });
+            suche.addEventListener('input', neu_filtern);
+            document.querySelectorAll('input[name="archivArt"]').forEach(function (r) { r.addEventListener('change', neu_filtern); });
           })();
 
   script.
