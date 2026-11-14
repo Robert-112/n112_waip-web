@@ -136,7 +136,9 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 - beendete Brand- und Hilfeleistungseinsätze bleiben für einige Tage (Standard: 3 Tage) im Kurz-Archiv sichtbar
     - dort stehen nur grobe Angaben: Zeit, Ort und Ortsteil, Einsatzart und Stichwort, alarmierte Einsatzmittel sowie die Anzahl der Rückmeldungen
     - keine Karte, keine Straße, keine Einsatznummer und keine Namen
-    - das Archiv kann durchsucht und nach Einsatzart gefiltert werden
+    - das Archiv kann nach Ort, Stichwort, Einsatzmittel oder Datum durchsucht und nach Einsatzart gefiltert werden
+    - ein Datum kann z.B. als `13.11.`, als Wochentag (`Freitag`) oder als `heute`, `gestern` bzw. `vorgestern` eingegeben werden, mehrere Suchbegriffe werden kombiniert (z.B. `gestern BMA`)
+    - es werden 10 Einsätze je Seite angezeigt, darunter kann geblättert werden, Suche und Filter wirken dabei immer auf alle Einträge
 - wird ein alter Link auf ein Dashboard aufgerufen, dessen Einsatz bereits beendet ist, erfolgt eine Weiterleitung zum passenden Eintrag im Archiv
 
 ---
