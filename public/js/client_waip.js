@@ -61,6 +61,7 @@ $(window).on("resize", function () {
   // Debounce: textFit erst nach Abschluss des Resize ausführen, nicht bei jedem Event
   clearTimeout(_resize_debounce);
   _resize_debounce = setTimeout(function () {
+    ticker_rendern();
     resize_text(true);
     updateWachennameAnimation();
     updateRandomPosition();
@@ -930,6 +931,7 @@ socket.on("io.standby", function (data) {
   }
   // 200ms warten
   setTimeout(function () {
+    ticker_rendern();
     resize_text(true);
     updateWachennameAnimation();
     updateRandomPosition();
@@ -944,7 +946,7 @@ socket.on("io.standby", function (data) {
 // Wetter, Unwetterwarnungen und Termine kommen fertig aufbereitet vom Server (der Monitor selbst braucht
 // keinen Internetzugang). Teil-Updates werden zusammengeführt, die Anzeige wird einmal pro Minute geprüft
 // (veraltete Daten ausblenden, vergangene Termine entfernen, Tageswechsel).
-const widgetDaten = { aktiv: { wetter: false, kalender: false, waldbrand: false }, max_age: 180, waldbrand_ab: 3, wetter: null, warnungen: null, kalender: null, waldbrand: null };
+const widgetDaten = { aktiv: { wetter: false, kalender: false, waldbrand: false, ticker: false }, max_age: 180, waldbrand_ab: 3, wetter: null, warnungen: null, kalender: null, waldbrand: null, ticker: null };
 
 const WETTER_SYMBOLE = {
   "clear-day": ["bi-sun", "klar"],
@@ -1099,7 +1101,7 @@ function wetter_rendern(w) {
 
   const stand = a.stand ? new Date(a.stand) : w.abgerufen ? new Date(w.abgerufen) : null;
   // Ort (nur wenn er vom Wachennamen unten abweicht), Stand und Quelle in einer kleinen Zeile
-  const name_unten = (document.querySelector("#wachenname_footer .h4") || {}).textContent || "";
+  const name_unten = (document.querySelector("#wachenname_footer .wachenname-text") || {}).textContent || "";
   const ort = w.ort && w.ort.trim().toLowerCase() !== name_unten.trim().toLowerCase() ? w.ort : null;
   const vorne = [ort, stand ? "Stand " + uhrzeit(stand) : null].filter(Boolean).join(" · ");
   box.querySelector(".standby-wetter-stand").textContent = vorne ? vorne + " · " : "";
@@ -1246,8 +1248,84 @@ if (document.fonts && document.fonts.ready) {
   });
 }
 
+/* ##### Ticker ##### */
+
+// Laufgeschwindigkeit in Schriftgrößen pro Sekunde (TV 1080p: ca. 85 px/s)
+const TICKER_TEMPO = 3;
+
+function ticker_meldung_element(m, rot) {
+  const el = element("span", "ticker-meldung" + (!rot && m.stufe === "warning" ? " gelb" : ""));
+  if (rot) el.appendChild(element("i", "bi bi-exclamation-octagon-fill ticker-symbol")).setAttribute("aria-hidden", "true");
+  if (m.quelle) el.appendChild(element("span", "ticker-quelle", m.quelle));
+  if (!rot && m.stufe === "warning") el.appendChild(element("i", "bi bi-exclamation-triangle-fill ticker-symbol")).setAttribute("aria-hidden", "true");
+  el.appendChild(element("span", "ticker-text", m.text));
+  el.appendChild(element("span", "ticker-trenner", "•")).setAttribute("aria-hidden", "true");
+  return el;
+}
+
+// Eine Zeile füllen: alle Meldungen bilden einen Satz, der so oft wiederholt wird, dass er breiter als die
+// Zeile ist; zwei Sätze hintereinander laufen um 50 % nach links = nahtlose Endlosschleife.
+// Neu aufgebaut wird nur bei geänderten Meldungen oder Breite, sonst liefe die Animation jedes Mal neu an.
+function ticker_zeile_rendern(zeile, liste, rot) {
+  if (liste.length === 0) {
+    zeile.classList.add("d-none");
+    zeile.dataset.signatur = "";
+    return false;
+  }
+  zeile.classList.remove("d-none");
+  const signatur = JSON.stringify(liste.map((m) => [m.text, m.stufe, m.quelle, m.start])) + "|" + window.innerWidth + "x" + window.innerHeight;
+  if (zeile.dataset.signatur === signatur) return true;
+  const band = zeile.querySelector(".ticker-band");
+  const satz = element("span", "ticker-satz");
+  liste.forEach((m) => satz.appendChild(ticker_meldung_element(m, rot)));
+  band.style.animation = "none";
+  band.replaceChildren(satz);
+  const einzeln = satz.getBoundingClientRect().width;
+  const zeilen_breite = zeile.clientWidth;
+  // unsichtbar (z.B. während eines Einsatzes): beim nächsten Aufruf neu messen
+  if (!einzeln || !zeilen_breite) {
+    zeile.dataset.signatur = "";
+    band.style.animation = "";
+    return true;
+  }
+  const kopien = Math.max(1, Math.ceil(zeilen_breite / einzeln));
+  for (let i = 1; i < kopien; i++) liste.forEach((m) => satz.appendChild(ticker_meldung_element(m, rot)));
+  band.appendChild(satz.cloneNode(true));
+  const schrift = parseFloat(getComputedStyle(zeile).fontSize) || 16;
+  band.style.setProperty("--ticker-dauer", (satz.getBoundingClientRect().width / (schrift * TICKER_TEMPO)).toFixed(1) + "s");
+  band.style.animation = "";
+  zeile.dataset.signatur = signatur;
+  return true;
+}
+
+// Laufende Meldungen anzeigen (Beginn/Ende genau, der Server liefert auch bald beginnende mit);
+// liefert true, wenn der Ticker ein- oder ausgeblendet wurde (Layout geändert)
+function ticker_rendern() {
+  const box = document.getElementById("standby_ticker");
+  if (!box) return false;
+  const jetzt = Date.now();
+  const alle = widgetDaten.aktiv.ticker && widgetDaten.ticker ? widgetDaten.ticker.meldungen || [] : [];
+  const laufend = alle.filter((m) => new Date(m.start).getTime() <= jetzt && new Date(m.ende).getTime() > jetzt);
+  const vorher = box.classList.contains("d-none");
+  // vor dem Messen der Zeilen einblenden (ausgeblendet ist alles 0 px breit)
+  box.classList.toggle("d-none", laufend.length === 0);
+  ticker_zeile_rendern(document.getElementById("ticker_rot"), laufend.filter((m) => m.stufe === "danger"), true);
+  ticker_zeile_rendern(document.getElementById("ticker_info"), laufend.filter((m) => m.stufe !== "danger"), false);
+  return vorher !== box.classList.contains("d-none");
+}
+
+// Einbrennschutz: Bänder innerhalb ihres Spielraums zufällig in der Höhe versetzen
+function ticker_versetzen() {
+  const box = document.getElementById("standby_ticker");
+  const baender = box && box.querySelector(".ticker-baender");
+  if (!baender) return;
+  const spiel = parseFloat(getComputedStyle(box).paddingBottom) || 0;
+  baender.style.transform = "translateY(" + Math.floor(Math.random() * (spiel + 1)) + "px)";
+}
+
 function widgets_rendern() {
   try {
+    const ticker_geaendert = ticker_rendern();
     const mit_warnung = warnung_rendern(widgetDaten.warnungen);
     const mit_waldbrand = waldbrand_rendern(widgetDaten.waldbrand);
     const mit_wetter = wetter_rendern(widgetDaten.wetter);
@@ -1262,7 +1340,7 @@ function widgets_rendern() {
     block.classList.toggle("mit-gefahren", mit_gefahren);
     widgets_einpassen();
     // Uhrgröße und Position neu berechnen, wenn sich das Layout geändert hat
-    if (vorher !== block.className && $("#waipclock").is(":visible")) {
+    if ((vorher !== block.className || ticker_geaendert) && $("#waipclock").is(":visible")) {
       setTimeout(function () {
         resize_text(true);
         updateRandomPosition();
@@ -1278,7 +1356,7 @@ socket.on("io.widgets", function (data) {
   if (data.aktiv) widgetDaten.aktiv = data.aktiv;
   if (data.max_age) widgetDaten.max_age = data.max_age;
   if (data.waldbrand_ab) widgetDaten.waldbrand_ab = data.waldbrand_ab;
-  ["wetter", "warnungen", "kalender", "waldbrand"].forEach(function (teil) {
+  ["wetter", "warnungen", "kalender", "waldbrand", "ticker"].forEach(function (teil) {
     if (Object.prototype.hasOwnProperty.call(data, teil)) widgetDaten[teil] = data[teil];
   });
   widgets_rendern();
@@ -2070,6 +2148,7 @@ function updateRandomPosition() {
 
   // Position via transform – löst keinen Layout-Reflow aus (Compositor-Thread)
   block.style.transform = `translate(${randomX}px, ${randomY}px)`;
+  ticker_versetzen();
 }
 
 /* ############################ */

@@ -317,6 +317,27 @@ module.exports = (bcrypt, app_cfg) => {
     );
   `);
 
+  // Ticker-Kalender der Leitstellen und Kreise für den Standby (neu in Version 2.2, für neue und bestehende
+  // Datenbanken). nr = 1-stellig Leitstelle, 2-stellig Kreis (wie nr_leitstelle/nr_kreis in waip_wachen).
+  // Die Meldungen selbst stehen im Kalender (SOGo/Nextcloud), hier nur dessen Adresse.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS waip_ticker_quellen (
+      nr TEXT NOT NULL PRIMARY KEY,
+      url TEXT NOT NULL,
+      geaendert_von TEXT,
+      geaendert_am TEXT
+    );
+  `);
+
+  // Zusatzrollen der Benutzer (neu in Version 2.2), unabhängig von den Wachen-Rechten in "permissions",
+  // kommagetrennt, derzeit nur "datenpflege". Für neue und bestehende Datenbanken.
+  try {
+    db.exec("ALTER TABLE waip_user ADD COLUMN rollen TEXT DEFAULT ''");
+    console.log("START - Migration: Spalte 'rollen' zur Tabelle waip_user hinzugefuegt.");
+  } catch (e) {
+    // Spalte existiert bereits, kein Handlungsbedarf
+  }
+
   // Kurz-Archiv beendeter Brand- und Hilfeleistungseinsätze (neu in Version 2.2, für neue und bestehende
   // Datenbanken). Enthält nur die öffentlichen, datenschutzreduzierten Angaben, wird beim Löschen eines
   // Einsatzes einmalig befüllt und nach ARCHIVE_DAYS Tagen wieder geleert.

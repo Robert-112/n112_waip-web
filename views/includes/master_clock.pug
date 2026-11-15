@@ -1,5 +1,5 @@
 #waipclock.fullheight
-  #screen_saver.h-95
+  #screen_saver
     //- Uhr, Gefahrenhinweise und Widgets bilden einen Block, der als Ganzes wandert (Einbrennschutz).
     //- Querformat: links Uhr + Gefahren, rechts Wetter + Termine; Hochformat: untereinander (siehe waip.css)
     #standby_block
@@ -42,8 +42,19 @@
               span Termine
             span.standby-quelle.standby-kalender-stand
           .standby-kalender-liste
-  .h-5.pt-2
-    #wachenname_footer.text-secondary
-      .h4.bi-building
-        = ' ' + (data_wache || ' -Wachenname-')
+  //- Ticker (Leitstelle, Kreis, eigener Ticker-Kalender), nur im Standby. Rot in eigener Zeile darüber.
+  //- Einbrennschutz: der Text läuft ständig, die Bänder wandern im 3-Minuten-Takt etwas in der Höhe.
+  #standby_ticker.d-none(role='marquee', aria-label='Aktuelle Meldungen')
+    .ticker-baender
+      #ticker_rot.ticker-zeile.ticker-rot.d-none
+        .ticker-band
+      #ticker_info.ticker-zeile.ticker-info.d-none
+        .ticker-band
+  #standby_fuss
+    //- Wachenname als dezenter Chip, wandert langsam waagerecht (Einbrennschutz, siehe updateWachennameAnimation)
+    #wachenname_footer
+      .wachenname-chip.h4
+        span.wachenname-icon
+          i.bi.bi-building(aria-hidden='true')
+        span.wachenname-text= data_wache || '-Wachenname-'
         span#wachenname-login-icon.bi-eye-slash.d-none(title="Nicht angemeldet")

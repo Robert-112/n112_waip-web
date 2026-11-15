@@ -481,7 +481,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         standby: sql.db_user_get_config_standby(req.user.id),
         user_karte_breite: sql.db_user_get_config_karte(req.user.id),
         widgets_wetter_aktiv: widgets.wetter_aktiv || widgets.waldbrand_aktiv,
-        widgets_kalender_erlaubt: widgets.erlaubte_kalender(),
+        widgets_kalender_aktiv: widgets.kalender_aktiv,
+        widgets_kalender_erlaubt: await widgets.erlaubte_kalender(),
         session_max_age: app_cfg.global.session_cookie_max_age,
         error: req.query.error || null,
         success: req.query.success || null,
@@ -528,30 +529,39 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     try {
       const wetter = req.body.standby_wetter === "on";
       const kalender = req.body.standby_kalender === "on";
-      const eingabe = String(req.body.ical_url || "").trim().slice(0, 2000);
-      let ical_url = "";
-      let domain = null;
-      if (eingabe) {
+      // Adressen prüft (und lädt probeweise) der Kalender-Dienst; unveränderte Adressen werden nicht erneut geprüft
+      const bisher = sql.db_user_get_config_standby(req.user.id);
+      const adresse_pruefen = async (feld, bezeichnung) => {
+        const eingabe = String(req.body[feld] || "").trim().slice(0, 2000);
+        if (!eingabe) return { url: "", domain: null };
+        if (eingabe === bisher[feld]) return { url: eingabe, domain: null };
         try {
-          const geprueft = widgets.kalender_url_pruefen(eingabe);
-          ical_url = geprueft.url;
-          domain = geprueft.domain.host;
+          const geprueft = await widgets.kalender_url_pruefen(eingabe);
+          return { url: geprueft.url, domain: geprueft.domain };
         } catch (error) {
-          if (error instanceof widgets.KalenderFehler) return zurueck("error", error.message);
+          if (error instanceof widgets.KalenderFehler) throw new widgets.KalenderFehler(error.code, `${bezeichnung}: ${error.message}`);
           throw error;
         }
+      };
+      let termine, ticker;
+      try {
+        termine = await adresse_pruefen("ical_url", "Termin-Kalender");
+        ticker = await adresse_pruefen("ticker_url", "Ticker-Kalender");
+      } catch (error) {
+        if (error instanceof widgets.KalenderFehler) return zurueck("error", error.message);
+        throw error;
       }
-      if (kalender && !ical_url) {
+      if (kalender && !termine.url) {
         return zurueck("error", "Bitte eine öffentliche Kalender-Adresse angeben oder die Termine ausschalten.");
       }
-      await sql.db_user_set_config_standby(req.user.id, { wetter, kalender, ical_url });
-      logger.event(`Standby-Einstellungen von ${req.user.user} geändert (Wetter: ${wetter ? "an" : "aus"}, Kalender: ${kalender ? "an" : "aus"}).`, {
+      await sql.db_user_set_config_standby(req.user.id, { wetter, kalender, ical_url: termine.url, ticker_url: ticker.url });
+      logger.event(`Standby-Einstellungen von ${req.user.user} geändert (Wetter: ${wetter ? "an" : "aus"}, Kalender: ${kalender ? "an" : "aus"}, Ticker: ${ticker.url ? "an" : "aus"}).`, {
         ...logger.from_req(req),
         action: "standby-einstellungen",
         category: "configuration",
         type: "change",
         outcome: "success",
-        wachalarm: { standby: { wetter: wetter, kalender: kalender, kalender_domain: domain } },
+        wachalarm: { standby: { wetter: wetter, kalender: kalender, kalender_domain: termine.domain || undefined, ticker: Boolean(ticker.url), ticker_domain: ticker.domain || undefined } },
       });
       // verbundene Monitore des Benutzers sofort umstellen
       widgets.benutzer_aktualisiert(req.user.id);
@@ -798,7 +808,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // Wachen-Administration anzeigen
-  app.get("/adm_edit_wachen", auth.ensureAdmin, async (req, res, next) => {
+  app.get("/adm_edit_wachen", auth.ensureDatenpflege, async (req, res, next) => {
     try {
       const wachen = await sql.db_wachen_get_all_full();
       res.render("admin/adm_edit_wachen", {
@@ -807,6 +817,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         user: req.user,
         session_max_age: app_cfg.global.session_cookie_max_age,
         wachen,
+        map_service: app_cfg.public.map_service,
         error: req.query.error || null,
         success: req.query.success || null,
       });
@@ -819,7 +830,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // Wache bearbeiten
-  app.post("/adm_edit_wachen/edit", auth.ensureAdmin, async (req, res) => {
+  app.post("/adm_edit_wachen/edit", auth.ensureDatenpflege, async (req, res) => {
     try {
       await sql.db_wache_update(req.body);
       config_event(req, `Wache ${req.body.nr_wache} (ID ${req.body.id}) wurde von ${req.user.user} bearbeitet (aktiv: ${req.body.aktiv ? "ja" : "nein"}).`, "wache-geaendert", "change", {
@@ -833,7 +844,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // Wache löschen
-  app.post("/adm_edit_wachen/delete", auth.ensureAdmin, async (req, res) => {
+  app.post("/adm_edit_wachen/delete", auth.ensureDatenpflege, async (req, res) => {
     try {
       await sql.db_wache_delete(req.body.id);
       config_event(req, `Wache mit ID ${req.body.id} wurde von ${req.user.user} gelöscht.`, "wache-geloescht", "deletion", {
@@ -846,7 +857,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // Neue Wache anlegen
-  app.post("/adm_edit_wachen/create", auth.ensureAdmin, async (req, res) => {
+  app.post("/adm_edit_wachen/create", auth.ensureDatenpflege, async (req, res) => {
     try {
       await sql.db_wache_create(req.body);
       config_event(req, `Wache ${req.body.nr_wache} wurde von ${req.user.user} angelegt.`, "wache-angelegt", "creation", {
@@ -874,6 +885,14 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     if (mit_nr && (!/^\d+$/.test(ort.nr) || ![1, 2, 4, 6].includes(ort.nr.length))) {
       return { fehler: "Die Nummer muss 1 (Leitstelle), 2 (Kreis), 4 (Träger) oder 6 (Wache) Ziffern haben." };
     }
+    // neuer Eintrag ohne Koordinate (z.B. nur eine feste Warnzelle): Mittelpunkt der Wachen übernehmen
+    if (mit_nr && !String(body.lat ?? "").trim() && !String(body.lon ?? "").trim()) {
+      const auto = sql.db_wetter_ort_ermitteln(ort.nr);
+      if (!auto || auto.quelle !== "wachen") return { fehler: `Für ${ort.nr} gibt es keine Koordinate aus den Wachen, bitte Breite und Länge angeben.` };
+      body = { ...body, lat: String(auto.lat), lon: String(auto.lon) };
+      ort.lat = auto.lat;
+      ort.lon = auto.lon;
+    }
     if (!String(body.lat ?? "").trim() || !isFinite(ort.lat) || ort.lat < -90 || ort.lat > 90) return { fehler: "Die Breite (Lat) ist ungültig, z.B. 52.41787." };
     if (!String(body.lon ?? "").trim() || !isFinite(ort.lon) || ort.lon < -180 || ort.lon > 180) return { fehler: "Die Länge (Lon) ist ungültig, z.B. 12.53254." };
     if (ort.warncell_id && !/^\d{6,10}$/.test(ort.warncell_id)) return { fehler: "Die Warnzelle muss eine Zahl (DWD-Warnzellen-ID) sein oder leer bleiben." };
@@ -890,15 +909,16 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   };
 
   // Wetter-Standorte anzeigen
-  app.get("/adm_edit_wetter", auth.ensureAdmin, async (req, res, next) => {
+  app.get("/adm_edit_wetter", auth.ensureDatenpflege, async (req, res, next) => {
     try {
-      const orte = await sql.db_wetter_orte_get_all();
+      const zeilen = sql.db_wetter_uebersicht();
       res.render("admin/adm_edit_wetter", {
         public: app_cfg.public,
         title: "Wetter-Standorte verwalten",
         user: req.user,
         session_max_age: app_cfg.global.session_cookie_max_age,
-        orte,
+        zeilen,
+        map_service: app_cfg.public.map_service,
         wetter_aktiv: widgets.wetter_aktiv,
         brightsky_url: app_cfg.widgets.brightsky_url,
         waldbrand_url: app_cfg.widgets.waldbrand_url,
@@ -915,7 +935,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // Wetter-Standort anlegen
-  app.post("/adm_edit_wetter/create", auth.ensureAdmin, async (req, res) => {
+  app.post("/adm_edit_wetter/create", auth.ensureDatenpflege, async (req, res) => {
     try {
       const { ort, fehler } = await wetter_ort_pruefen(req.body, true);
       if (fehler) return res.redirect("/adm_edit_wetter?error=" + encodeURIComponent(fehler));
@@ -929,7 +949,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // Wetter-Standort bearbeiten
-  app.post("/adm_edit_wetter/edit", auth.ensureAdmin, async (req, res) => {
+  app.post("/adm_edit_wetter/edit", auth.ensureDatenpflege, async (req, res) => {
     try {
       const { ort, fehler } = await wetter_ort_pruefen(req.body, false);
       if (fehler) return res.redirect("/adm_edit_wetter?error=" + encodeURIComponent(fehler));
@@ -942,23 +962,23 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // Wetter-Standort löschen
-  app.post("/adm_edit_wetter/delete", auth.ensureAdmin, async (req, res) => {
+  app.post("/adm_edit_wetter/delete", auth.ensureDatenpflege, async (req, res) => {
     try {
       await sql.db_wetter_ort_delete(req.body.id);
       config_event(req, `Wetter-Standort ID ${req.body.id} wurde von ${req.user.user} gelöscht.`, "wetter-ort-geloescht", "deletion", { ziel_id: req.body.id });
-      res.redirect("/adm_edit_wetter?success=" + encodeURIComponent("Standort gelöscht."));
+      res.redirect("/adm_edit_wetter?success=" + encodeURIComponent("Eigener Standort gelöscht. Es gilt wieder die Koordinate aus den Wachen bzw. der übergeordnete Eintrag."));
     } catch (error) {
       res.redirect("/adm_edit_wetter?error=" + encodeURIComponent("Fehler beim Löschen des Standorts. " + error));
     }
   });
 
   // Erreichbarkeit von Bright Sky für die Statusanzeige der Admin-Seite
-  app.post("/adm_edit_wetter/status", auth.ensureAdmin, checkContentType, async (req, res) => {
+  app.post("/adm_edit_wetter/status", auth.ensureDatenpflege, checkContentType, async (req, res) => {
     res.json(await widgets.dienste_pruefen());
   });
 
   // Wetter und Warnungen für eine Nummer oder Koordinate testen (ohne Zwischenspeicher)
-  app.post("/adm_edit_wetter/test", auth.ensureAdmin, checkContentType, async (req, res) => {
+  app.post("/adm_edit_wetter/test", auth.ensureDatenpflege, checkContentType, async (req, res) => {
     try {
       let ort = null;
       if (req.body.nr) {
@@ -1008,7 +1028,89 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   const ersetzung_laden = async (id) => (await sql.db_replace_get_all_full()).find((r) => r.id === Number(id));
 
   // Seite anzeigen: alle Ersetzungen, Probehören für die Sprachansage
-  app.get("/adm_edit_replace", auth.ensureAdmin, async (req, res, next) => {
+  /* ##### Ticker-Quellen (Kalender der Leitstellen und Kreise) ##### */
+
+  app.get("/adm_edit_ticker", auth.ensureDatenpflege, async (req, res, next) => {
+    try {
+      const quellen = sql.db_ticker_quellen_liste();
+      res.render("admin/adm_edit_ticker", {
+        public: app_cfg.public,
+        title: "Ticker-Quellen verwalten",
+        user: req.user,
+        quellen: quellen,
+        kalender_aktiv: widgets.kalender_aktiv,
+        kalender_url: app_cfg.widgets.kalender_url,
+        error: req.query.error || null,
+        success: req.query.success || null,
+      });
+    } catch (error) {
+      const err = new Error(`Fehler beim Laden der Seite Ticker-Quellen. ` + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
+    }
+  });
+
+  app.post("/adm_edit_ticker/speichern", auth.ensureDatenpflege, async (req, res) => {
+    const zurueck = (art, text) => res.redirect("/adm_edit_ticker?" + art + "=" + encodeURIComponent(text));
+    try {
+      const nr = String(req.body.nr || "").trim();
+      const bekannt = sql.db_ticker_quellen_liste().find((q) => q.nr === nr);
+      if (!/^\d{1,2}$/.test(nr) || !bekannt) return zurueck("error", "Unbekannte Leitstelle bzw. unbekannter Kreis.");
+      const eingabe = String(req.body.url || "").trim().slice(0, 2000);
+      let url = "";
+      let domain = null;
+      if (eingabe) {
+        try {
+          const geprueft = await widgets.kalender_url_pruefen(eingabe, "ticker");
+          url = geprueft.url;
+          domain = geprueft.domain;
+        } catch (error) {
+          if (error instanceof widgets.KalenderFehler) return zurueck("error", `${bekannt.name}: ${error.message}`);
+          throw error;
+        }
+      }
+      sql.db_ticker_quelle_setzen(nr, url, req.user.user);
+      logger.event(`Ticker-Quelle ${bekannt.name} (${nr}) von ${req.user.user} ${url ? "gesetzt" : "entfernt"}.`, {
+        ...logger.from_req(req),
+        action: "ticker-quelle",
+        category: "configuration",
+        type: "change",
+        outcome: "success",
+        wachalarm: { ticker_quelle: { nr: nr, domain: domain || undefined, entfernt: !url } },
+      });
+      widgets.ticker_quellen_geaendert();
+      zurueck("success", `Ticker-Quelle für ${bekannt.name} ${url ? "gespeichert" : "entfernt"}.`);
+    } catch (error) {
+      logger.log("error", error);
+      zurueck("error", "Fehler beim Speichern der Ticker-Quelle.");
+    }
+  });
+
+  // Status aller eingetragenen Ticker-Kalender (laufende Meldungen, Stand, Fehler) für die Tabelle
+  app.post("/adm_edit_ticker/status", auth.ensureDatenpflege, checkContentType, async (req, res) => {
+    try {
+      const quellen = sql.db_ticker_quellen_liste().filter((q) => q.url).map((q) => ({ nr: q.nr, url: q.url }));
+      res.json({ status: await widgets.ticker_quellen_status(quellen) });
+    } catch (error) {
+      res.status(error instanceof widgets.KalenderFehler ? 502 : 500).json({ error: error.message });
+    }
+  });
+
+  // aktuelle Meldungen einer Ticker-Quelle bzw. Status des Kalender-Dienstes (Admin-Seite)
+  app.post("/adm_edit_ticker/test", auth.ensureDatenpflege, checkContentType, async (req, res) => {
+    try {
+      if (!req.body.nr) return res.json(await widgets.kalender_dienst_status());
+      const nr = String(req.body.nr).trim();
+      const quelle = sql.db_ticker_quellen_liste().find((q) => q.nr === nr);
+      if (!quelle || !quelle.url) return res.status(404).json({ error: "Für diese Nummer ist kein Ticker-Kalender eingetragen." });
+      res.json(await widgets.ticker_testen(quelle.url));
+    } catch (error) {
+      res.status(error instanceof widgets.KalenderFehler ? 502 : 500).json({ error: error.message });
+    }
+  });
+
+  app.get("/adm_edit_replace", auth.ensureDatenpflege, async (req, res, next) => {
     try {
       res.render("admin/adm_edit_replace", {
         public: app_cfg.public,
@@ -1035,7 +1137,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
 
   // Probehören: Text (optional mit Ersetzungen bzw. einer noch nicht gespeicherten Ersetzung) sprechen lassen.
   // Antwort als JSON mit dem tatsächlich gesprochenen Text, den Treffern und der Audiodatei (Base64-WAV).
-  app.post("/adm_edit_replace/vorschau", auth.ensureAdmin, checkContentType, async (req, res) => {
+  app.post("/adm_edit_replace/vorschau", auth.ensureDatenpflege, checkContentType, async (req, res) => {
     try {
       const modus = String(req.body.modus || "ersetzt");
       const kandidat = req.body.kandidat && typeof req.body.kandidat === "object" ? req.body.kandidat : null;
@@ -1095,7 +1197,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   // Ersetzung speichern: mit id wird der Eintrag geändert, sonst neu angelegt. Bei den Sprachausgabe-Typen
   // wird ein vorhandener Eintrag mit gleichem Eingabewert überschrieben (dort wirkt ohnehin nur einer);
   // Wachen-Aliase dürfen denselben Eingabewert mehrfach haben (ein Name → mehrere Wachen).
-  app.post("/adm_edit_replace/speichern", auth.ensureAdmin, checkContentType, async (req, res) => {
+  app.post("/adm_edit_replace/speichern", auth.ensureDatenpflege, checkContentType, async (req, res) => {
     try {
       const rp = {
         id: req.body.id ? Number(req.body.id) : null,
@@ -1138,7 +1240,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   });
 
   // Ersetzung löschen
-  app.post("/adm_edit_replace/loeschen", auth.ensureAdmin, checkContentType, async (req, res) => {
+  app.post("/adm_edit_replace/loeschen", auth.ensureDatenpflege, checkContentType, async (req, res) => {
     try {
       const id = Number(req.body.id);
       if (!id || !(await ersetzung_laden(id))) return res.status(404).json({ error: "Die Ersetzung existiert nicht (mehr)." });

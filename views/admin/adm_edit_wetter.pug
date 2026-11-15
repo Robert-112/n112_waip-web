@@ -1,5 +1,10 @@
 extends ../layout
 
+append head
+  link(rel='stylesheet', href='/css/leaflet.css')
+  script(src='/js/leaflet.js')
+  script(src='/js/admin_karte.js')
+
 block content
   main(role='main')
     .container-fluid
@@ -15,9 +20,9 @@ block content
                 span So wird der Standort eines Monitors bestimmt
               p.card-text.text-body-secondary.mb-2
                 | Es gilt der genaueste Eintrag zur aufgerufenen Nummer: Wache (6-stellig) → Träger (4) → Kreis (2) → Leitstelle (1).
-                | Gibt es keinen Eintrag, wird die Koordinate der Wache aus den Wachen-Stammdaten verwendet (bei Träger, Kreis und Leitstelle der Mittelpunkt ihrer Wachen).
+                | Ohne eigenen Eintrag gilt der „Mittelpunkt der Wachen“: die Koordinate der Wache bzw. bei Träger, Kreis und Leitstelle der Mittelpunkt aller ihrer Wachen (grau in der Tabelle).
               p.card-text.text-body-secondary.mb-0
-                | Warnzelle leer = Bright Sky ermittelt sie aus der Koordinate (Gemeinde). Für Kreis- oder Leitstellen-Monitore lohnt sich eine feste Warnzelle.
+                | Warnzelle „aus Koordinate“ = Bright Sky ermittelt das Warngebiet (Gemeinde) aus der Koordinate. Für Kreis- oder Leitstellen-Monitore lohnt sich eine feste Warnzelle.
                 | Massenimport per SQL in die Tabelle
                 code.ms-1 waip_wetter_orte
                 |  (nr, name, lat, lon, warncell_id).
@@ -55,85 +60,118 @@ block content
                 code.mx-1 .env
                 | eingestellt (WIDGET_BRIGHTSKY_URL, WIDGET_WALDBRAND_URL usw.).
 
-      h2.h5.mt-2 Neuen Standort anlegen
-      form.row.g-2.align-items-end.mb-4(action='/adm_edit_wetter/create', method='post')
-        input(type='hidden', name='_csrf', value=csrf_token)
-        .col-6.col-md-2
-          label.form-label(for='neu_nr') Nummer
-          input#neu_nr.form-control(type='text', name='nr', required, pattern='\\d{1}|\\d{2}|\\d{4}|\\d{6}', maxlength='6', inputmode='numeric', placeholder='z. B. 5100', title='1, 2, 4 oder 6 Ziffern')
-        .col-6.col-md-3
-          label.form-label(for='neu_name') Bezeichnung
-          input#neu_name.form-control(type='text', name='name', maxlength='100', placeholder='leer = aus den Wachen übernehmen')
-        .col-6.col-md-2
-          label.form-label(for='neu_lat') Breite (Lat)
-          input#neu_lat.form-control(type='text', name='lat', required, inputmode='decimal', pattern='-?\\d{1,2}([.,]\\d+)?', placeholder='52.41787')
-        .col-6.col-md-2
-          label.form-label(for='neu_lon') Länge (Lon)
-          input#neu_lon.form-control(type='text', name='lon', required, inputmode='decimal', pattern='-?\\d{1,3}([.,]\\d+)?', placeholder='12.53254')
-        .col-6.col-md-2
-          label.form-label(for='neu_zelle') Warnzelle (optional)
-          input#neu_zelle.form-control(type='text', name='warncell_id', inputmode='numeric', pattern='\\d{6,10}', placeholder='9-stellig')
-        .col-6.col-md-1.d-grid
-          button.btn.btn-success(type='submit') Anlegen
-
-      .d-flex.flex-wrap.align-items-end.justify-content-between.gap-2.mt-2.mb-2
-        h2.h5.mb-0 Standorte bearbeiten
+      .d-flex.flex-wrap.align-items-center.justify-content-between.gap-2.mb-3
         form.d-flex.gap-2#test_nr_form
           label.visually-hidden(for='test_nr') Nummer testen
           input#test_nr.form-control.form-control-sm(type='text', inputmode='numeric', placeholder='Nummer testen, z. B. 510001', style='width: 220px')
-          button.btn.btn-sm.btn-outline-info.text-nowrap(type='submit')
+          button.btn.btn-sm.btn-outline-secondary.text-nowrap(type='submit')
             i.bi.bi-eye.me-1(aria-hidden='true')
             | Testen
+        button.btn.btn-success.btn-sm(type='button', data-ort-neu)
+          i.bi.bi-plus-lg.me-1(aria-hidden='true')
+          | Standort für Träger oder Wache
 
-      if orte.length === 0
-        p.text-body-secondary Noch keine eigenen Standorte. Alle Monitore verwenden die Koordinaten aus den Wachen-Stammdaten.
+      if zeilen.length === 0
+        p.text-body-secondary Es sind keine aktiven Wachen mit Leitstelle oder Kreis angelegt.
       else
-        .table-responsive
-          table.table.table-striped.align-middle(style='min-width: 1000px')
-            thead
-              tr
-                th(scope='col', style='width: 110px') Ebene
-                th(scope='col', style='width: 100px') Nummer
-                th(scope='col') Bezeichnung
-                th(scope='col', style='width: 140px') Breite
-                th(scope='col', style='width: 140px') Länge
-                th(scope='col', style='width: 150px') Warnzelle
-                th(scope='col', style='width: 230px') Aktion
-            tbody
-              each o in orte
-                - const ebene = { 1: 'Leitstelle', 2: 'Kreis', 4: 'Träger', 6: 'Wache' }[String(o.nr).length] || '?'
-                - const badge = { 1: 'text-bg-secondary', 2: 'text-bg-secondary', 4: 'text-bg-info', 6: 'text-bg-primary' }[String(o.nr).length] || 'text-bg-dark'
-                - const formular = 'ort_' + o.id
+        .card.border-0
+          .table-responsive
+            table.table.table-hover.align-middle.mb-0
+              thead
                 tr
-                  td
-                    span.badge(class=badge)= ebene
-                  td
-                    code= o.nr
-                  td
-                    input.form-control.form-control-sm(type='text', name='name', value=o.name, maxlength='100', form=formular, aria-label='Bezeichnung')
-                  td
-                    input.form-control.form-control-sm(type='text', name='lat', value=o.lat, required, form=formular, aria-label='Breite')
-                  td
-                    input.form-control.form-control-sm(type='text', name='lon', value=o.lon, required, form=formular, aria-label='Länge')
-                  td
-                    input.form-control.form-control-sm(type='text', name='warncell_id', value=o.warncell_id, placeholder='automatisch', form=formular, aria-label='Warnzelle')
-                  td
-                    form.d-flex.gap-1(id=formular, action='/adm_edit_wetter/edit', method='post')
-                      input(type='hidden', name='_csrf', value=csrf_token)
-                      input(type='hidden', name='id', value=o.id)
-                      button.btn.btn-sm.btn-primary(type='submit') Speichern
-                      button.btn.btn-sm.btn-outline-info.wetter-test(type='button', data-nr=o.nr, title='Aktuelles Wetter und Warnungen für diesen Standort abrufen')
-                        i.bi.bi-eye.me-1(aria-hidden='true')
-                        | Test
-                      button.btn.btn-sm.btn-outline-danger(type='submit', formaction='/adm_edit_wetter/delete', formnovalidate, aria-label='Standort ' + o.nr + ' löschen', onclick="return confirm('Standort " + o.nr + " wirklich löschen?')")
-                        i.bi.bi-trash(aria-hidden='true')
+                  th(scope='col') Standort
+                  th.text-end(scope='col', style='width: 90px') Nr.
+                  th(scope='col') Koordinate
+                  th(scope='col') Warnzelle
+                  th(scope='col') Herkunft
+                  th.text-end(scope='col', style='width: 110px')
+                    span.visually-hidden Aktion
+              tbody
+                each z in zeilen
+                  - const o = z.ort
+                  - const einrueckung = { 1: null, 2: 'ps-4', 4: 'ps-5', 6: 'ps-5' }[z.ebene]
+                  - const ebene = { 4: 'Träger', 6: 'Wache' }[z.ebene]
+                  - const lat = o ? o.lat : z.auto_lat
+                  - const lon = o ? o.lon : z.auto_lon
+                  tr(class=z.ebene === 1 ? 'table-active' : null)
+                    td(class=[einrueckung, z.ebene === 1 ? 'fw-semibold' : null])
+                      if ebene
+                        span.small.text-body-secondary.me-2= ebene
+                      | #{(o && o.name) || z.name}
+                    td.text-end.font-monospace.text-body-secondary= z.nr
+                    td.font-monospace(class=o ? null : 'text-body-secondary')
+                      if lat && lon
+                        | #{Number(lat).toFixed(5)}, #{Number(lon).toFixed(5)}
+                      else
+                        span.text-warning keine
+                    if o && o.warncell_id
+                      td.font-monospace= o.warncell_id
+                    else
+                      td.text-body-secondary aus Koordinate
+                    td
+                      if o
+                        i.bi.bi-geo-alt-fill.me-2.text-info(aria-hidden='true')
+                        | eigener Eintrag
+                      else
+                        span.text-body-secondary Mittelpunkt der Wachen
+                    td.text-end.text-nowrap
+                      button.btn.btn-sm.btn-link.text-body-secondary.wetter-test(type='button', data-nr=z.nr, title='Wetter und Warnungen abrufen', aria-label='Wetter für ' + z.nr + ' abrufen')
+                        i.bi.bi-eye(aria-hidden='true')
+                      button.btn.btn-sm.btn-link.text-body(type='button', data-ort=z.nr, data-id=o ? o.id : '', data-name=o ? o.name : '', data-auto-name=z.name, data-lat=o ? o.lat : '', data-lon=o ? o.lon : '', data-auto-lat=z.auto_lat || '', data-auto-lon=z.auto_lon || '', data-zelle=o && o.warncell_id ? o.warncell_id : '', title='Standort bearbeiten', aria-label='Standort ' + z.nr + ' bearbeiten')
+                        i.bi.bi-pencil(aria-hidden='true')
 
-      #test_karte.card.border-0.mt-3.d-none
-        .card-body
-          h2.h6.card-title.d-flex.align-items-center.gap-2
+  #ortModal.modal.fade(tabindex='-1', aria-labelledby='ortTitel', aria-hidden='true')
+    .modal-dialog.modal-dialog-centered.modal-lg
+      .modal-content
+        .modal-header
+          h2#ortTitel.modal-title.h5 Standort
+          button.btn-close(type='button', data-bs-dismiss='modal', aria-label='Schließen')
+        .modal-body
+          form#ortForm(action='/adm_edit_wetter/edit', method='post')
+            input(type='hidden', name='_csrf', value=csrf_token)
+            input#ort_id(type='hidden', name='id')
+            .row.g-2
+              .col-4.col-md-3
+                label.form-label(for='ort_nr') Nummer
+                input#ort_nr.form-control(type='text', name='nr', inputmode='numeric', maxlength='6')
+              .col-8.col-md-9
+                label.form-label(for='ort_name') Bezeichnung
+                input#ort_name.form-control(type='text', name='name', maxlength='100')
+              .col-6.col-md-4
+                label.form-label(for='ort_lat') Breite (Lat)
+                input#ort_lat.form-control(type='text', name='lat', inputmode='decimal', pattern='-?\\d{1,2}([.,]\\d+)?')
+              .col-6.col-md-4
+                label.form-label(for='ort_lon') Länge (Lon)
+                input#ort_lon.form-control(type='text', name='lon', inputmode='decimal', pattern='-?\\d{1,3}([.,]\\d+)?')
+              .col-12.col-md-4
+                label.form-label(for='ort_zelle') Warnzelle
+                input#ort_zelle.form-control(type='text', name='warncell_id', inputmode='numeric', pattern='\\d{6,10}', placeholder='aus Koordinate')
+              .col-12
+                #ort_karte.rounded.border.mt-1(style='height: 280px')
+            #ort_hilfe.form-text.mt-2
+          form#ortLoeschen(action='/adm_edit_wetter/delete', method='post')
+            input(type='hidden', name='_csrf', value=csrf_token)
+            input#ort_loeschen_id(type='hidden', name='id')
+        .modal-footer
+          button#ort_loeschen.btn.btn-outline-danger.me-auto(type='submit', form='ortLoeschen')
+            i.bi.bi-arrow-counterclockwise.me-1(aria-hidden='true')
+            | Eigenen Eintrag löschen
+          button.btn.btn-secondary(type='button', data-bs-dismiss='modal') Abbrechen
+          button.btn.btn-primary(type='submit', form='ortForm') Speichern
+
+  //- Ergebnis des Tests (Auge) als eigener Dialog
+  #test_karte.modal.fade(tabindex='-1', aria-labelledby='test_titel', aria-hidden='true')
+    .modal-dialog.modal-dialog-centered.modal-lg
+      .modal-content
+        .modal-header
+          h2.modal-title.h5.d-flex.align-items-center.gap-2
             i.bi.bi-eye(aria-hidden='true')
             span#test_titel Test
-          #test_inhalt.d-flex.flex-wrap.gap-4.text-body-secondary
+          button.btn-close(type='button', data-bs-dismiss='modal', aria-label='Schließen')
+        .modal-body
+          #test_inhalt.d-flex.flex-wrap.gap-3.text-body-secondary
+        .modal-footer
+          button.btn.btn-secondary(type='button', data-bs-dismiss='modal') Schließen
 
   script#wetter_daten(type='application/json')!= JSON.stringify({ csrf: csrf_token, aktiv: wetter_aktiv, waldbrand: Boolean(waldbrand_url) }).replace(/</g, '\\u003c')
   script.
@@ -160,7 +198,7 @@ block content
       }
 
       async function testen(nr) {
-        karte.classList.remove("d-none");
+        bootstrap.Modal.getOrCreateInstance(karte).show();
         titel.textContent = "Test: " + nr + " …";
         inhalt.replaceChildren(eintrag("wird abgerufen …"));
         try {
@@ -213,6 +251,50 @@ block content
         .then(function (res) { return res.json(); })
         .then(function (r) { dienst_anzeigen(r.brightsky, status); dienst_anzeigen(r.waldbrand, wb_status); })
         .catch(function () { status_setzen(false, "nicht erreichbar"); status_setzen(false, "nicht erreichbar", wb_status); });
+
+      // Bearbeiten und Anlegen im Dialog
+      const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("ortModal"));
+      const feld = (id) => document.getElementById(id);
+      const ort_karte = admin_karte(feld("ort_karte"), !{JSON.stringify(map_service)}, { lat: feld("ort_lat"), lon: feld("ort_lon") });
+      let auto_punkt = [null, null];
+      feld("ortModal").addEventListener("shown.bs.modal", () => ort_karte.zeigen(auto_punkt[0], auto_punkt[1]));
+      function oeffnen(d) {
+        const form = feld("ortForm");
+        form.reset();
+        const vorhanden = Boolean(d && d.id);
+        const neu_genau = !d;
+        form.action = vorhanden ? "/adm_edit_wetter/edit" : "/adm_edit_wetter/create";
+        feld("ortTitel").textContent = neu_genau ? "Standort für Träger oder Wache" : "Standort " + d.ort + " · " + (d.name || d.autoName);
+        feld("ort_id").value = vorhanden ? d.id : "";
+        feld("ort_loeschen_id").value = vorhanden ? d.id : "";
+        feld("ort_loeschen").classList.toggle("d-none", !vorhanden);
+        const nr = feld("ort_nr");
+        nr.value = d ? d.ort : "";
+        nr.readOnly = !neu_genau;
+        nr.className = neu_genau ? "form-control" : "form-control-plaintext font-monospace";
+        nr.required = neu_genau;
+        nr.pattern = neu_genau ? "\\d{4}|\\d{6}" : ".*";
+        nr.placeholder = neu_genau ? "4 oder 6 Ziffern" : "";
+        feld("ort_name").value = d ? d.name : "";
+        feld("ort_name").placeholder = d && d.autoName ? d.autoName : "leer = aus den Wachen übernehmen";
+        feld("ort_lat").value = d ? d.lat : "";
+        feld("ort_lon").value = d ? d.lon : "";
+        feld("ort_lat").placeholder = d && d.autoLat ? d.autoLat : "leer = Wachen";
+        feld("ort_lon").placeholder = d && d.autoLon ? d.autoLon : "leer = Wachen";
+        feld("ort_lat").required = vorhanden;
+        feld("ort_lon").required = vorhanden;
+        feld("ort_zelle").value = d ? d.zelle : "";
+        feld("ort_hilfe").textContent = vorhanden
+          ? "Punkt ziehen oder in die Karte klicken (blau). Grau gestrichelt: Mittelpunkt der Wachen, der ohne eigenen Eintrag gilt."
+          : "Punkt ziehen oder in die Karte klicken. Leere Koordinaten = Mittelpunkt der Wachen (grau gestrichelt), z.B. wenn nur eine feste Warnzelle gesetzt werden soll.";
+        auto_punkt = d ? [d.autoLat, d.autoLon] : [null, null];
+        modal.show();
+      }
+      document.querySelectorAll("[data-ort]").forEach((btn) => btn.addEventListener("click", () => oeffnen(btn.dataset)));
+      document.querySelector("[data-ort-neu]").addEventListener("click", () => oeffnen(null));
+      feld("ort_loeschen").addEventListener("click", function (ev) {
+        if (!confirm("Eigenen Standort " + feld("ort_nr").value + " löschen? Danach gilt wieder der Mittelpunkt der Wachen bzw. der übergeordnete Eintrag.")) ev.preventDefault();
+      });
 
       document.querySelectorAll(".wetter-test").forEach(function (btn) {
         btn.addEventListener("click", function () { testen(btn.dataset.nr); });

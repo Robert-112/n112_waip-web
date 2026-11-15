@@ -69,14 +69,27 @@ block content
                             .form-text.ms-5 Auf diesem Server ist kein Wetterdienst eingerichtet.
                         div
                           .form-check.form-switch
-                            input#einstellung_kalender.form-check-input(type='checkbox', role='switch', name='standby_kalender', checked=standby.kalender, disabled=widgets_kalender_erlaubt.length === 0)
+                            input#einstellung_kalender.form-check-input(type='checkbox', role='switch', name='standby_kalender', checked=standby.kalender, disabled=!widgets_kalender_aktiv)
                             label.form-check-label.fw-bold(for='einstellung_kalender') Termine aus einem Kalender
                           .ms-5.mt-2
                             label.form-label(for='ical_url') Öffentliche Kalender-Adresse (iCal/ICS)
-                            input#ical_url.form-control(type='url', name='ical_url', value=standby.ical_url, maxlength='2000', placeholder='https://…', disabled=widgets_kalender_erlaubt.length === 0)
-                            if widgets_kalender_erlaubt.length > 0
-                              .form-text Erlaubte Kalender: #{widgets_kalender_erlaubt.join(', ')}
-                            else
-                              .form-text Auf diesem Server sind keine Kalender freigegeben.
+                            input#ical_url.form-control(type='url', name='ical_url', value=standby.ical_url, maxlength='2000', placeholder='https://…', disabled=!widgets_kalender_aktiv)
+                        div
+                          .fw-bold
+                            i.bi.bi-megaphone.me-2(aria-hidden='true')
+                            | Eigener Ticker
+                          .ms-5.mt-2
+                            label.form-label(for='ticker_url') Kalender-Adresse für Ticker-Meldungen (iCal/ICS, optional)
+                            input#ticker_url.form-control(type='url', name='ticker_url', value=standby.ticker_url, maxlength='2000', placeholder='https://…', aria-describedby='ticker_hilfe', disabled=!widgets_kalender_aktiv)
+                            #ticker_hilfe.form-text
+                              | Laufende Termine dieses Kalenders erscheinen als Laufschrift auf allen Ihren Alarmmonitoren (nur im Standby).
+                              | Rot: Priorität „hoch“ oder „!!“ vor dem Titel, gelb: Priorität „normal“ oder „!“ vor dem Titel.
+                              | Meldungen von Leitstelle und Kreis kommen automatisch dazu.
+                        if !widgets_kalender_aktiv
+                          .form-text Auf diesem Server sind Kalender und Ticker nicht eingerichtet.
+                        else if widgets_kalender_erlaubt.length > 0
+                          .form-text Erlaubte Kalender: #{widgets_kalender_erlaubt.join(', ')}
+                        else
+                          .form-text.text-warning Der Kalender-Dienst ist derzeit nicht erreichbar oder es sind keine Kalender freigegeben.
                         div
                           button.btn.btn-primary(type='submit') Speichern

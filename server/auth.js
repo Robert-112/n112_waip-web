@@ -243,6 +243,24 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     }
   };
 
+  // Stammdaten pflegen (Wachen, Wetter-Standorte, Ersetzungen/Aussprache, Ticker-Quellen):
+  // Administratoren und Benutzer mit der Zusatzrolle "datenpflege"
+  const ensureDatenpflege = (req, res, next) => {
+    if (!req.isAuthenticated()) {
+      const err = new Error("Sie sind nicht angemeldet!");
+      err.status = 401;
+      return next(err);
+    }
+    try {
+      if (sql.auth_ensureDatenpflege(req.user.id)) return next();
+    } catch (error) {
+      return next(error);
+    }
+    const err = new Error("Sie verfügen nicht über die notwendigen Berechtigungen!");
+    err.status = 401;
+    next(err);
+  };
+
   const ensureApi = (user_id) => {
     return new Promise(async (resolve, reject) => {
       try {
@@ -280,6 +298,19 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     return list.join(",");
   };
 
+  // Zusatzrollen neben den Wachen-Rechten (Formular: Checkbox name="rollen"); Administratoren und API-Benutzer
+  // brauchen keine, Administratoren dürfen ohnehin alles
+  const ROLLEN = ["datenpflege"];
+  const normalize_rollen = (wert, permissions) => {
+    if (permissions === "admin" || permissions === "api") return "";
+    const liste = []
+      .concat(wert || [])
+      .flatMap((v) => String(v).split(","))
+      .map((r) => r.trim())
+      .filter((r) => ROLLEN.includes(r));
+    return [...new Set(liste)].join(",");
+  };
+
   const invalid_permissions_msg = "Ungültige Berechtigungen! Erlaubt sind 'admin' oder Wachennummern, z.B. 52,6601.";
 
   // Änderungen an Benutzern protokollieren (ausführender Admin steht in user.name)
@@ -300,12 +331,14 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
       if (!permissions) {
         return res.redirect("/adm_edit_users?error=" + encodeURIComponent(invalid_permissions_msg));
       }
+      const rollen = normalize_rollen(req.body.rollen, permissions);
       const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
-      const result = await sql.auth_create_new_user(req.body.username, hash, req.body.description || "", permissions, req.body.ip);
+      const result = await sql.auth_create_new_user(req.body.username, hash, req.body.description || "", permissions, req.body.ip, rollen);
       if (result) {
-        iam_event(req, `Benutzer ${req.body.username} wurde von ${req.user.user} angelegt (Rechte: ${permissions}).`, "user-angelegt", "creation", {
+        iam_event(req, `Benutzer ${req.body.username} wurde von ${req.user.user} angelegt (Rechte: ${permissions}${rollen ? ", Rollen: " + rollen : ""}).`, "user-angelegt", "creation", {
           ziel_benutzer: req.body.username,
           rechte: permissions,
+          rollen: rollen || undefined,
         });
         return res.redirect(
           "/adm_edit_users?success=" + encodeURIComponent("Neuer Benutzer wurde angelegt.")
@@ -380,11 +413,13 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         messages.push("Passwort geändert.");
       }
 
-      const result = await sql.auth_editUser(id, hash, req.body.description || "", permissions, req.body.ip || "");
+      const rollen = normalize_rollen(req.body.rollen, permissions);
+      const result = await sql.auth_editUser(id, hash, req.body.description || "", permissions, req.body.ip || "", rollen);
       if (result) {
-        iam_event(req, `Benutzer-ID ${id} wurde von ${req.user.user} geändert (Rechte: ${permissions}${hash ? ", Passwort geändert" : ""}).`, "user-geaendert", "change", {
+        iam_event(req, `Benutzer-ID ${id} wurde von ${req.user.user} geändert (Rechte: ${permissions}${rollen ? ", Rollen: " + rollen : ""}${hash ? ", Passwort geändert" : ""}).`, "user-geaendert", "change", {
           ziel_benutzer_id: String(id),
           rechte: permissions,
+          rollen: rollen || undefined,
           passwort_geaendert: hash !== null,
         });
         const successMsg = messages.concat(["Benutzer aktualisiert."]).join(" ");
@@ -406,6 +441,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   return {
     ensureAuthenticated: ensureAuthenticated,
     ensureAdmin: ensureAdmin,
+    ensureDatenpflege: ensureDatenpflege,
     ensureApi: ensureApi,
     createUser: createUser,
     deleteUser: deleteUser,
