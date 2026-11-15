@@ -107,10 +107,13 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - amtliche Unwetterwarnungen des Deutschen Wetterdienstes
     - die Waldbrandgefahrenstufe (ab einer einstellbaren Stufe)
     - die nächsten Termine aus einem öffentlichen Kalender (iCal/ICS), z.B. Dienstabende
+    - ein Ticker mit aktuellen Meldungen am unteren Rand, wichtige Meldungen in einer eigenen roten Zeile (nur angemeldete Monitore)
 - alle Daten holt ausschließlich der Server, die Alarmmonitore selbst benötigen keinen Zugriff auf das Internet
 - die Wetterdaten stammen vom Deutschen Wetterdienst und werden über einen selbst betriebenen [Bright Sky](https://brightsky.dev/)-Dienst abgerufen
-- angemeldete Benutzer schalten Wetter und Kalender unter `Einstellungen` ein, für Monitore ohne Anmeldung gibt es den Parameter `wetter=on`
-- der gesamte Inhalt wandert regelmäßig ein Stück über den Bildschirm, damit sich nichts in das Display einbrennt
+- Termine und Ticker-Meldungen holt ein eigener Kalender-Dienst (Docker) aus SOGo, Nextcloud o.ä. (`WIDGET_KALENDER_URL`); die Meldungen werden im Kalender gepflegt: jeder laufende Termin ist eine Meldung, die Priorität „hoch“ oder Schlagwörter wie „dringend“ machen sie rot
+- der Ticker eines Monitors zeigt die Meldungen seiner Leitstelle und seines Kreises (Administration › Ticker-Quellen) sowie den eigenen Ticker-Kalender des Benutzers
+- angemeldete Benutzer schalten Wetter und Kalender unter `Einstellungen` ein und tragen dort ihren Ticker-Kalender ein, für Monitore ohne Anmeldung gibt es den Parameter `wetter=on`
+- der gesamte Inhalt wandert regelmäßig ein Stück über den Bildschirm, der Ticker läuft ständig und wechselt leicht die Höhe, damit sich nichts in das Display einbrennt
 
 ---
 
@@ -197,7 +200,9 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - Anzeige der aktuell hinterlegten Einsätze
     - Anzeige einiger Log-Einträge
     - Pflege der Wetter-Standorte für die Standby-Anzeige
+    - Pflege der Ticker-Quellen (Kalender der Leitstellen und Kreise)
     - Pflege von Ersetzungen für die Sprachansage, inkl. Probehören der Aussprache
+- Benutzer mit der Zusatzrolle "Datenpfleger" dürfen die Stammdaten pflegen (Wachen, Wetter-Standorte, Ticker-Quellen, Ersetzungen und Aussprache), sehen aber keine Benutzerverwaltung, Einsätze, verbundenen Clients und Logs
 
 ![Ersetzungen und Aussprache](docs/images/adm_ersetzungen.webp)
 

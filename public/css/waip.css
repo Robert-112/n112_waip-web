@@ -447,6 +447,32 @@ audio {
   /*padding: 0 1rem;*/
 }
 
+/* Wachenname unten als dezenter Chip (nur Grautöne) */
+.wachenname-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.22em 1em 0.22em 0.25em;
+  border-radius: 999px;
+  background: #0e0e0e;
+  border: 1px solid #1c1c1c;
+  color: #7a7a7a;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.wachenname-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65em;
+  height: 1.65em;
+  border-radius: 50%;
+  background: #1a1a1a;
+  color: #8a8a8a;
+  font-size: 0.9em;
+}
+
 #wachenname-login-icon {
   margin-left: 0.4rem;
   font-size: 0.7em;
@@ -457,11 +483,129 @@ audio {
   font-size: 1.6vw;
 }
 
+/* Standby untereinander: wandernder Block, Ticker, Wachenname (ganz unten) */
+#waipclock {
+  display: flex;
+  flex-direction: column;
+}
+
 #screen_saver {
   position: relative;
   width: 100%;
-  height: 100%;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: hidden;
+}
+
+#standby_fuss {
+  flex: none;
+  padding-top: 0.5rem;
+}
+
+/*** Ticker im Standby: läuft wie bei einem Nachrichtensender von rechts nach links, rote Meldungen in eigener
+     Zeile. Keine festen Beschriftungen (Einbrennschutz), die Bänder wandern zusätzlich in der Höhe (JS). ***/
+#standby_ticker {
+  flex: none;
+  --ticker-schrift: max(12px, calc(var(--standby-schrift) * 1.7));
+  font-size: var(--ticker-schrift);
+  line-height: 1.2;
+  /* Spielraum, in dem die Bänder wandern */
+  padding-bottom: calc(var(--ticker-schrift) * 0.6);
+  margin-top: 0.4rem;
+  /* über die volle Breite (Innenabstand von .container-fluid ausgleichen) */
+  margin-inline: calc(var(--bs-gutter-x, 1.5rem) * -0.5);
+}
+
+.ticker-baender {
+  transition: transform 2s ease-in-out;
+}
+
+.ticker-zeile {
+  height: 1.9em;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.ticker-rot {
+  background: #1a0705;
+  border-top: 1px solid #4a1611;
+}
+
+.ticker-info {
+  background: #090909;
+  border-top: 1px solid #1c1c1c;
+}
+
+.ticker-band {
+  display: flex;
+  flex: none;
+  width: max-content;
+  will-change: transform;
+  animation: ticker-laufen var(--ticker-dauer, 60s) linear infinite;
+}
+
+.ticker-satz {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+@keyframes ticker-laufen {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.ticker-meldung {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding-left: 1.6em;
+}
+
+.ticker-quelle {
+  font-size: 0.62em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 0.7em;
+  color: #6f6f6f;
+}
+
+.ticker-text {
+  color: #c4c4c4;
+}
+
+.ticker-rot .ticker-quelle {
+  color: #d98b80;
+}
+
+.ticker-rot .ticker-text {
+  color: #ffc2b8;
+  font-weight: 700;
+}
+
+.ticker-rot .bi {
+  color: #ff6b5e;
+  margin-right: 0.5em;
+}
+
+.ticker-meldung.gelb .ticker-text {
+  color: #e3d14b;
+  font-weight: 700;
+}
+
+.ticker-meldung.gelb .bi {
+  color: #e3d14b;
+  margin-right: 0.45em;
+}
+
+.ticker-trenner {
+  margin-left: 0.9em;
+  color: #4a4a4a;
 }
 
 /*** Standby: Uhr, Gefahrenhinweise und Widgets als ein Block, der als Ganzes wandert (Einbrennschutz).

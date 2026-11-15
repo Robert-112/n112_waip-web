@@ -1760,7 +1760,7 @@ module.exports = (db, app_cfg) => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
-          SELECT id, user, description, permissions, ip_address FROM waip_user;
+          SELECT id, user, description, permissions, COALESCE(rollen, '') AS rollen, ip_address FROM waip_user;
         `);
         const rows = stmt.all();
         if (rows.length === 0) {
@@ -2114,6 +2114,7 @@ module.exports = (db, app_cfg) => {
             id, 
             user, 
             permissions,
+            COALESCE(rollen, '') AS rollen,
             (SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'resetcounter') reset_counter
           FROM waip_user 
           WHERE id = ?;
@@ -2284,8 +2285,19 @@ module.exports = (db, app_cfg) => {
     });
   };
 
+  // sicherstellen, dass der Benutzer Stammdaten pflegen darf (Administrator oder Zusatzrolle "datenpflege")
+  const auth_ensureDatenpflege = (id) => {
+    try {
+      const row = db.prepare(`SELECT permissions, COALESCE(rollen, '') AS rollen FROM waip_user WHERE id = ?;`).get(id);
+      if (!row) return false;
+      return row.permissions === "admin" || row.rollen.split(",").includes("datenpflege");
+    } catch (error) {
+      throw new Error("Fehler bei auth_ensureDatenpflege. " + id + error);
+    }
+  };
+
   // Neuen User anlegen
-  const auth_create_new_user = (user, password, description, permissions, ip_address) => {
+  const auth_create_new_user = (user, password, description, permissions, ip_address, rollen = "") => {
     return new Promise((resolve, reject) => {
       try {
         // Prüfen ob User bereits in Datenbank vorhanden
@@ -2305,16 +2317,18 @@ module.exports = (db, app_cfg) => {
             password,
             description,
             permissions, 
-            ip_address 
+            ip_address,
+            rollen
           ) VALUES ( 
             ?, 
             ?, 
             ?, 
             ?, 
-            ? 
+            ?,
+            ?
           );
         `);
-        const info = stmt2.run(user, password, description, permissions, ip_address);
+        const info = stmt2.run(user, password, description, permissions, ip_address, rollen);
         resolve(info.lastInsertRowid);
       } catch (error) {
         reject(new Error("Fehler beim Anlegen eines neuen Users. " + user + error));
@@ -2353,7 +2367,7 @@ module.exports = (db, app_cfg) => {
   };
 
   // einen Nutzer in der Datenbank bearbeiten (password_hash = null lässt das Passwort unverändert)
-  const auth_editUser = (id, password_hash, description, permissions, ip_address) => {
+  const auth_editUser = (id, password_hash, description, permissions, ip_address, rollen = "") => {
     return new Promise((resolve, reject) => {
       try {
         const stmt = db.prepare(`
@@ -2361,10 +2375,11 @@ module.exports = (db, app_cfg) => {
             password = COALESCE(?, password),
             description = ?,
             permissions = ?,
-            ip_address = ?
+            ip_address = ?,
+            rollen = ?
           WHERE id = ?;
         `);
-        const info = stmt.run(password_hash, description, permissions, ip_address, id);
+        const info = stmt.run(password_hash, description, permissions, ip_address, rollen, id);
         resolve(info.changes);
       } catch (error) {
         reject(new Error("Fehler bei auth_editUser. " + id + error));
@@ -2825,6 +2840,53 @@ module.exports = (db, app_cfg) => {
     }
   };
 
+  // Übersicht für die Admin-Seite: je Leitstelle und Kreis eine Zeile (mit automatischer Koordinate aus den
+  // Wachen), darunter die genaueren Einträge für Träger und Wachen; Einträge ohne passende Leitstelle/Kreis am Ende.
+  const db_wetter_uebersicht = () => {
+    try {
+      const gruppen = db
+        .prepare(`
+          SELECT * FROM (
+          SELECT nr_leitstelle AS nr, MIN(name_leitstelle) AS name, nr_leitstelle AS leitstelle,
+                 AVG(NULLIF(wgs84_x, 0)) AS auto_lat, AVG(NULLIF(wgs84_y, 0)) AS auto_lon
+            FROM waip_wachen WHERE aktiv = 1 AND nr_leitstelle IS NOT NULL AND nr_leitstelle <> '0' GROUP BY nr_leitstelle
+          UNION ALL
+          SELECT nr_kreis AS nr, MIN(name_kreis) AS name, MIN(nr_leitstelle) AS leitstelle,
+                 AVG(NULLIF(wgs84_x, 0)) AS auto_lat, AVG(NULLIF(wgs84_y, 0)) AS auto_lon
+            FROM waip_wachen WHERE aktiv = 1 AND nr_kreis IS NOT NULL AND nr_kreis <> '00' GROUP BY nr_kreis
+          ) ORDER BY leitstelle, LENGTH(nr), nr;
+        `)
+        .all();
+      const orte = db.prepare(`SELECT * FROM waip_wetter_orte ORDER BY nr;`).all();
+      const ort_von = new Map(orte.map((o) => [String(o.nr), o]));
+      const verwendet = new Set();
+      const zeilen = [];
+      const runden = (wert) => (Number(wert) ? Math.round(Number(wert) * 100000) / 100000 : null);
+      const zeile = (nr, name, auto) => {
+        const ort = ort_von.get(nr) || null;
+        if (ort) verwendet.add(nr);
+        zeilen.push({ nr, ebene: nr.length, name: name || "", ort, auto_lat: auto ? runden(auto.auto_lat) : null, auto_lon: auto ? runden(auto.auto_lon) : null });
+      };
+      for (const g of gruppen) {
+        const nr = String(g.nr);
+        zeile(nr, g.name, g);
+        if (nr.length === 2) {
+          // genauere Einträge (Träger, Wache) dieses Kreises
+          for (const o of orte) {
+            const onr = String(o.nr);
+            if ((onr.length === 4 || onr.length === 6) && onr.startsWith(nr)) zeile(onr, o.name, null);
+          }
+        }
+      }
+      for (const o of orte) {
+        if (!verwendet.has(String(o.nr))) zeile(String(o.nr), o.name, null);
+      }
+      return zeilen;
+    } catch (error) {
+      throw new Error("Fehler beim Laden der Wetter-Übersicht. " + error);
+    }
+  };
+
   // Kreise (Nummer und Name) zu einer Monitor-Nummer, z.B. für die Waldbrandgefahrenstufe.
   // Wache/Träger/Kreis: der Kreis aus den ersten beiden Ziffern, Leitstelle: alle ihre Kreise.
   const db_kreise_fuer_nr = (wachen_nr) => {
@@ -2844,13 +2906,83 @@ module.exports = (db, app_cfg) => {
     }
   };
 
+  // Ticker-Quellen: alle Leitstellen und Kreise aus waip_wachen mit ihrer Kalender-Adresse (leer = keine)
+  const db_ticker_quellen_liste = () => {
+    try {
+      return db
+        .prepare(`
+          SELECT e.nr, e.name, e.leitstelle, q.url, q.geaendert_von, q.geaendert_am FROM (
+            SELECT DISTINCT nr_leitstelle AS nr, name_leitstelle AS name, nr_leitstelle AS leitstelle
+              FROM waip_wachen WHERE nr_leitstelle IS NOT NULL AND nr_leitstelle <> '0' AND aktiv = 1
+            UNION
+            SELECT DISTINCT nr_kreis AS nr, name_kreis AS name, nr_leitstelle AS leitstelle
+              FROM waip_wachen WHERE nr_kreis IS NOT NULL AND nr_kreis <> '00' AND aktiv = 1
+          ) e
+          LEFT JOIN waip_ticker_quellen q ON q.nr = e.nr
+          ORDER BY e.leitstelle, LENGTH(e.nr), e.nr;
+        `)
+        .all();
+    } catch (error) {
+      throw new Error("Fehler beim Laden der Ticker-Quellen. " + error);
+    }
+  };
+
+  // Ticker-Quelle einer Leitstelle (1-stellig) oder eines Kreises (2-stellig) setzen, leere Adresse = löschen
+  const db_ticker_quelle_setzen = (nr, url, benutzer) => {
+    try {
+      if (!url) {
+        return db.prepare(`DELETE FROM waip_ticker_quellen WHERE nr = ?;`).run(nr).changes;
+      }
+      return db
+        .prepare(`
+          INSERT INTO waip_ticker_quellen (nr, url, geaendert_von, geaendert_am) VALUES (?, ?, ?, ?)
+          ON CONFLICT(nr) DO UPDATE SET url = excluded.url, geaendert_von = excluded.geaendert_von, geaendert_am = excluded.geaendert_am;
+        `)
+        .run(nr, url, benutzer, new Date().toISOString()).changes;
+    } catch (error) {
+      throw new Error("Fehler beim Speichern einer Ticker-Quelle. " + error);
+    }
+  };
+
+  // Ticker-Quellen für eine Monitor-Nummer: Leitstelle und (ab Kreis-Ebene) der Kreis, jeweils mit Namen.
+  // Monitor einer Leitstelle: nur deren Ticker; Kreis, Träger, Wache: Leitstelle + Kreis.
+  const db_ticker_quellen_fuer_nr = (wachen_nr) => {
+    try {
+      const nr = String(wachen_nr ?? "").trim();
+      if (!/^\d+$/.test(nr) || nr === "0") return [];
+      let leitstelle = null;
+      let kreis = null;
+      if (nr.length === 1) {
+        leitstelle = db.prepare(`SELECT nr_leitstelle AS nr, name_leitstelle AS name FROM waip_wachen WHERE nr_leitstelle = ? AND aktiv = 1 LIMIT 1;`).get(nr);
+      } else if ([2, 4, 6].includes(nr.length)) {
+        const zeile = db
+          .prepare(`SELECT nr_leitstelle, name_leitstelle, nr_kreis, name_kreis FROM waip_wachen WHERE nr_kreis = ? AND aktiv = 1 LIMIT 1;`)
+          .get(nr.slice(0, 2));
+        if (zeile) {
+          leitstelle = { nr: zeile.nr_leitstelle, name: zeile.name_leitstelle };
+          kreis = { nr: zeile.nr_kreis, name: zeile.name_kreis };
+        }
+      }
+      const url_von = db.prepare(`SELECT url FROM waip_ticker_quellen WHERE nr = ?;`);
+      const quellen = [];
+      for (const [ebene, eintrag] of [["leitstelle", leitstelle], ["kreis", kreis]]) {
+        if (!eintrag || !eintrag.nr) continue;
+        const q = url_von.get(String(eintrag.nr));
+        if (q && q.url) quellen.push({ ebene, nr: String(eintrag.nr), name: eintrag.name || "", url: q.url });
+      }
+      return quellen;
+    } catch (error) {
+      throw new Error(`Fehler beim Ermitteln der Ticker-Quellen für ${wachen_nr}. ` + error);
+    }
+  };
+
   // Standby-Einstellungen eines Benutzers laden (Wetter/Kalender an, Kalender-Adresse)
   const db_user_get_config_standby = (user_id) => {
     try {
       const rows = db
         .prepare(`
           SELECT config_type, config_value FROM waip_user_config
-          WHERE user_id = ? AND config_type IN ('standby_wetter', 'standby_kalender', 'ical_url');
+          WHERE user_id = ? AND config_type IN ('standby_wetter', 'standby_kalender', 'ical_url', 'ticker_url');
         `)
         .all(user_id);
       const cfg = Object.fromEntries(rows.map((r) => [r.config_type, r.config_value]));
@@ -2858,6 +2990,7 @@ module.exports = (db, app_cfg) => {
         wetter: cfg.standby_wetter === "1",
         kalender: cfg.standby_kalender === "1",
         ical_url: cfg.ical_url || "",
+        ticker_url: cfg.ticker_url || "",
       };
     } catch (error) {
       throw new Error("Fehler beim Laden der Standby-Einstellungen eines Benutzers. " + error);
@@ -2876,6 +3009,7 @@ module.exports = (db, app_cfg) => {
           stmt.run(user_id, "standby_wetter", user_id, "standby_wetter", standby.wetter ? "1" : "0");
           stmt.run(user_id, "standby_kalender", user_id, "standby_kalender", standby.kalender ? "1" : "0");
           stmt.run(user_id, "ical_url", user_id, "ical_url", standby.ical_url || "");
+          stmt.run(user_id, "ticker_url", user_id, "ticker_url", standby.ticker_url || "");
         });
         speichern();
         resolve(true);
@@ -2930,6 +3064,10 @@ module.exports = (db, app_cfg) => {
     db_wetter_ort_delete,
     db_wetter_ort_ermitteln,
     db_kreise_fuer_nr,
+    db_wetter_uebersicht,
+    db_ticker_quellen_liste,
+    db_ticker_quelle_setzen,
+    db_ticker_quellen_fuer_nr,
     db_user_get_config_standby,
     db_user_set_config_standby,
     db_alarmdaten_filter_aktiv,
@@ -2981,6 +3119,7 @@ module.exports = (db, app_cfg) => {
     auth_certstrategy_userid,
     auth_ensureApi,
     auth_ensureAdmin,
+    auth_ensureDatenpflege,
     auth_create_new_user,
     auth_deleteUser,
     auth_editUser,

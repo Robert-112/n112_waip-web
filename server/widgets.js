@@ -1,19 +1,19 @@
-// Standby-Widgets: Wetter, amtliche Unwetterwarnungen (DWD über ein selbst gehostetes Bright Sky)
-// und Termine aus öffentlichen iCal-Kalendern. Die Daten holt ausschließlich der Server, die Alarmmonitore
-// bekommen nur fertig aufbereitete Werte per Socket.IO (Event "io.widgets").
+// Standby-Widgets: Wetter, amtliche Unwetterwarnungen (DWD über ein selbst gehostetes Bright Sky),
+// Termine und Ticker-Meldungen aus iCal-Kalendern (über den Kalender-Dienst, eigener Docker).
+// Die Daten holt ausschließlich der Server, die Alarmmonitore bekommen nur fertig aufbereitete Werte
+// per Socket.IO (Event "io.widgets").
 //
 // Verteilung:
 // - Wetter + Kalender: jeder Monitor hat einen eigenen Takt (WIDGET_WEATHER_INTERVAL), dessen Startzeitpunkt
 //   zufällig verteilt ist, damit nicht alle Monitore gleichzeitig neue Daten bekommen.
 // - Unwetterwarnungen: werden zentral alle WIDGET_ALERT_INTERVAL Minuten geprüft, Änderungen gehen sofort
 //   an alle betroffenen Monitore (sicherheitsrelevant).
+// - Ticker: zentral jede Minute beim Kalender-Dienst nachfragen (der hält alles im Zwischenspeicher),
+//   Änderungen gehen sofort an die betroffenen Monitore.
 //
-// Datenschutz: Kalender-Adressen (enthalten Zugangstoken) und Termininhalte werden nicht geloggt,
-// nur Domain, Anzahl, Größe und Ergebnis.
+// Datenschutz: Kalender-Adressen (enthalten Zugangstoken) und Inhalte werden nicht geloggt.
 
-const https = require("https");
 const crypto = require("crypto");
-const ICAL = require("ical.js");
 
 module.exports = (io, sql, app_cfg, logger) => {
   const cfg = app_cfg.widgets;
@@ -24,7 +24,9 @@ module.exports = (io, sql, app_cfg, logger) => {
   // Ablaufzeiten der Zwischenspeicher
   const TTL_AKTUELL = 10 * MINUTE; // aktuelles Wetter
   const TTL_VORHERSAGE = 60 * MINUTE; // Tageswerte heute/morgen/übermorgen
-  const TTL_KALENDER = cfg.ical_interval * MINUTE;
+  const TTL_KALENDER = 5 * MINUTE; // der Kalender-Dienst erneuert selbst alle ABRUF_INTERVALL Minuten
+  const TTL_TICKER = 50 * 1000;
+  const TICKER_TAKT = 60 * 1000;
   const UNGENUTZT_LOESCHEN = 3 * 60 * MINUTE; // Cache-Einträge ohne Abruf entfernen
 
   const wetter_aktiv = Boolean(cfg.brightsky_url);
@@ -312,19 +314,13 @@ module.exports = (io, sql, app_cfg, logger) => {
     }
   };
 
-  /* ############################ */
-  /* ##### Kalender (iCal) ###### */
-  /* ############################ */
+  /* ################################################ */
+  /* ##### Kalender-Dienst (Termine und Ticker) ###### */
+  /* ################################################ */
 
-  // Je ein Agent mit und ohne Proxy. "proxyEnv" pro Agent gibt es ab Node 24.5, damit gilt der Proxy nur für
-  // die Kalender-Abrufe (nicht für OSRM, Bright Sky usw.).
-  const agent_direkt = new https.Agent({ keepAlive: false, proxyEnv: {} });
-  const agent_proxy = cfg.ical_proxy ? new https.Agent({ keepAlive: false, proxyEnv: { HTTPS_PROXY: cfg.ical_proxy, HTTP_PROXY: cfg.ical_proxy } }) : null;
-
-  const [node_major, node_minor] = process.versions.node.split(".").map(Number);
-  if (cfg.ical_proxy && (node_major < 24 || (node_major === 24 && node_minor < 5))) {
-    logger.log("warn", `Standby-Widgets: WIDGET_ICAL_PROXY benötigt Node.js >= 24.5 (aktuell ${process.version}), Kalender werden ohne Proxy abgerufen.`);
-  }
+  // Der Kalender-Dienst (eigener Docker) prüft die Adressen gegen seine Liste freigegebener Server, lädt die
+  // Kalender (ggf. über Proxy), wertet sie aus und hält sie im Zwischenspeicher. Der Wachalarm fragt nur intern ab.
+  const kalender_aktiv = Boolean(cfg.kalender_url);
 
   class KalenderFehler extends Error {
     constructor(code, message) {
@@ -333,203 +329,124 @@ module.exports = (io, sql, app_cfg, logger) => {
     }
   }
 
-  // Eingegebene Adresse vereinheitlichen: webcal:// -> https://, Nextcloud-Freigabelink -> ICS-Export
-  const kalender_url_normalisieren = (eingabe) => {
-    let text = String(eingabe || "").trim();
-    if (!text) return "";
-    if (/^webcals?:\/\//i.test(text)) text = text.replace(/^webcals?:\/\//i, "https://");
-    let url;
+  const kalender_dienst = async (pfad, body) => {
+    if (!kalender_aktiv) throw new KalenderFehler("aus", "Kalender und Ticker sind auf diesem Server nicht eingerichtet.");
+    const headers = { "User-Agent": USER_AGENT };
+    if (body) headers["Content-Type"] = "application/json";
+    if (cfg.kalender_token) headers.Authorization = `Bearer ${cfg.kalender_token}`;
+    let res;
     try {
-      url = new URL(text);
-    } catch (e) {
-      throw new KalenderFehler("ungueltig", "Die Kalender-Adresse ist keine gültige URL.");
-    }
-    const nc = url.pathname.match(/^(.*?)(?:\/index\.php)?\/apps\/calendar\/p\/([A-Za-z0-9]+)/);
-    if (nc) {
-      url = new URL(`${url.origin}${nc[1]}/remote.php/dav/public-calendars/${nc[2]}?export`);
-    }
-    // SOGo (mailcow): der DAV-Ordner eines Kalenders ".../Calendar/<id>/" liefert per GET nur einen Fehler,
-    // die Termine gibt es unter ".../Calendar/<id>.ics"
-    if (/\/SOGo\/dav\/.+\/Calendar\/[^/]+\/$/i.test(url.pathname)) {
-      url.pathname = url.pathname.replace(/\/$/, "") + ".ics";
-    }
-    return url.toString();
-  };
-
-  const domain_fuer = (url) => cfg.ical_domains.find((d) => d.host === url.hostname.toLowerCase()) || null;
-
-  // Adresse prüfen: nur HTTPS, Standard-Port, nur freigegebene Server, keine Zugangsdaten in der URL
-  const kalender_url_pruefen = (eingabe) => {
-    const normal = kalender_url_normalisieren(eingabe);
-    if (!normal) return { url: "", domain: null };
-    const url = new URL(normal);
-    if (url.protocol !== "https:") throw new KalenderFehler("nur-https", "Nur HTTPS-Adressen sind erlaubt.");
-    if (url.port && url.port !== "443") throw new KalenderFehler("port", "Nur der Standard-Port 443 ist erlaubt.");
-    if (url.username || url.password) throw new KalenderFehler("zugangsdaten", "Die Adresse darf keine Zugangsdaten enthalten.");
-    const domain = domain_fuer(url);
-    if (!domain) throw new KalenderFehler("nicht-freigegeben", `Der Server ${url.hostname} ist nicht freigegeben. Bitte bei der Administration melden.`);
-    return { url: normal, domain: domain };
-  };
-
-  const ical_herunterladen = (url_text, weiterleitungen = 0) =>
-    new Promise((resolve, reject) => {
-      let geprueft;
-      try {
-        geprueft = kalender_url_pruefen(url_text);
-      } catch (error) {
-        return reject(error);
-      }
-      const url = new URL(geprueft.url);
-      const agent = geprueft.domain.proxy && agent_proxy ? agent_proxy : agent_direkt;
-      const req = https.get(
-        url,
-        { agent: agent, timeout: HTTP_TIMEOUT, headers: { "User-Agent": USER_AGENT, Accept: "text/calendar, */*;q=0.5" } },
-        (res) => {
-          const status = res.statusCode;
-          if (status >= 300 && status < 400 && res.headers.location) {
-            res.resume();
-            if (weiterleitungen >= 3) return reject(new KalenderFehler("weiterleitung", "Zu viele Weiterleitungen."));
-            // Weiterleitung wird wie eine neue Adresse geprüft (nur auf freigegebene Server)
-            const ziel = new URL(res.headers.location, url).toString();
-            return ical_herunterladen(ziel, weiterleitungen + 1).then(resolve, reject);
-          }
-          if (status !== 200) {
-            res.resume();
-            const err = new KalenderFehler("http", `HTTP ${status}`);
-            err.http_status = status;
-            return reject(err);
-          }
-          const teile = [];
-          let groesse = 0;
-          res.on("data", (chunk) => {
-            groesse += chunk.length;
-            if (groesse > cfg.ical_max_bytes) {
-              req.destroy(new KalenderFehler("zu-gross", `Kalender größer als ${Math.round(cfg.ical_max_bytes / 1024)} KB.`));
-              return;
-            }
-            teile.push(chunk);
-          });
-          res.on("end", () => resolve({ text: Buffer.concat(teile).toString("utf8"), bytes: groesse, host: url.hostname, proxy: agent === agent_proxy }));
-          res.on("error", reject);
-        }
-      );
-      req.on("timeout", () => req.destroy(new KalenderFehler("timeout", "Zeitüberschreitung beim Abruf.")));
-      req.on("error", reject);
-    });
-
-  // Termine von heute 00:00 bis Ende von heute + ical_days ermitteln (Serientermine werden aufgelöst)
-  const MAX_WIEDERHOLUNGEN = 20000;
-  const termine_aus_ical = (text) => {
-    const komponente = new ICAL.Component(ICAL.parse(text));
-    for (const vtz of komponente.getAllSubcomponents("vtimezone")) {
-      try {
-        ICAL.TimezoneService.register(vtz);
-      } catch (e) {
-        // fehlerhafte Zeitzonen-Definition: Termine werden dann als lokale Zeit behandelt
-      }
-    }
-
-    const von = tages_beginn(0).getTime();
-    const bis = tages_beginn(Math.max(0, cfg.ical_days) + 1).getTime();
-    const ergebnis = [];
-
-    // Ausnahmen (geänderte Einzeltermine einer Serie) der Hauptserie zuordnen
-    const ereignisse = komponente.getAllSubcomponents("vevent").map((v) => new ICAL.Event(v));
-    const haupt = new Map();
-    for (const ev of ereignisse) {
-      if (!ev.isRecurrenceException()) haupt.set(ev.uid || Symbol("ohne-uid"), ev);
-    }
-    for (const ev of ereignisse) {
-      if (ev.isRecurrenceException() && haupt.has(ev.uid)) {
-        try {
-          haupt.get(ev.uid).relateException(ev);
-        } catch (e) {
-          // Ausnahme passt nicht zur Serie, wird ignoriert
-        }
-      }
-    }
-
-    const aufnehmen = (start, ende, item) => {
-      if (!start) return;
-      const status = String(item.component.getFirstPropertyValue("status") || "").toUpperCase();
-      if (status === "CANCELLED") return;
-      const ganztaegig = start.isDate;
-      const start_ms = start.toJSDate().getTime();
-      let ende_ms = ende ? ende.toJSDate().getTime() : start_ms + (ganztaegig ? 24 * 60 * MINUTE : 0);
-      if (ende_ms < start_ms) ende_ms = start_ms;
-      // Ende einschließen, damit Termine ohne Dauer (Ende = Start) am heutigen Tag sichtbar bleiben
-      if (ende_ms < von || (ende_ms === von && start_ms < von) || start_ms >= bis) return;
-      ergebnis.push({
-        start: new Date(start_ms).toISOString(),
-        ende: new Date(ende_ms).toISOString(),
-        ganztaegig: ganztaegig,
-        titel: kuerzen(item.summary || "(ohne Titel)", 120),
-        ort: kuerzen(item.location || "", 80),
+      // beim ersten Abruf einer Adresse wartet der Dienst selbst auf den Kalender-Server (bis zu ca. 10 s)
+      res = await fetch(cfg.kalender_url + pfad, {
+        method: body ? "POST" : "GET",
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(25 * 1000),
       });
-    };
-
-    for (const ev of haupt.values()) {
-      try {
-        if (!ev.isRecurring()) {
-          aufnehmen(ev.startDate, ev.endDate, ev);
-          continue;
-        }
-        const it = ev.iterator();
-        let naechster;
-        let schritte = 0;
-        while ((naechster = it.next()) && schritte++ < MAX_WIEDERHOLUNGEN) {
-          if (naechster.toJSDate().getTime() >= bis) break;
-          const details = ev.getOccurrenceDetails(naechster);
-          aufnehmen(details.startDate, details.endDate, details.item);
-        }
-      } catch (e) {
-        // einzelner fehlerhafter Termin soll den Kalender nicht unbrauchbar machen
-      }
+    } catch (error) {
+      const err = new KalenderFehler("dienst", "Der Kalender-Dienst ist nicht erreichbar.");
+      status_melden("Kalender-Dienst", false, error, { kalender_url: cfg.kalender_url });
+      throw err;
     }
-
-    ergebnis.sort((a, b) => a.start.localeCompare(b.start) || Number(b.ganztaegig) - Number(a.ganztaegig) || a.titel.localeCompare(b.titel));
-    return ergebnis.slice(0, 200);
+    let daten = null;
+    try {
+      daten = await res.json();
+    } catch (e) {
+      // keine JSON-Antwort
+    }
+    // 400/404/502 = Dienst arbeitet, nur die Adresse bzw. der Kalender-Server hat ein Problem
+    const dienst_ok = res.ok || [400, 404, 502].includes(res.status);
+    status_melden("Kalender-Dienst", dienst_ok, `HTTP ${res.status}`, { kalender_url: cfg.kalender_url });
+    if (!res.ok || !daten || daten.ok === false) {
+      if (res.status === 401) throw new KalenderFehler("token", "Der Kalender-Dienst lehnt den Zugriff ab (WIDGET_KALENDER_TOKEN prüfen).");
+      throw new KalenderFehler((daten && daten.code) || "dienst", (daten && daten.meldung) || `Kalender-Dienst antwortete mit HTTP ${res.status}.`);
+    }
+    return daten;
   };
 
-  // Kalender laden (zwischengespeichert je Adresse) und Abruf protokollieren
-  const kalender_laden = async (url_text, socket) => {
-    return cache_holen(cache_kalender, url_text, TTL_KALENDER, async () => {
-      const start = Date.now();
-      let host = null;
-      try {
-        host = new URL(kalender_url_normalisieren(url_text)).hostname;
-      } catch (e) {
-        // wird beim Herunterladen als Fehler gemeldet
-      }
-      try {
-        const datei = await ical_herunterladen(url_text);
-        const termine = termine_aus_ical(datei.text);
-        logger.event(`Kalender von ${datei.host} abgerufen: ${termine.length} Termine (${Math.round(datei.bytes / 1024)} KB).`, {
-          ...(socket ? logger.from_socket(socket) : {}),
-          action: "kalender-abruf",
-          category: "network",
-          type: "access",
-          outcome: "success",
-          duration_ms: Date.now() - start,
-          wachalarm: { kalender: { domain: datei.host, termine: termine.length, bytes: datei.bytes, proxy: datei.proxy } },
-        });
-        return { termine: termine, abgerufen: new Date().toISOString() };
-      } catch (error) {
-        logger.event(`Kalender von ${host || "unbekanntem Server"} konnte nicht abgerufen werden: ${error.message}`, {
-          ...(socket ? logger.from_socket(socket) : {}),
-          level: "warn",
-          action: "kalender-abruf",
-          category: "network",
-          type: "access",
-          outcome: "failure",
-          reason: error.code || undefined,
-          duration_ms: Date.now() - start,
-          http_status: error.http_status,
-          wachalarm: { kalender: { domain: host, fehler: error.code || "abruf" } },
-        });
-        throw error;
-      }
+  // Status des Dienstes (erlaubte Server für die Einstellungsseite), kurz zwischengespeichert
+  const cache_status = erstelle_cache();
+  const kalender_dienst_status = async () => {
+    if (!kalender_aktiv) return { aktiv: false };
+    const start = Date.now();
+    try {
+      const daten = await cache_holen(cache_status, "status", 60 * 1000, () => kalender_dienst("/status"));
+      return { aktiv: true, ok: true, dauer_ms: Date.now() - start, version: daten.version, domains: daten.domains || [], intervall_min: daten.intervall_min };
+    } catch (error) {
+      return { aktiv: true, ok: false, fehler: error.message, domains: [] };
+    }
+  };
+  const erlaubte_kalender = async () => (await kalender_dienst_status()).domains || [];
+
+  // Adresse prüfen und probeweise laden; liefert die vereinheitlichte Adresse (webcal → https, Freigabelinks usw.)
+  const kalender_url_pruefen = async (eingabe) => {
+    const daten = await kalender_dienst("/pruefen", { url: eingabe, abrufen: true });
+    return { url: daten.url, domain: daten.domain };
+  };
+
+  // Termine einer Adresse (zwischengespeichert, damit viele Monitore mit demselben Kalender nur einmal fragen)
+  const kalender_laden = (url_text) =>
+    cache_holen(cache_kalender, url_text, TTL_KALENDER, async () => {
+      const daten = await kalender_dienst("/termine", { url: url_text });
+      return { termine: daten.termine || [], abgerufen: daten.abgerufen || null };
     });
+
+  // Ticker eines Monitors: Leitstelle und Kreis der aufgerufenen Nummer plus eigener Ticker des Benutzers
+  // Nur für angemeldete Monitore: die Meldungen sind intern (Monitore ohne Anmeldung zeigen keinen Ticker)
+  const ticker_quellen_fuer = (socket, einstellungen) => {
+    if (!socket.data.user || !socket.data.user.id) return [];
+    const quellen = sql.db_ticker_quellen_fuer_nr(socket.data.wachen_nr).map((q) => ({ url: q.url, name: q.name }));
+    if (einstellungen.ticker_url) quellen.push({ url: einstellungen.ticker_url, name: "" });
+    return quellen;
+  };
+  const ticker_schluessel = (quellen) => hash(quellen.map((q) => q.url));
+
+  const cache_ticker = erstelle_cache();
+  const ticker_laden = (quellen) =>
+    cache_holen(cache_ticker, ticker_schluessel(quellen), TTL_TICKER, async () => {
+      const daten = await kalender_dienst("/ticker", { quellen: quellen.map((q, i) => ({ url: q.url, ebene: String(i) })) });
+      const meldungen = (daten.meldungen || []).map((m) => {
+        const quelle = quellen[Number(m.ebene)];
+        return { text: m.text, stufe: m.stufe, start: m.start, ende: m.ende, quelle: cfg.ticker_quelle && quelle ? quelle.name : "" };
+      });
+      return { meldungen, erstellt: daten.erstellt || new Date().toISOString() };
+    });
+
+  // Status je Ticker-Kalender für die Admin-Seite: laufende und bald beginnende Meldungen, Stand, Fehlercode.
+  // Je Kalender eine Anfrage (exakte Zahlen ohne Zusammenführen); ist der Dienst selbst weg, Fehler werfen.
+  const ticker_quellen_status = async (liste) => {
+    const jetzt = Date.now();
+    const ergebnisse = await Promise.allSettled(liste.map((q) => kalender_dienst("/ticker", { quellen: [{ url: q.url, ebene: "0" }] })));
+    const dienst_weg = ergebnisse.length > 0 && ergebnisse.every((r) => r.status === "rejected" && ["dienst", "token", "aus"].includes(r.reason.code));
+    if (dienst_weg) throw ergebnisse[0].reason;
+    const status = {};
+    ergebnisse.forEach((r, i) => {
+      if (r.status === "rejected") {
+        status[liste[i].nr] = { ok: false, code: r.reason.code || "abruf" };
+        return;
+      }
+      const q = (r.value.quellen || [])[0] || {};
+      const meldungen = r.value.meldungen || [];
+      status[liste[i].nr] = q.ok
+        ? {
+            ok: true,
+            laufend: meldungen.filter((m) => new Date(m.start).getTime() <= jetzt && new Date(m.ende).getTime() > jetzt).length,
+            demnaechst: meldungen.filter((m) => new Date(m.start).getTime() > jetzt).length,
+            abgerufen: q.abgerufen || null,
+            veraltet: Boolean(q.veraltet),
+          }
+        : { ok: false, code: q.code || "abruf" };
+    });
+    return status;
+  };
+
+  // Test für die Admin-Seite: aktuelle Meldungen eines Ticker-Kalenders (ohne Zwischenspeicher)
+  const ticker_testen = async (url) => {
+    const start = Date.now();
+    const daten = await kalender_dienst("/ticker", { quellen: [{ url, ebene: "0" }] });
+    const q = (daten.quellen || [])[0] || {};
+    if (q.ok === false) throw new KalenderFehler(q.code || "abruf", `Kalender konnte nicht geladen werden (${q.code || "Fehler"}).`);
+    return { meldungen: daten.meldungen || [], abgerufen: q.abgerufen || null, veraltet: Boolean(q.veraltet), dauer_ms: Date.now() - start };
   };
 
   /* ######################################################## */
@@ -588,7 +505,7 @@ module.exports = (io, sql, app_cfg, logger) => {
   // Einstellungen und Standort eines Monitors ermitteln
   const monitor_konfiguration = (socket) => {
     const user = socket.data.user;
-    const einstellungen = user && user.id ? sql.db_user_get_config_standby(user.id) : { wetter: false, kalender: false, ical_url: "" };
+    const einstellungen = user && user.id ? sql.db_user_get_config_standby(user.id) : { wetter: false, kalender: false, ical_url: "", ticker_url: "" };
     // Wetter: Benutzereinstellung, Monitor-Parameter ?wetter=on oder WIDGET_WETTER_STANDARD schalten ein,
     // ?wetter=off schaltet für diesen Monitor in jedem Fall aus
     const parameter = socket.data.widgets_parameter || {};
@@ -598,19 +515,23 @@ module.exports = (io, sql, app_cfg, logger) => {
     if (einstellungen.wetter && wetter_aktiv) {
       ort = sql.db_wetter_ort_ermitteln(socket.data.wachen_nr);
     }
+    const ticker_quellen = kalender_aktiv ? ticker_quellen_fuer(socket, einstellungen) : [];
     return {
       wetter: Boolean(einstellungen.wetter && wetter_aktiv && ort),
       // Waldbrandgefahr gehört zum Schalter "Wetter und amtliche Unwetterwarnungen"
       waldbrand: Boolean(einstellungen.wetter && waldbrand_aktiv),
-      kalender: Boolean(einstellungen.kalender && einstellungen.ical_url),
+      kalender: Boolean(kalender_aktiv && einstellungen.kalender && einstellungen.ical_url),
       ical_url: einstellungen.ical_url,
+      // Ticker: Leitstelle/Kreis (Admin-Seite "Ticker-Quellen") und eigener Ticker-Kalender des Benutzers
+      ticker: ticker_quellen.length > 0,
+      ticker_quellen: ticker_quellen,
       ort: ort,
     };
   };
 
   // Kopf jedes io.widgets-Pakets: was ist eingeschaltet, Höchstalter, Anzeigeschwelle Waldbrand
   const kopf_von = (k) => ({
-    aktiv: { wetter: k.wetter, kalender: k.kalender, waldbrand: k.waldbrand },
+    aktiv: { wetter: k.wetter, kalender: k.kalender, waldbrand: k.waldbrand, ticker: k.ticker },
     max_age: cfg.max_age,
     waldbrand_ab: cfg.waldbrand_ab_stufe,
   });
@@ -629,7 +550,7 @@ module.exports = (io, sql, app_cfg, logger) => {
   const monitore = new Map();
 
   // Daten zusammenstellen und an einen Monitor senden
-  const senden = async (socket, teile = { wetter: true, warnungen: true, kalender: true }) => {
+  const senden = async (socket, teile = { wetter: true, warnungen: true, kalender: true, ticker: true }) => {
     if (!socket.connected) return;
     const k = socket.data.widgets;
     if (!k) return;
@@ -659,9 +580,21 @@ module.exports = (io, sql, app_cfg, logger) => {
     }
     if (k.kalender && teile.kalender) {
       aufgaben.push(
-        kalender_laden(k.ical_url, socket).then(
+        kalender_laden(k.ical_url).then(
           (d) => (payload.kalender = kalender_fuer_monitor(d)),
           () => (payload.kalender = null)
+        )
+      );
+    }
+    if (k.ticker && teile.ticker) {
+      aufgaben.push(
+        ticker_laden(k.ticker_quellen).then(
+          (t) => {
+            payload.ticker = t;
+            socket.data.widgets_ticker_hash = hash(t.meldungen);
+          },
+          // Dienst gestört: nichts senden, der Monitor behält die bisherigen Meldungen (mit ihrem Ende)
+          () => {}
         )
       );
     }
@@ -678,7 +611,7 @@ module.exports = (io, sql, app_cfg, logger) => {
       const k = socket.data.widgets;
       // auch ohne Widgets senden, damit der Monitor ausgeschaltete Widgets ausblendet
       senden(socket).catch((error) => logger.log("error", `Standby-Widgets: Senden an ${socket.id} fehlgeschlagen: ${error.message}`));
-      if (!k.wetter && !k.kalender) return;
+      if (!k.wetter && !k.kalender) return; // Ticker kommt über ticker_pruefen (zentral)
       // eigener Takt je Monitor mit zufälligem Startzeitpunkt, damit die Monitore verteilt aktualisieren
       const intervall = cfg.weather_interval * MINUTE;
       socket.data.widgets_start = setTimeout(() => {
@@ -748,14 +681,52 @@ module.exports = (io, sql, app_cfg, logger) => {
           s.emit("io.widgets", { ...kopf_von(k), waldbrand: wb });
         }
       }
-      for (const cache of [cache_aktuell, cache_vorhersage, cache_warnungen, cache_kalender, cache_waldbrand]) cache_aufraeumen(cache);
+      for (const cache of [cache_aktuell, cache_vorhersage, cache_warnungen, cache_kalender, cache_waldbrand, cache_ticker]) cache_aufraeumen(cache);
     } catch (error) {
       logger.log("error", `Standby-Widgets: Prüfung der Unwetterwarnungen fehlgeschlagen: ${error.message}`);
     }
   };
-  if (wetter_aktiv || waldbrand_aktiv) {
+  if (wetter_aktiv || waldbrand_aktiv || kalender_aktiv) {
     setInterval(warnungen_pruefen, cfg.alert_interval * MINUTE);
   }
+
+  // Ticker zentral prüfen: Monitore mit denselben Quellen teilen sich eine Anfrage, Änderungen gehen sofort raus
+  const ticker_pruefen = async () => {
+    try {
+      const gruppen = new Map();
+      for (const s of monitore.values()) {
+        const k = s.data.widgets;
+        if (!s.connected || !k || !k.ticker) continue;
+        const schluessel = ticker_schluessel(k.ticker_quellen);
+        if (!gruppen.has(schluessel)) gruppen.set(schluessel, { quellen: k.ticker_quellen, sockets: [] });
+        gruppen.get(schluessel).sockets.push(s);
+      }
+      for (const { quellen, sockets: gruppe } of gruppen.values()) {
+        const ticker = await ticker_laden(quellen).catch(() => null);
+        if (!ticker) continue;
+        const neu = hash(ticker.meldungen);
+        for (const s of gruppe) {
+          if (s.data.widgets_ticker_hash !== neu && s.connected) {
+            s.data.widgets_ticker_hash = neu;
+            s.emit("io.widgets", { ...kopf_von(s.data.widgets), ticker: ticker });
+          }
+        }
+      }
+    } catch (error) {
+      logger.log("error", `Standby-Widgets: Prüfung des Tickers fehlgeschlagen: ${error.message}`);
+    }
+  };
+  if (kalender_aktiv) {
+    setInterval(ticker_pruefen, TICKER_TAKT);
+  }
+
+  // Ticker-Quellen auf der Admin-Seite geändert: alle Monitore neu einrichten (Quellen hängen an der Nummer)
+  const ticker_quellen_geaendert = () => {
+    cache_ticker.clear();
+    for (const s of monitore.values()) {
+      if (s.connected) monitor_starten(s);
+    }
+  };
 
   // Erreichbarkeit von Bright Sky (Mittelpunkt Deutschlands) und Waldbrand-Dienst prüfen (Admin-Seite)
   const dienste_pruefen = async () => {
@@ -799,7 +770,7 @@ module.exports = (io, sql, app_cfg, logger) => {
   logger.log(
     "log",
     `Standby-Widgets: Wetter ${wetter_aktiv ? "über " + cfg.brightsky_url : "aus (WIDGET_BRIGHTSKY_URL leer)"}, ` +
-      `Kalender-Server: ${cfg.ical_domains.length ? cfg.ical_domains.map((d) => d.host + (d.proxy ? " (Proxy)" : "")).join(", ") : "keine"}, ` +
+      `Kalender und Ticker: ${kalender_aktiv ? "über " + cfg.kalender_url : "aus (WIDGET_KALENDER_URL leer)"}, ` +
       `Waldbrandgefahr: ${waldbrand_aktiv ? cfg.waldbrand_url + " (ab Stufe " + cfg.waldbrand_ab_stufe + ")" : "aus"}.`
   );
 
@@ -808,12 +779,17 @@ module.exports = (io, sql, app_cfg, logger) => {
     monitor_trennen,
     benutzer_aktualisiert,
     kalender_url_pruefen,
+    kalender_dienst_status,
+    ticker_testen,
+    ticker_quellen_status,
+    ticker_quellen_geaendert,
     wetter_testen,
     dienste_pruefen,
     wetter_aktiv,
     waldbrand_aktiv,
+    kalender_aktiv,
     wetter_standard: cfg.wetter_standard,
-    erlaubte_kalender: () => cfg.ical_domains.map((d) => d.host),
+    erlaubte_kalender,
     KalenderFehler,
   };
 };

@@ -7,7 +7,7 @@ mixin navlink(href, text, icon, aktiv)
 
 - const seite = title || ''
 - const istInfo = ['Impressum', 'Datenschutzerklärung', 'Über'].includes(seite)
-- const istAdmin = ['Benutzer und Rechte verwalten', 'Wachen verwalten', 'Wetter-Standorte verwalten', 'Ersetzungen verwalten', 'Verbundene PCs/Benutzer', 'Akutelle Einsätze', 'Log-Datei'].includes(seite)
+- const istAdmin = ['Benutzer und Rechte verwalten', 'Wachen verwalten', 'Wetter-Standorte verwalten', 'Ersetzungen verwalten', 'Ticker-Quellen verwalten', 'Verbundene PCs/Benutzer', 'Akutelle Einsätze', 'Log-Datei'].includes(seite)
 
 header
   // Fixed navbar
@@ -32,35 +32,43 @@ header
               .dropdown-divider
               a.dropdown-item(href='/ueber') &Uuml;ber diese Anwendung
           if user
-            if user.permissions == 'admin'
+            //- Administratoren sehen alles, die Zusatzrolle "datenpflege" nur die Stammdaten
+            - const istAdminNutzer = user.permissions == 'admin'
+            - const darfDatenpflege = istAdminNutzer || String(user.rollen || '').split(',').includes('datenpflege')
+            if darfDatenpflege
               li.nav-item.dropdown
                 a#navbarAdminDropdown.nav-link.dropdown-toggle.text-nowrap.rounded.px-2.px-lg-3(href='#', role='button', data-bs-toggle='dropdown', aria-expanded='false', class=istAdmin ? 'active bg-white bg-opacity-10' : null)
                   i.bi.bi-wrench.me-1(aria-hidden='true')
                   | Administration
                 .dropdown-menu.dropdown-menu-lg-end(aria-labelledby='navbarAdminDropdown')
-                  a.dropdown-item(href='/adm_edit_users')
-                    i.bi.bi-people-fill.me-2(aria-hidden='true')
-                    | Benutzer und Rechte verwalten
+                  if istAdminNutzer
+                    a.dropdown-item(href='/adm_edit_users')
+                      i.bi.bi-people-fill.me-2(aria-hidden='true')
+                      | Benutzer und Rechte verwalten
                   a.dropdown-item(href='/adm_edit_wachen')
                     i.bi.bi-building.me-2(aria-hidden='true')
                     | Wachen bearbeiten
                   a.dropdown-item(href='/adm_edit_wetter')
                     i.bi.bi-cloud-sun.me-2(aria-hidden='true')
                     | Wetter-Standorte
+                  a.dropdown-item(href='/adm_edit_ticker')
+                    i.bi.bi-megaphone.me-2(aria-hidden='true')
+                    | Ticker-Quellen
                   a.dropdown-item(href='/adm_edit_replace')
                     i.bi.bi-arrow-left-right.me-2(aria-hidden='true')
                     | Ersetzungen und Aussprache
-                  .dropdown-divider
-                  a.dropdown-item(href='/adm_show_clients')
-                    i.bi.bi-globe.me-2(aria-hidden='true')
-                    | Verbundene PCs und Benutzer anzeigen
-                  a.dropdown-item(href='/adm_show_missions')
-                    i.bi.bi-list-ul.me-2(aria-hidden='true')
-                    | laufende Eins&auml;tze anzeigen
-                  .dropdown-divider
-                  a.dropdown-item(href='/adm_show_log')
-                    i.bi.bi-journal-text.me-2(aria-hidden='true')
-                    | Log-Datei einsehen
+                  if istAdminNutzer
+                    .dropdown-divider
+                    a.dropdown-item(href='/adm_show_clients')
+                      i.bi.bi-globe.me-2(aria-hidden='true')
+                      | Verbundene PCs und Benutzer anzeigen
+                    a.dropdown-item(href='/adm_show_missions')
+                      i.bi.bi-list-ul.me-2(aria-hidden='true')
+                      | laufende Eins&auml;tze anzeigen
+                    .dropdown-divider
+                    a.dropdown-item(href='/adm_show_log')
+                      i.bi.bi-journal-text.me-2(aria-hidden='true')
+                      | Log-Datei einsehen
             +navlink('/einstellungen', 'Einstellungen', 'bi-gear-fill', seite == 'Einstellungen')
             li.nav-item.ms-lg-2.mt-2.mt-lg-0
               form(action='/logout', method='POST')

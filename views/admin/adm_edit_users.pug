@@ -15,6 +15,7 @@ block content
                 th Benutzername
                 th Beschreibung
                 th Berechtigung
+                th Zusatzrollen
                 th.text-end Aktionen
             tbody
               each val in users
@@ -22,8 +23,13 @@ block content
                   td= val.user
                   td.text-muted= val.description || ''
                   td= val.permissions
+                  td
+                    if String(val.rollen || '').split(',').includes('datenpflege')
+                      span.badge.text-bg-warning
+                        i.bi.bi-exclamation-triangle-fill.me-1(aria-hidden='true')
+                        | Datenpfleger
                   td.text-end.text-nowrap
-                    button.btn.btn-sm.btn-primary.mx-1.bi-pencil-square(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
+                    button.btn.btn-sm.btn-primary.mx-1.bi-pencil-square(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-rollen=val.rollen || '', data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
                     form(action='/adm_edit_users', method='POST', style='display:inline-block;')
                       input(type="hidden" name="_csrf" value=csrf_token)
                       input(type='hidden', name='modal_method', value='DELETE')
@@ -61,6 +67,18 @@ block content
                       | Benutzer
                     .form-text.text-muted Benutzer können Wachalarme empfangen und eigene Einstellungen festlegen.
                     input#waip_rights.form-control(type='text', name='waip_rights', pattern='(((^|,)([0-9]+))+)', placeholder='00,0000,00000,000001,...')
+            //- nur für Benutzer sichtbar, Administratoren dürfen ohnehin alles
+            fieldset#rollen_feld.mb-3.d-none
+              .row
+                legend.col-form-label.col-sm-3.pt-0 Zusatzrollen
+                .col-sm-9
+                  .border.border-warning.rounded.bg-warning.bg-opacity-10.p-2
+                    .form-check
+                      input#rolle_datenpflege.form-check-input(type='checkbox', name='rollen', value='datenpflege')
+                      label.form-check-label.fw-bold.text-warning(for='rolle_datenpflege')
+                        i.bi.bi-exclamation-triangle-fill.me-1(aria-hidden='true')
+                        | Datenpfleger
+                      .form-text Darf Wachen, Wetter-Standorte, Ticker-Quellen sowie Ersetzungen und Aussprache für alle Leitstellen bearbeiten – das wirkt auf alle Alarmmonitore. Keine Benutzerverwaltung, Einsätze und Log.
             .mb-3
               label.form-label Beschreibung
               input#description.form-control(type='text', name='description', placeholder='Optionale Beschreibung ...')
@@ -88,6 +106,7 @@ block content
       $("#username").prop("readonly", false);
       $("#username").prop("required", true);
       $("#UserPassword").prop("required", true);
+      rollen_umschalten();
       $('#userModal').modal('show');
     }
     let EditUser = function(current_user) {
@@ -104,19 +123,30 @@ block content
         $('#gridRadios2').click(); 
       }
       $("#UserPassword").prop("required", false);
+      $("#rolle_datenpflege").prop("checked", String($(current_user).data("rollen") || "").split(",").includes("datenpflege"));
+      rollen_umschalten();
       $("#ip").val($(current_user).data("ip_address"));
       $("#description").val($(current_user).data("description"));
       $('#userModal').modal('show');
+    }
+    // Zusatzrollen nur für Benutzer (Administratoren dürfen ohnehin alles)
+    let rollen_umschalten = function() {
+      const benutzer = $('#gridRadios2').is(':checked');
+      $('#rollen_feld').toggleClass('d-none', !benutzer);
+      $('#rolle_datenpflege').prop('disabled', !benutzer);
+      if (!benutzer) $('#rolle_datenpflege').prop('checked', false);
     }
     $('#gridRadios1').change(function() {
         if ($(this).is('input:checked')) {
             $('#waip_rights').prop("required", false);
         } 
+        rollen_umschalten();
     });
     $('#gridRadios2').change(function() {
         if ($(this).is('input:checked')) {
             $('#waip_rights').prop("required", true);
         } 
+        rollen_umschalten();
     });
     $('#waip_rights').change(function() {
       $('#gridRadios2').val($('#waip_rights').val());

@@ -1,0 +1,267 @@
+extends ../layout
+
+block content
+  main(role='main')
+    .container-fluid
+      +seitenkopf('Ticker-Quellen', 'Kalender der Leitstellen und Kreise für die Laufschrift im Standby des Alarmmonitors.', 'bi-megaphone')
+      +meldungen(error, success)
+
+      .row.g-3.mb-4
+        .col-12.col-lg-8
+          .card.border-0.h-100
+            .card-body
+              h2.h6.card-title.d-flex.align-items-center.gap-2
+                i.bi.bi-diagram-3(aria-hidden='true')
+                span So funktioniert der Ticker
+              p.card-text.text-body-secondary.mb-2
+                | Jeder laufende Termin eines Ticker-Kalenders ist eine Meldung, die von Beginn bis Ende auf den Alarmmonitoren durchläuft (nur im Standby, nur angemeldete Monitore).
+                | Ein Monitor zeigt die Meldungen seiner Leitstelle, seines Kreises (ab Kreis-Ebene) und den eigenen Ticker-Kalender des Benutzers aus den Einstellungen.
+              p.card-text.text-body-secondary.mb-0
+                | Die Meldungen werden im Kalender (z.B. SOGo, Nextcloud) gepflegt, hier steht nur dessen Adresse. Wer schreiben darf, regelt die Freigabe des Kalenders.
+                | Rot: Priorität „hoch“, „!!“ vor dem Titel oder Schlagwörter wie „dringend“; gelb: Priorität „normal“, „!“ vor dem Titel oder „wichtig“.
+        .col-12.col-lg-4
+          .card.border-0.h-100
+            .card-body
+              h2.h6.card-title.d-flex.align-items-center.gap-2
+                i.bi.bi-hdd-network(aria-hidden='true')
+                span Kalender-Dienst
+              .d-flex.flex-column.gap-1.text-body-secondary
+                .d-flex.justify-content-between.gap-2
+                  span Adresse
+                  if kalender_aktiv
+                    code.text-break= kalender_url
+                  else
+                    span.badge.text-bg-secondary.align-self-center nicht eingerichtet
+                .d-flex.justify-content-between.gap-2
+                  span Status
+                  span#dienst_status.badge.text-bg-secondary.align-self-center unbekannt
+                .d-flex.justify-content-between.gap-2
+                  span Erlaubte Server
+                  span#dienst_domains.text-end –
+              p.small.text-body-secondary.mt-2.mb-0
+                | Erlaubte Kalender-Server, Proxy, Abrufintervall und Schlagwörter stehen in der
+                code.mx-1 .env
+                | des Kalender-Dienstes.
+
+      if quellen.length === 0
+        p.text-body-secondary Es sind keine aktiven Wachen mit Leitstelle oder Kreis angelegt.
+      else
+        .card.border-0
+          .table-responsive
+            table.table.table-hover.align-middle.mb-0
+              thead
+                tr
+                  th(scope='col') Leitstelle / Kreis
+                  th.text-end(scope='col', style='width: 70px') Nr.
+                  th(scope='col') Ticker-Kalender
+                  th(scope='col') Status
+                  th(scope='col') Zuletzt geändert
+                  th.text-end(scope='col', style='width: 110px')
+                    span.visually-hidden Aktion
+              tbody
+                each q in quellen
+                  - const leitstelle = String(q.nr).length === 1
+                  - let host = ''
+                  - try { host = q.url ? new URL(q.url).hostname : '' } catch (e) { host = 'eingetragen' }
+                  tr(class=leitstelle ? 'table-active' : null)
+                    td(class=leitstelle ? 'fw-semibold' : 'ps-4')= q.name
+                    td.text-end.font-monospace.text-body-secondary= q.nr
+                    td
+                      if q.url
+                        i.bi.bi-calendar-check.me-2.text-body-secondary(aria-hidden='true')
+                        span= host
+                      else
+                        span.text-body-secondary –
+                    td.small(data-status=q.url ? q.nr : null)
+                      if q.url
+                        span.text-body-secondary wird geprüft …
+                    td.small.text-body-secondary
+                      if q.geaendert_von
+                        | #{new Date(q.geaendert_am).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })} · #{q.geaendert_von}
+                    td.text-end.text-nowrap
+                      if q.url
+                        button.btn.btn-sm.btn-link.text-body-secondary.ticker-test(type='button', data-nr=q.nr, data-name=q.name, title='Aktuelle Meldungen abrufen', aria-label='Meldungen von ' + q.name + ' abrufen')
+                          i.bi.bi-eye(aria-hidden='true')
+                      button.btn.btn-sm.btn-link.text-body(type='button', data-quelle=q.nr, data-name=q.name, data-url=q.url || '', disabled=!kalender_aktiv, title='Ticker-Kalender bearbeiten', aria-label='Ticker-Kalender für ' + q.name + ' bearbeiten')
+                        i.bi.bi-pencil(aria-hidden='true')
+
+  #quelleModal.modal.fade(tabindex='-1', aria-labelledby='quelleTitel', aria-hidden='true')
+    .modal-dialog.modal-dialog-centered.modal-lg
+      .modal-content
+        .modal-header
+          h2#quelleTitel.modal-title.h5 Ticker-Kalender
+          button.btn-close(type='button', data-bs-dismiss='modal', aria-label='Schließen')
+        .modal-body
+          form#quelleForm(action='/adm_edit_ticker/speichern', method='post')
+            input(type='hidden', name='_csrf', value=csrf_token)
+            input#quelle_nr(type='hidden', name='nr')
+            label.form-label(for='quelle_url') Kalender-Adresse (iCal/ICS)
+            input#quelle_url.form-control(type='url', name='url', maxlength='2000', placeholder='https://…', aria-describedby='quelle_hilfe')
+            #quelle_hilfe.form-text
+              | SOGo: Kalender-Adresse aus „Links zu diesem Kalender“, Nextcloud: öffentlicher Freigabelink. Beim Speichern wird der Kalender probeweise geladen.
+        .modal-footer
+          button#quelle_entfernen.btn.btn-outline-danger.me-auto(type='button')
+            i.bi.bi-trash.me-1(aria-hidden='true')
+            | Entfernen
+          button.btn.btn-secondary(type='button', data-bs-dismiss='modal') Abbrechen
+          button.btn.btn-primary(type='submit', form='quelleForm') Speichern
+
+  //- Ergebnis des Tests (Auge) als eigener Dialog
+  #test_karte.modal.fade(tabindex='-1', aria-labelledby='test_titel', aria-hidden='true')
+    .modal-dialog.modal-dialog-centered.modal-lg.modal-dialog-scrollable
+      .modal-content
+        .modal-header
+          h2.modal-title.h5.d-flex.align-items-center.gap-2
+            i.bi.bi-eye(aria-hidden='true')
+            span#test_titel Test
+          button.btn-close(type='button', data-bs-dismiss='modal', aria-label='Schließen')
+        .modal-body
+          #test_inhalt.d-flex.flex-column.gap-2.text-body-secondary
+        .modal-footer
+          button.btn.btn-secondary(type='button', data-bs-dismiss='modal') Schließen
+
+  script#ticker_daten(type='application/json')!= JSON.stringify({ csrf: csrf_token, aktiv: kalender_aktiv }).replace(/</g, '\\u003c')
+  script.
+    (function () {
+      const daten = JSON.parse(document.getElementById("ticker_daten").textContent);
+      const karte = document.getElementById("test_karte");
+      const titel = document.getElementById("test_titel");
+      const inhalt = document.getElementById("test_inhalt");
+      const STUFEN = { danger: ["rot", "text-bg-danger"], warning: ["gelb", "text-bg-warning"], normal: ["normal", "text-bg-secondary"] };
+
+      function eintrag(text, klasse) {
+        const el = document.createElement("div");
+        if (klasse) el.className = klasse;
+        el.textContent = text;
+        return el;
+      }
+
+      async function anfrage(body) {
+        const res = await fetch("/adm_edit_ticker/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(Object.assign({ _csrf: daten.csrf }, body)),
+        });
+        const r = await res.json();
+        if (!res.ok) throw new Error(r.error || "HTTP " + res.status);
+        return r;
+      }
+
+      async function anfrage_status() {
+        const res = await fetch("/adm_edit_ticker/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ _csrf: daten.csrf }),
+        });
+        const r = await res.json();
+        if (!res.ok) throw new Error(r.error || "HTTP " + res.status);
+        return r;
+      }
+
+      const zeit = (iso) => new Date(iso).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+      async function testen(nr, name) {
+        bootstrap.Modal.getOrCreateInstance(karte).show();
+        titel.textContent = "Test: " + name + " …";
+        inhalt.replaceChildren(eintrag("wird abgerufen …"));
+        try {
+          const r = await anfrage({ nr: nr });
+          titel.textContent = "Test: " + name + " · " + r.meldungen.length + (r.meldungen.length === 1 ? " Meldung" : " Meldungen") + " (jetzt und in den nächsten Stunden)";
+          const jetzt = Date.now();
+          const zeilen = r.meldungen.map(function (m) {
+            const s = STUFEN[m.stufe] || STUFEN.normal;
+            const zeile = document.createElement("div");
+            zeile.className = "d-flex flex-wrap align-items-center gap-2";
+            const badge = eintrag(s[0], "badge " + s[1]);
+            const laeuft = new Date(m.start).getTime() <= jetzt;
+            zeile.append(badge, eintrag(m.text, "text-body"), eintrag((laeuft ? "läuft bis " : "ab " + zeit(m.start) + " bis ") + zeit(m.ende), "small"));
+            return zeile;
+          });
+          if (zeilen.length === 0) zeilen.push(eintrag("Derzeit keine Meldungen."));
+          zeilen.push(eintrag("Stand " + (r.abgerufen ? zeit(r.abgerufen) : "–") + (r.veraltet ? " (letzter Abruf fehlgeschlagen, ältere Daten)" : "") + " · Antwort in " + r.dauer_ms + " ms", "small mt-2"));
+          inhalt.replaceChildren.apply(inhalt, zeilen);
+        } catch (e) {
+          titel.textContent = "Test: " + name;
+          inhalt.replaceChildren(eintrag(e.message, "text-danger"));
+        }
+      }
+
+      // Status des Kalender-Dienstes beim Laden prüfen
+      const status = document.getElementById("dienst_status");
+      const domains = document.getElementById("dienst_domains");
+      if (daten.aktiv) {
+        anfrage({})
+          .then(function (d) {
+            status.className = "badge align-self-center " + (d.ok ? "text-bg-success" : "text-bg-danger");
+            status.textContent = d.ok ? "erreichbar (" + d.dauer_ms + " ms" + (d.version ? ", Version " + d.version : "") + ")" : "nicht erreichbar";
+            if (!d.ok) status.title = d.fehler || "";
+            domains.textContent = (d.domains || []).join(", ") || "keine";
+          })
+          .catch(function () {
+            status.className = "badge align-self-center text-bg-danger";
+            status.textContent = "nicht erreichbar";
+          });
+      }
+
+      // Status je Ticker-Kalender (laufende Meldungen, Stand, Fehler) nachladen
+      const FEHLER = {
+        http: "Kalender-Server meldet einen Fehler",
+        timeout: "Kalender-Server antwortet nicht",
+        netz: "Kalender-Server nicht erreichbar",
+        format: "keine gültige Kalenderdatei",
+        "zu-gross": "Kalender zu groß",
+        "nicht-freigegeben": "Server nicht freigegeben",
+        weiterleitung: "zu viele Weiterleitungen",
+      };
+      const zellen = document.querySelectorAll("[data-status]");
+      const zelle_setzen = (zelle, symbol, farbe, text, titel) => {
+        const i = document.createElement("i");
+        i.className = "bi " + symbol + " me-1 " + farbe;
+        i.setAttribute("aria-hidden", "true");
+        const span = document.createElement("span");
+        span.textContent = text;
+        zelle.replaceChildren(i, span);
+        if (titel) zelle.title = titel;
+      };
+      if (zellen.length && daten.aktiv) {
+        anfrage_status()
+          .then(function (r) {
+            zellen.forEach(function (zelle) {
+              const st = r.status[zelle.dataset.status];
+              if (!st) return zelle_setzen(zelle, "bi-question-circle", "text-body-secondary", "unbekannt");
+              if (!st.ok) return zelle_setzen(zelle, "bi-exclamation-circle-fill", "text-danger", FEHLER[st.code] || "Fehler (" + st.code + ")");
+              let text = st.laufend === 1 ? "1 Meldung läuft" : st.laufend + " Meldungen laufen";
+              if (st.demnaechst) text += ", " + st.demnaechst + " folgen";
+              if (st.abgerufen) text += " · Stand " + new Date(st.abgerufen).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+              if (st.veraltet) zelle_setzen(zelle, "bi-exclamation-triangle-fill", "text-warning", text, "Letzter Abruf fehlgeschlagen, angezeigt wird der letzte bekannte Stand.");
+              else zelle_setzen(zelle, "bi-circle-fill", st.laufend ? "text-success" : "text-body-secondary", text);
+            });
+          })
+          .catch(function (e) {
+            zellen.forEach((zelle) => zelle_setzen(zelle, "bi-exclamation-circle-fill", "text-danger", "Kalender-Dienst nicht erreichbar", e.message));
+          });
+      }
+
+      // Bearbeiten im Dialog
+      const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("quelleModal"));
+      const url_feld = document.getElementById("quelle_url");
+      document.querySelectorAll("[data-quelle]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.getElementById("quelleTitel").textContent = "Ticker-Kalender · " + btn.dataset.name;
+          document.getElementById("quelle_nr").value = btn.dataset.quelle;
+          url_feld.value = btn.dataset.url;
+          document.getElementById("quelle_entfernen").classList.toggle("d-none", !btn.dataset.url);
+          modal.show();
+        });
+      });
+      document.getElementById("quelleModal").addEventListener("shown.bs.modal", () => url_feld.focus());
+      document.getElementById("quelle_entfernen").addEventListener("click", function () {
+        if (!confirm("Ticker-Kalender entfernen? Die Monitore zeigen dann keine Meldungen mehr aus dieser Quelle.")) return;
+        url_feld.value = "";
+        document.getElementById("quelleForm").submit();
+      });
+
+      document.querySelectorAll(".ticker-test").forEach(function (btn) {
+        btn.addEventListener("click", function () { testen(btn.dataset.nr, btn.dataset.name); });
+      });
+    })();
