@@ -41,10 +41,40 @@ block content
                   if user.permissions == 'admin'
                     .small.text-body-secondary Vollständiger Zugriff auf #[a(href='/waip/0') alle Wachalarme].
                   else if user_waips && user_waips.length
-                    .small.text-body-secondary.mb-2 Ihre Alarmmonitore:
+                    -
+                      // Freigabe = Einträge, die genau einer Berechtigung entsprechen (z.B. „52“ = Kreis Cottbus);
+                      // darunter liegen alle Träger und Wachen, die nur aufklappbar gezeigt werden
+                      const rechte = String(user.permissions || '').split(',').map((r) => r.trim()).filter(Boolean)
+                      const arten = { global: ['Alle', 'bi-collection'], leitstelle: ['Leitstelle', 'bi-broadcast'], kreis: ['Kreis', 'bi-map'], traeger: ['Träger', 'bi-bank'], wache: ['Wachen', 'bi-building'] }
+                      const freigaben = user_waips.filter((w) => rechte.includes(w.nr))
+                      // gleichnamige Einträge (z.B. mehrere Träger „Stadt Cottbus (Freiwillige Feuerwehr)“) mit Nummer unterscheiden
+                      const anzahlName = {}
+                      user_waips.forEach((w) => { anzahlName[w.typ + '|' + w.name] = (anzahlName[w.typ + '|' + w.name] || 0) + 1 })
+                      const anzeige = (w) => anzahlName[w.typ + '|' + w.name] > 1 ? w.name + ' · ' + w.nr : w.name
+                      // als Button allein ist „Cottbus“ mehrdeutig -> Art voranstellen
+                      const mitArt = (w) => (w.typ === 'kreis' ? 'Kreis ' : w.typ === 'leitstelle' ? 'Leitstelle ' : '') + anzeige(w)
+                      const wenige = user_waips.length <= 4 || !freigaben.length
+                    .small.text-body-secondary.mb-2= wenige ? 'Ihre Alarmmonitore:' : 'Freigegeben für:'
                     .d-flex.flex-wrap.gap-2
-                      each item in user_waips
-                        a.btn.btn-sm.btn-outline-info(href='/waip/' + item.nr)= item.name
+                      each item in (wenige ? user_waips : freigaben)
+                        a.btn.btn-sm.btn-outline-info(href='/waip/' + item.nr)
+                          i.bi.me-1(class=(arten[item.typ] || arten.wache)[1], aria-hidden='true')
+                          | #{mitArt(item)}
+                    if !wenige
+                      a.start-monitore-link.small.d-inline-block.mt-2.text-decoration-none(data-bs-toggle='collapse', href='#start-alle-monitore', role='button', aria-expanded='false', aria-controls='start-alle-monitore')
+                        i.bi.bi-chevron-down.me-1(aria-hidden='true')
+                        | Alle #{user_waips.length} Monitore anzeigen
+                      #start-alle-monitore.collapse
+                        .start-monitorliste.mt-2
+                          each art in ['global', 'leitstelle', 'kreis', 'traeger', 'wache']
+                            - const liste = user_waips.filter((w) => w.typ === art)
+                            if liste.length
+                              .small.text-uppercase.text-body-secondary.fw-semibold.mt-2.mb-1
+                                i.bi.me-1(class=arten[art][1], aria-hidden='true')
+                                | #{arten[art][0]} (#{liste.length})
+                              .list-group.list-group-flush
+                                each item in liste
+                                  a.list-group-item.list-group-item-action.py-1.px-2.small(href='/waip/' + item.nr)= anzeige(item)
                   else
                     .small.text-body-secondary Für Ihr Konto sind noch keine Alarmmonitore freigeschaltet.
             else if public.show_login
