@@ -22,6 +22,14 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
     wachalarm: { socket_id: socket.id, namespace: socket.nsp.name, wache_nr: socket.data.wachen_nr, ...extra },
   });
 
+  // angemeldeter Benutzer der Session (Passport-ID), null für Gäste. Eine abgelaufene Anmeldung über Keycloak
+  // (siehe OIDC_<ID>_SESSION_STUNDEN) zählt als Gast, auch wenn die Session selbst noch läuft.
+  const session_user_id = (session) => {
+    if (!session || !session.passport || !session.passport.user) return null;
+    if (session.oidc && Date.now() > session.oidc.ablauf) return null;
+    return session.passport.user;
+  };
+
   // Wachalarm
   const nsp_waip = io.of("/waip");
   nsp_waip.on("connection", (socket) => {
@@ -61,9 +69,7 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
               socket.request.sessionStore.touch(socket.request.session.id, socket.request.session, () => {});
 
               // User frisch aus DB laden, damit Berechtigungsaenderungen wirken
-              const passport_id = socket.request.session && socket.request.session.passport
-                ? socket.request.session.passport.user
-                : null;
+              const passport_id = session_user_id(socket.request.session);
               if (passport_id) {
                 const refreshed_user = await sql.auth_deserializeUser(passport_id);
                 if (refreshed_user) {
@@ -141,9 +147,7 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
         // Passport setzt socket.request.user nur einmalig beim Handshake (Snapshot).
         // Durch Race Conditions kann dieser Snapshot beim Eintreffen eines Alarms
         // fehlen oder veraltet sein. socket.data ist unser eigener, stabiler Speicher.
-        const passport_id = socket.request.session && socket.request.session.passport
-          ? socket.request.session.passport.user
-          : null;
+        const passport_id = session_user_id(socket.request.session);
         const fresh_user = passport_id ? await sql.auth_deserializeUser(passport_id) : null;
         socket.data.user = fresh_user || { id: null, user: "Gast", permissions: null };
         logger.log("debug", `WAIP: User fuer Socket ${socket.id} geladen: ${socket.data.user.user} (Rechte: ${socket.data.user.permissions}).`);
@@ -314,9 +318,7 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
           throw `Das Dashboards mit der UUID ${uuid} ist nicht mehr vorhanden (Anfrage lieferte kein Ergebnis)!`;
         } else {
           // User frisch aus der DB laden (analog zum WAIP-Event).
-          const dbrd_passport_id = socket.request.session && socket.request.session.passport
-            ? socket.request.session.passport.user
-            : null;
+          const dbrd_passport_id = session_user_id(socket.request.session);
           const dbrd_fresh_user = dbrd_passport_id ? await sql.auth_deserializeUser(dbrd_passport_id) : null;
           socket.data.user = dbrd_fresh_user || { id: null, user: "Gast", permissions: null };
           logger.log("debug", `DBRD: User fuer Socket ${socket.id} geladen: ${socket.data.user.user} (Rechte: ${socket.data.user.permissions}).`);

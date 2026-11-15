@@ -128,4 +128,49 @@ app_cfg.widgets = {
   waldbrand_ab_stufe: Math.min(5, Math.max(1, Number(process.env.WIDGET_WALDBRAND_AB_STUFE) || 3)),
 };
 
+// Anmeldung über Keycloak (OpenID Connect), auch mehrere Server/Realms: OIDC_PROVIDER=kms,lk und je ID
+// die Einstellungen OIDC_<ID>_… (ID in Großbuchstaben). Die ID dient der Verknüpfung der Konten und darf
+// später nicht mehr geändert werden. Unvollständige Einträge werden beim Start mit Warnung übersprungen.
+app_cfg.oidc = (process.env.OIDC_PROVIDER || "")
+  .split(",")
+  .map((id) => id.trim().toLowerCase())
+  .filter((id, i, alle) => id && alle.indexOf(id) === i)
+  .map((id) => {
+    if (!/^[a-z0-9_]+$/.test(id)) {
+      console.warn(`START - OIDC_PROVIDER: ungültige ID '${id}' (erlaubt: a-z, 0-9, _), wird ignoriert.`);
+      return null;
+    }
+    const env = (name, standard = "") => (process.env[`OIDC_${id.toUpperCase()}_${name}`] ?? standard).trim();
+    const provider = {
+      id: id,
+      // Beschriftung des Buttons auf der Login-Seite
+      name: env("NAME", "Keycloak"),
+      text: env("TEXT", "Mit Ihrem zentralen Benutzerkonto"),
+      // z.B. https://sso.example.de/realms/feuerwehr
+      issuer: env("ISSUER").replace(/\/+$/, ""),
+      client_id: env("CLIENT_ID"),
+      client_secret: env("CLIENT_SECRET"),
+      scope: env("SCOPE", "openid profile"),
+      // Client-Rolle, ohne die keine Anmeldung möglich ist
+      rolle: env("ROLLE", "wachalarm_login"),
+      // Claim mit den Wachen-Rechten (Gruppen-Attribut), z.B. ["5201", "66"]
+      claim_wachen: env("CLAIM_WACHEN", "wachalarm_wache"),
+      // beim Abmelden auch die Keycloak-Sitzung beenden
+      logout: env("LOGOUT", "true") === "true",
+      // feste Höchstdauer der Anmeldung, danach neu anmelden (Rechte aus Keycloak werden dabei aktualisiert)
+      session_stunden: Number(env("SESSION_STUNDEN", "12")) || 12,
+      callback_url: `${app_cfg.public.url.replace(/\/+$/, "")}/login/oidc/${id}/callback`,
+    };
+    const fehlt = ["issuer", "client_id", "client_secret"].filter((k) => !provider[k]);
+    if (fehlt.length > 0) {
+      console.warn(`START - Keycloak '${id}': ${fehlt.map((k) => `OIDC_${id.toUpperCase()}_${k.toUpperCase()}`).join(", ")} fehlt, Anmeldung über '${id}' ist deaktiviert.`);
+      return null;
+    }
+    return provider;
+  })
+  .filter(Boolean);
+
+// für die Login-Seite und die Benutzerverwaltung (ohne Zugangsdaten)
+app_cfg.public.oidc_anmeldung = app_cfg.oidc.map((p) => ({ id: p.id, name: p.name, text: p.text }));
+
 module.exports = app_cfg;
