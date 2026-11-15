@@ -202,7 +202,11 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - Pflege der Wetter-Standorte für die Standby-Anzeige
     - Pflege der Ticker-Quellen (Kalender der Leitstellen und Kreise)
     - Pflege von Ersetzungen für die Sprachansage, inkl. Probehören der Aussprache
-- Benutzer mit der Zusatzrolle "Datenpfleger" dürfen die Stammdaten pflegen (Wachen, Wetter-Standorte, Ticker-Quellen, Ersetzungen und Aussprache), sehen aber keine Benutzerverwaltung, Einsätze, verbundenen Clients und Logs
+- Benutzer mit der lokalen Rolle "Datenpfleger" dürfen die Stammdaten pflegen (Wachen, Wetter-Standorte, Ticker-Quellen, Ersetzungen und Aussprache), sehen aber keine Benutzerverwaltung, Einsätze, verbundenen Clients und Logs
+- optional melden sich Benutzer über eine zentrale Benutzerverwaltung (Keycloak bzw. OpenID Connect) an, auch mehrere Server oder Realms sind möglich (`OIDC_PROVIDER` in der `.env`):
+    - eine Client-Rolle regelt, wer sich anmelden darf, die Wachen-Rechte kommen aus einem Gruppen-Attribut
+    - das Konto wird bei der ersten Anmeldung angelegt, bestehende Konten werden über die Keycloak-ID verknüpft
+    - lokale Rollen (Administrator, Datenpfleger) und zusätzliche Wachen-Rechte werden nur im **`Wachalarm IP-Web`** vergeben
 
 ![Ersetzungen und Aussprache](docs/images/adm_ersetzungen.webp)
 
@@ -232,6 +236,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - [Piper](https://github.com/rhasspy/piper) (Wyoming-Protokoll) für eine natürlichere Sprachansage
     - [Bright Sky](https://brightsky.dev/) für Wetter und Unwetterwarnungen
     - Filebeat und Elasticsearch für die Auswertung der Logs
+    - [Keycloak](https://www.keycloak.org/) (oder ein anderer OpenID-Connect-Server) für die Anmeldung mit zentralen Benutzerkonten
 
 > ⚠ **Achtung:** Ohne Anpassung der `.env` gelten unsichere Standard-Kennwörter. Diese unbedingt vor dem ersten Start ändern!
 

@@ -37,6 +37,15 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Anmeldungen über Keycloak gelten höchstens OIDC_<ID>_SESSION_STUNDEN, auch wenn die Session durch Aktivität
+  // (rolling) weiterläuft. Danach ist eine neue Anmeldung nötig, bei der die Rechte aus Keycloak aktualisiert werden.
+  const oidc_abgelaufen = (req) => Boolean(req.user && req.session && req.session.oidc && Date.now() > req.session.oidc.ablauf);
+  app.use((req, res, next) => {
+    if (!oidc_abgelaufen(req)) return next();
+    logger.log("log", `Anmeldung von ${req.user.user} über Keycloak ist abgelaufen, Benutzer wird abgemeldet.`);
+    req.logout((err) => next(err));
+  });
+
   // CSRF-Schutz für Formulare: Das Token wird aus der Session-ID abgeleitet (HMAC), in der Session selbst
   // wird nichts gespeichert. Geprüft werden nur POST-Anfragen, die API (JWT statt Cookie) ist ausgenommen,
   // Socket.IO läuft nicht über Express. Ein ungültiges Token verwirft nur das Formular, die Anmeldung bleibt bestehen.
@@ -127,6 +136,16 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
           const row = await sql.auth_localstrategy_cryptpassword(user);
           if (!row) {
             login_failed("benutzer-unbekannt");
+            return done(null, false);
+          }
+          // mit Keycloak verknüpfte Konten melden sich nur über Keycloak an
+          if (row.extern) {
+            login_failed("keycloak-konto", user);
+            return done(null, false);
+          }
+          // Konten ohne Passwort (z.B. Zertifikats-Nutzer) können sich nicht per Passwort anmelden
+          if (!row.password || !password) {
+            login_failed("kein-passwort", user);
             return done(null, false);
           }
           // Passwort-Hash mit dem aus der DB vergleichen
@@ -311,7 +330,51 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     return [...new Set(liste)].join(",");
   };
 
-  const invalid_permissions_msg = "Ungültige Berechtigungen! Erlaubt sind 'admin' oder Wachennummern, z.B. 52,6601.";
+  const invalid_permissions_msg = "Ungültige Wachen-Rechte! Erlaubt sind Wachen-, Kreis- oder Leitstellennummern, z.B. 52,6601.";
+
+  // Felder des Benutzer-Dialogs prüfen. Lokale Rollen: Administrator (Checkbox rolle_admin) ersetzt die
+  // Wachen-Rechte, Datenpfleger (rollen) kommt zu ihnen hinzu. anmeldung = "" (Wachalarm: Passwort/Zertifikat)
+  // oder die ID eines Keycloak (OIDC_PROVIDER), dann mit der Keycloak-ID des Benutzers in oidc_sub.
+  // Rückgabe: { fehler } oder { permissions_lokal, rollen, rechte_modus, anmeldung }
+  const formular_lesen = (req, bisheriger_provider) => {
+    let anmeldung = null;
+    const provider_id = String(req.body.anmeldung || "").trim();
+    if (provider_id) {
+      // nicht mehr konfigurierte Keycloaks bleiben für bestehende Verknüpfungen auswählbar
+      if (!app_cfg.oidc.some((p) => p.id === provider_id) && provider_id !== bisheriger_provider) {
+        return { fehler: "Unbekannter Keycloak '" + provider_id + "'." };
+      }
+      const sub = String(req.body.oidc_sub || "").trim();
+      if (!/^[\w.@:|+-]{1,255}$/.test(sub)) {
+        return { fehler: "Bitte eine gültige Keycloak-ID angeben (z.B. 3f2c9a1e-…, zu finden in Keycloak beim Benutzer unter „ID“)." };
+      }
+      anmeldung = { provider: provider_id, sub: sub };
+    }
+
+    let permissions_lokal;
+    if (req.body.rolle_admin) {
+      permissions_lokal = "admin";
+    } else {
+      const roh = req.body.waip_rights !== undefined ? req.body.waip_rights : req.body.permissions;
+      // Keycloak-Konten dürfen ohne lokale Wachen auskommen (Rechte kommen aus Keycloak)
+      if (anmeldung && String(roh || "").trim() === "") {
+        permissions_lokal = "";
+      } else {
+        permissions_lokal = normalize_permissions(roh);
+        if (!permissions_lokal || permissions_lokal === "admin") {
+          return { fehler: invalid_permissions_msg };
+        }
+      }
+    }
+    return {
+      permissions_lokal: permissions_lokal,
+      rollen: normalize_rollen(req.body.rollen, permissions_lokal),
+      rechte_modus: req.body.rechte_modus === "ersetzen" ? "ersetzen" : "ergaenzen",
+      anmeldung: anmeldung,
+    };
+  };
+
+  const anmeldung_text = (anmeldung) => (anmeldung ? `Keycloak ${anmeldung.provider}` : "Wachalarm");
 
   // Änderungen an Benutzern protokollieren (ausführender Admin steht in user.name)
   const iam_event = (req, message, action, type, wachalarm) => {
@@ -327,18 +390,28 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
 
   const createUser = async (req, res) => {
     try {
-      const permissions = normalize_permissions(req.body.permissions);
-      if (!permissions) {
-        return res.redirect("/adm_edit_users?error=" + encodeURIComponent(invalid_permissions_msg));
+      const f = formular_lesen(req, null);
+      if (f.fehler) {
+        return res.redirect("/adm_edit_users?error=" + encodeURIComponent(f.fehler));
       }
-      const rollen = normalize_rollen(req.body.rollen, permissions);
-      const hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
-      const result = await sql.auth_create_new_user(req.body.username, hash, req.body.description || "", permissions, req.body.ip, rollen);
+      // Keycloak-Konten haben kein Passwort, Wachalarm-Konten brauchen eines
+      let hash = null;
+      if (!f.anmeldung) {
+        if (!req.body.password) {
+          return res.redirect("/adm_edit_users?error=" + encodeURIComponent("Bitte ein Passwort vergeben."));
+        }
+        hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
+      }
+      const result = await sql.auth_create_new_user(req.body.username, hash, req.body.description || "", f.permissions_lokal, req.body.ip, f.rollen, {
+        rechte_modus: f.rechte_modus,
+        anmeldung: f.anmeldung,
+      });
       if (result) {
-        iam_event(req, `Benutzer ${req.body.username} wurde von ${req.user.user} angelegt (Rechte: ${permissions}${rollen ? ", Rollen: " + rollen : ""}).`, "user-angelegt", "creation", {
+        iam_event(req, `Benutzer ${req.body.username} wurde von ${req.user.user} angelegt (Anmeldung: ${anmeldung_text(f.anmeldung)}, Rechte: ${f.permissions_lokal || "nur Keycloak"}${f.rollen ? ", Rollen: " + f.rollen : ""}).`, "user-angelegt", "creation", {
           ziel_benutzer: req.body.username,
-          rechte: permissions,
-          rollen: rollen || undefined,
+          rechte: f.permissions_lokal,
+          rollen: f.rollen || undefined,
+          anmeldung: anmeldung_text(f.anmeldung),
         });
         return res.redirect(
           "/adm_edit_users?success=" + encodeURIComponent("Neuer Benutzer wurde angelegt.")
@@ -347,6 +420,9 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         throw new Error("Fehler beim Erstellen eines neuen Benutzers. " + req.body.username);
       }
     } catch (error) {
+      if (error.code === "VERKNUEPFUNG_BELEGT") {
+        return res.redirect("/adm_edit_users?error=" + encodeURIComponent(error.message));
+      }
       logger.log("error", "Fehler beim Erstellen eines neuen Benutzers: " + error);
       return res.redirect(
         "/adm_edit_users?error=" +
@@ -392,35 +468,60 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         return res.redirect("/adm_edit_users?error=" + encodeURIComponent("Ungültige Benutzer-ID."));
       }
       const id = Number(req.body.modal_id);
+      const eigenes_konto = Number(req.user.id) === id;
 
-      const permissions = normalize_permissions(req.body.permissions);
-      if (!permissions) {
-        return res.redirect("/adm_edit_users?error=" + encodeURIComponent(invalid_permissions_msg));
+      const bisher = ((await sql.db_user_get_all()) || []).find((u) => u.id === id);
+      if (!bisher) {
+        return res.redirect("/adm_edit_users?error=" + encodeURIComponent("Benutzer nicht gefunden."));
       }
 
-      if (Number(req.user.id) === id && permissions !== "admin") {
+      const f = formular_lesen(req, bisher.oidc_provider);
+      if (f.fehler) {
+        return res.redirect("/adm_edit_users?error=" + encodeURIComponent(f.fehler));
+      }
+
+      if (eigenes_konto && f.permissions_lokal !== "admin") {
         return res.redirect(
           "/adm_edit_users?error=" +
             encodeURIComponent("Sie können Ihr Recht als Administrator nicht selbst ändern!")
         );
       }
+      // das eigene Konto nicht an Keycloak binden, sonst ist bei einem Ausfall von Keycloak keine Anmeldung möglich
+      if (eigenes_konto && f.anmeldung && !bisher.oidc_provider) {
+        return res.redirect(
+          "/adm_edit_users?error=" +
+            encodeURIComponent("Sie können Ihr eigenes Konto nicht mit Keycloak verknüpfen. Bitte von einem anderen Administrator-Konto aus vornehmen.")
+        );
+      }
 
-      // Passwort nur ändern, wenn eines eingegeben wurde (null = unverändert)
+      // Passwort nur ändern, wenn eines eingegeben wurde (null = unverändert); Keycloak-Konten haben keines
       let messages = [];
       let hash = null;
-      if (req.body.password && req.body.password.length > 0) {
+      if (!f.anmeldung && req.body.password && req.body.password.length > 0) {
         hash = await bcrypt.hash(req.body.password, app_cfg.global.saltRounds);
         messages.push("Passwort geändert.");
       }
+      const verknuepft = f.anmeldung && (bisher.oidc_provider !== f.anmeldung.provider || bisher.oidc_sub !== f.anmeldung.sub);
+      const getrennt = !f.anmeldung && bisher.oidc_provider;
+      if (verknuepft) messages.push("Konto mit Keycloak verknüpft, die Anmeldung per Passwort ist damit nicht mehr möglich.");
+      if (getrennt) messages.push("Verknüpfung mit Keycloak entfernt." + (hash ? "" : " Bitte ein Passwort vergeben, sonst ist keine Anmeldung möglich."));
 
-      const rollen = normalize_rollen(req.body.rollen, permissions);
-      const result = await sql.auth_editUser(id, hash, req.body.description || "", permissions, req.body.ip || "", rollen);
+      const result = await sql.auth_editUser(id, {
+        password_hash: hash,
+        description: req.body.description || "",
+        permissions_lokal: f.permissions_lokal,
+        ip_address: req.body.ip || "",
+        rollen: f.rollen,
+        rechte_modus: f.rechte_modus,
+        anmeldung: f.anmeldung,
+      });
       if (result) {
-        iam_event(req, `Benutzer-ID ${id} wurde von ${req.user.user} geändert (Rechte: ${permissions}${rollen ? ", Rollen: " + rollen : ""}${hash ? ", Passwort geändert" : ""}).`, "user-geaendert", "change", {
+        iam_event(req, `Benutzer-ID ${id} wurde von ${req.user.user} geändert (Anmeldung: ${anmeldung_text(f.anmeldung)}, lokale Rechte: ${f.permissions_lokal || "keine"}${f.rollen ? ", Rollen: " + f.rollen : ""}${hash ? ", Passwort geändert" : ""}).`, "user-geaendert", "change", {
           ziel_benutzer_id: String(id),
-          rechte: permissions,
-          rollen: rollen || undefined,
+          rechte: f.permissions_lokal,
+          rollen: f.rollen || undefined,
           passwort_geaendert: hash !== null,
+          anmeldung: anmeldung_text(f.anmeldung),
         });
         const successMsg = messages.concat(["Benutzer aktualisiert."]).join(" ");
         return res.redirect(
@@ -430,6 +531,9 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
         throw new Error("Fehler beim Ändern eines Benutzers.");
       }
     } catch (error) {
+      if (error.code === "VERKNUEPFUNG_BELEGT") {
+        return res.redirect("/adm_edit_users?error=" + encodeURIComponent(error.message));
+      }
       logger.log("error", "Fehler beim Ändern eines Benutzers: " + error);
       return res.redirect(
         "/adm_edit_users?error=" +

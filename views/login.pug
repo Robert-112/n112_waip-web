@@ -24,10 +24,10 @@ block content
             form(action='/login_cert', method='GET')
               button.btn.btn-outline-light.btn-lg.w-100(type='submit')
                 +anmeldeweg('bi-shield-lock', 'Mit Gerätezertifikat', 'Für zentral verwaltete Dienstgeräte (MDM)')
-            //- Keycloak-Login (geplant): erscheint, sobald public.login_keycloak_url konfiguriert ist
-            if public.login_keycloak_url
-              a.btn.btn-outline-light.btn-lg.w-100(href=public.login_keycloak_url)
-                +anmeldeweg('bi-key', 'Mit Keycloak (Single Sign-on)', 'Mit Ihrem zentralen Benutzerkonto')
+            //- Anmeldung über Keycloak: ein Button je Eintrag in OIDC_PROVIDER (Name und Text aus OIDC_<ID>_NAME/_TEXT)
+            each anbieter in (public.oidc_anmeldung || [])
+              a.btn.btn-outline-light.btn-lg.w-100(href='/login/oidc/' + anbieter.id)
+                +anmeldeweg('bi-key', anbieter.name, anbieter.text)
           .d-flex.align-items-center.gap-3.my-4.text-body-secondary
             hr.flex-grow-1.my-0
             span.small.text-nowrap oder mit Benutzername und Passwort

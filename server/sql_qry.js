@@ -1759,8 +1759,17 @@ module.exports = (db, app_cfg) => {
   const db_user_get_all = () => {
     return new Promise((resolve, reject) => {
       try {
+        // inkl. Keycloak-Verknüpfung (provider leer = Anmeldung am Wachalarm per Passwort oder Zertifikat)
         const stmt = db.prepare(`
-          SELECT id, user, description, permissions, COALESCE(rollen, '') AS rollen, ip_address FROM waip_user;
+          SELECT
+            u.id, u.user, u.description, u.permissions, COALESCE(u.rollen, '') AS rollen, u.ip_address,
+            COALESCE(u.permissions_lokal, u.permissions) AS permissions_lokal,
+            COALESCE(u.permissions_extern, '') AS permissions_extern,
+            COALESCE(u.rechte_modus, 'ergaenzen') AS rechte_modus,
+            u.extern_aktualisiert,
+            c.provider AS oidc_provider, c.external_id AS oidc_sub
+          FROM waip_user u
+          LEFT JOIN waip_user_credentials c ON c.user_id = u.id AND c.provider IS NOT NULL;
         `);
         const rows = stmt.all();
         if (rows.length === 0) {
@@ -1780,6 +1789,16 @@ module.exports = (db, app_cfg) => {
     return String(permissions)
       .split(",")
       .filter((p) => /^\d+$/.test(p));
+  };
+
+  // wirksame Rechte aus lokalen Rechten (Benutzerverwaltung) und Rechten aus Keycloak berechnen:
+  // lokal "admin"/"api" gelten immer allein, "ersetzen" nimmt nur die lokalen Wachen, "ergaenzen" beide
+  const rechte_wirksam = (lokal, extern, modus) => {
+    const l = String(lokal ?? "").trim();
+    if (l === "admin" || l === "api") return l;
+    const liste = modus === "ersetzen" ? permissions_to_list(l) : [...permissions_to_list(extern ?? ""), ...permissions_to_list(l)];
+    const eindeutig = [...new Set(liste)];
+    return eindeutig.length > 0 ? eindeutig.join(",") : "keine";
   };
 
   // Berechtigung eines Nutzers für einen Einsatz überpruefen
@@ -2154,8 +2173,12 @@ module.exports = (db, app_cfg) => {
   const auth_localstrategy_cryptpassword = (user) => {
     return new Promise((resolve, reject) => {
       try {
+        // extern = 1: Konto ist mit Keycloak verknüpft und darf sich nicht per Passwort anmelden
         const stmt = db.prepare(`
-          SELECT password FROM waip_user WHERE user = ?;
+          SELECT
+            u.password,
+            EXISTS (SELECT 1 FROM waip_user_credentials c WHERE c.user_id = u.id AND c.provider IS NOT NULL) AS extern
+          FROM waip_user u WHERE u.user = ?;
         `);
         const row = stmt.get(user);
         if (row === undefined) {
@@ -2205,6 +2228,12 @@ module.exports = (db, app_cfg) => {
 
           // User aus DB abfragen
           const user_obj = await auth_localstrategy_userid(user_name);
+
+          // mit Keycloak verknüpfte Konten nie per Zertifikat anmelden (gleicher Name, anderer Mensch möglich)
+          if (user_obj !== null && auth_user_ist_extern(user_obj.id)) {
+            resolve(null);
+            return;
+          }
 
           if (user_obj !== null) {
             // User in DB gefunden, zurückgeben
@@ -2296,8 +2325,9 @@ module.exports = (db, app_cfg) => {
     }
   };
 
-  // Neuen User anlegen
-  const auth_create_new_user = (user, password, description, permissions, ip_address, rollen = "") => {
+  // Neuen User anlegen. optionen.rechte_modus: "ergaenzen"/"ersetzen", optionen.anmeldung: { provider, sub }
+  // verknüpft das neue Konto gleich mit Keycloak (z.B. vorab angelegt, bevor sich der Benutzer erstmals anmeldet)
+  const auth_create_new_user = (user, password, description, permissions, ip_address, rollen = "", optionen = {}) => {
     return new Promise((resolve, reject) => {
       try {
         // Prüfen ob User bereits in Datenbank vorhanden
@@ -2311,29 +2341,115 @@ module.exports = (db, app_cfg) => {
           throw new Error("Es existiert bereits ein Benutzer mit diesem Namen! " + user);
         }
 
-        const stmt2 = db.prepare(`
-          INSERT INTO waip_user ( 
-            user, 
-            password,
-            description,
-            permissions, 
-            ip_address,
-            rollen
-          ) VALUES ( 
-            ?, 
-            ?, 
-            ?, 
-            ?, 
-            ?,
-            ?
-          );
-        `);
-        const info = stmt2.run(user, password, description, permissions, ip_address, rollen);
-        resolve(info.lastInsertRowid);
+        const rechte_modus = optionen.rechte_modus === "ersetzen" ? "ersetzen" : "ergaenzen";
+        const anlegen = db.transaction(() => {
+          const info = db
+            .prepare(`
+              INSERT INTO waip_user (
+                user,
+                password,
+                description,
+                permissions,
+                permissions_lokal,
+                permissions_extern,
+                rechte_modus,
+                ip_address,
+                rollen
+              ) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?);
+            `)
+            .run(user, password, description, rechte_wirksam(permissions, "", rechte_modus), permissions, rechte_modus, ip_address, rollen);
+          if (optionen.anmeldung) {
+            verknuepfung_setzen(info.lastInsertRowid, optionen.anmeldung);
+          }
+          return info.lastInsertRowid;
+        });
+        resolve(anlegen());
       } catch (error) {
+        if (error.code === "VERKNUEPFUNG_BELEGT") return reject(error);
         reject(new Error("Fehler beim Anlegen eines neuen Users. " + user + error));
       }
     });
+  };
+
+  // ist das Konto mit Keycloak verknüpft?
+  const auth_user_ist_extern = (user_id) => {
+    return db.prepare(`SELECT 1 FROM waip_user_credentials WHERE user_id = ? AND provider IS NOT NULL`).get(user_id) !== undefined;
+  };
+
+  // Keycloak-Verknüpfung eines Benutzers setzen (anmeldung = { provider, sub }) oder entfernen (anmeldung = null).
+  // Nur innerhalb einer Transaktion aufrufen. Ist die Keycloak-ID schon einem anderen Benutzer zugeordnet, wird ein
+  // Fehler mit code "VERKNUEPFUNG_BELEGT" und dem Namen dieses Benutzers geworfen.
+  const verknuepfung_setzen = (user_id, anmeldung) => {
+    if (anmeldung) {
+      const belegt = db
+        .prepare(`
+          SELECT u.user FROM waip_user_credentials c JOIN waip_user u ON u.id = c.user_id
+          WHERE c.provider = ? AND c.external_id = ? AND c.user_id <> ?;
+        `)
+        .get(anmeldung.provider, anmeldung.sub, user_id);
+      if (belegt) {
+        const fehler = new Error(`Die Keycloak-ID ist bereits mit dem Benutzer '${belegt.user}' verknüpft.`);
+        fehler.code = "VERKNUEPFUNG_BELEGT";
+        throw fehler;
+      }
+    }
+    const bisher = db.prepare(`SELECT provider, external_id FROM waip_user_credentials WHERE user_id = ? AND provider IS NOT NULL`).get(user_id);
+    const unveraendert = bisher && anmeldung && bisher.provider === anmeldung.provider && bisher.external_id === anmeldung.sub;
+    if (unveraendert) return;
+    db.prepare(`DELETE FROM waip_user_credentials WHERE user_id = ? AND provider IS NOT NULL`).run(user_id);
+    if (anmeldung) {
+      db.prepare(`INSERT INTO waip_user_credentials (user_id, provider, external_id) VALUES (?, ?, ?)`).run(user_id, anmeldung.provider, anmeldung.sub);
+      // ohne Verknüpfung gab es keine Rechte aus Keycloak; ein verknüpftes Konto meldet sich nur noch über Keycloak an
+      db.prepare(`UPDATE waip_user SET password = NULL WHERE id = ?`).run(user_id);
+    }
+    // Rechte aus dem bisherigen Keycloak-Konto gelten nicht weiter, die neuen kommen beim nächsten Login
+    db.prepare(`UPDATE waip_user SET permissions_extern = '', extern_aktualisiert = NULL WHERE id = ?`).run(user_id);
+  };
+
+  // Anmeldung über Keycloak: verknüpftes Konto suchen oder neu anlegen und die Wachen-Rechte aus Keycloak
+  // übernehmen. daten = { provider, provider_name, sub, benutzername, name, wachen: ["5201", "66"] }
+  // Rückgabe: { id, user, neu, rechte_vorher, rechte }
+  const auth_oidc_anmelden = (daten) => {
+    try {
+      const anmelden = db.transaction(() => {
+        let row = db
+          .prepare(`
+            SELECT u.id, u.user, u.permissions FROM waip_user_credentials c JOIN waip_user u ON u.id = c.user_id
+            WHERE c.provider = ? AND c.external_id = ?;
+          `)
+          .get(daten.provider, daten.sub);
+        let neu = false;
+        if (!row) {
+          // freien Benutzernamen suchen: Keycloak-Name, bei Gleichheit mit einem bestehenden Konto "name@provider"
+          const basis = String(daten.benutzername || daten.sub).trim().slice(0, 100);
+          const frei = (name) => db.prepare(`SELECT 1 FROM waip_user WHERE user = ?`).get(name) === undefined;
+          let name = basis;
+          for (let i = 1; !frei(name); i++) {
+            name = i === 1 ? `${basis}@${daten.provider}` : `${basis}@${daten.provider}-${i}`;
+          }
+          const beschreibung = `Keycloak (${daten.provider_name})` + (daten.name ? `: ${daten.name}` : "");
+          const info = db
+            .prepare(`
+              INSERT INTO waip_user (user, password, description, permissions, permissions_lokal, permissions_extern, rechte_modus, ip_address, rollen)
+              VALUES (?, NULL, ?, 'keine', '', '', 'ergaenzen', NULL, '');
+            `)
+            .run(name, beschreibung);
+          db.prepare(`INSERT INTO waip_user_credentials (user_id, provider, external_id) VALUES (?, ?, ?)`).run(info.lastInsertRowid, daten.provider, daten.sub);
+          row = { id: info.lastInsertRowid, user: name, permissions: "keine" };
+          neu = true;
+        }
+        const extern = [...new Set(daten.wachen)].join(",");
+        const u = db.prepare(`SELECT COALESCE(permissions_lokal, permissions) AS lokal, rechte_modus FROM waip_user WHERE id = ?`).get(row.id);
+        const rechte = rechte_wirksam(u.lokal, extern, u.rechte_modus);
+        db.prepare(`
+          UPDATE waip_user SET permissions_extern = ?, permissions = ?, extern_aktualisiert = DATETIME(CURRENT_TIMESTAMP, 'LOCALTIME') WHERE id = ?;
+        `).run(extern, rechte, row.id);
+        return { id: row.id, user: row.user, neu: neu, rechte_vorher: neu ? null : row.permissions, rechte: rechte };
+      });
+      return anmelden();
+    } catch (error) {
+      throw new Error("Fehler bei auth_oidc_anmelden. " + daten.provider + " " + error);
+    }
   };
 
   // einen Nutzer aus der Datebank löschen
@@ -2366,22 +2482,34 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // einen Nutzer in der Datenbank bearbeiten (password_hash = null lässt das Passwort unverändert)
-  const auth_editUser = (id, password_hash, description, permissions, ip_address, rollen = "") => {
+  // einen Nutzer in der Datenbank bearbeiten. felder = { password_hash (null = unverändert), description,
+  // permissions_lokal, ip_address, rollen, rechte_modus, anmeldung ({ provider, sub } oder null = Wachalarm) }
+  const auth_editUser = (id, felder) => {
     return new Promise((resolve, reject) => {
       try {
-        const stmt = db.prepare(`
-          UPDATE waip_user SET
-            password = COALESCE(?, password),
-            description = ?,
-            permissions = ?,
-            ip_address = ?,
-            rollen = ?
-          WHERE id = ?;
-        `);
-        const info = stmt.run(password_hash, description, permissions, ip_address, rollen, id);
-        resolve(info.changes);
+        const rechte_modus = felder.rechte_modus === "ersetzen" ? "ersetzen" : "ergaenzen";
+        const bearbeiten = db.transaction(() => {
+          const info = db
+            .prepare(`
+              UPDATE waip_user SET
+                password = COALESCE(?, password),
+                description = ?,
+                permissions_lokal = ?,
+                rechte_modus = ?,
+                ip_address = ?,
+                rollen = ?
+              WHERE id = ?;
+            `)
+            .run(felder.password_hash, felder.description, felder.permissions_lokal, rechte_modus, felder.ip_address, felder.rollen, id);
+          if (info.changes === 0) return 0;
+          verknuepfung_setzen(id, felder.anmeldung);
+          const u = db.prepare(`SELECT permissions_lokal, permissions_extern FROM waip_user WHERE id = ?`).get(id);
+          db.prepare(`UPDATE waip_user SET permissions = ? WHERE id = ?`).run(rechte_wirksam(u.permissions_lokal, u.permissions_extern, rechte_modus), id);
+          return info.changes;
+        });
+        resolve(bearbeiten());
       } catch (error) {
+        if (error.code === "VERKNUEPFUNG_BELEGT") return reject(error);
         reject(new Error("Fehler bei auth_editUser. " + id + error));
       }
     });
@@ -2394,7 +2522,7 @@ module.exports = (db, app_cfg) => {
         const stmt = db.prepare(`
           SELECT id, user, description FROM waip_user WHERE id = ?;
         `);
-        const row = stmt.run(user_id);
+        const row = stmt.get(user_id);
         if (row === undefined) {
           resolve(null);
         } else {
@@ -3121,6 +3249,8 @@ module.exports = (db, app_cfg) => {
     auth_ensureAdmin,
     auth_ensureDatenpflege,
     auth_create_new_user,
+    auth_user_ist_extern,
+    auth_oidc_anmelden,
     auth_deleteUser,
     auth_editUser,
     auth_getUser,

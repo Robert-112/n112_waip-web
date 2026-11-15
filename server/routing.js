@@ -1,4 +1,4 @@
-module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts, widgets) {
+module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts, widgets, oidc) {
   // HTTP-Antworten mit Fehlerstatus (401/403/404/5xx) strukturiert protokollieren
   app.use(logger.http_error_middleware);
 
@@ -373,6 +373,79 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     })(req, res, next);
   });
 
+  // Anmeldung über Keycloak (OpenID Connect): /login/oidc/<id> leitet zu Keycloak weiter, Keycloak leitet nach
+  // der Anmeldung auf /login/oidc/<id>/callback zurück. Beides läuft über dieselbe Passport-Strategy.
+  const oidc_login = async (req, res, next) => {
+    const p = oidc.provider(String(req.params.provider));
+    if (!p) {
+      const err = new Error("Diese Anmeldung über Keycloak ist nicht eingerichtet.");
+      err.status = 404;
+      return next(err);
+    }
+    const fehler = (text) => res.redirect("/login?error=" + encodeURIComponent(text));
+    let strategie;
+    try {
+      strategie = await oidc.strategie(p);
+    } catch (error) {
+      logger.event(`Keycloak '${p.id}' (${p.issuer}) ist nicht erreichbar: ${error.message}`, {
+        ...logger.from_req(req),
+        level: "error",
+        action: "login",
+        category: "authentication",
+        type: ["start", "error"],
+        outcome: "failure",
+        error: error,
+        wachalarm: { login_methode: "keycloak", keycloak: p.id },
+      });
+      return fehler(`Die Anmeldung über ${p.name} ist zurzeit nicht möglich (Server nicht erreichbar). Bitte später erneut versuchen.`);
+    }
+    passport.authenticate(strategie, (err, user, info) => {
+      if (err) {
+        logger.event(`Fehler bei der Anmeldung über Keycloak '${p.id}': ${err.message || err}`, {
+          ...logger.from_req(req),
+          level: "error",
+          action: "login",
+          category: "authentication",
+          type: ["start", "error"],
+          outcome: "failure",
+          error: err,
+          wachalarm: { login_methode: "keycloak", keycloak: p.id },
+        });
+        return fehler(`Bei der Anmeldung über ${p.name} ist ein Fehler aufgetreten. Bitte erneut versuchen.`);
+      }
+      if (!user) {
+        if (info && info.message === "keine-rolle") {
+          return fehler(`Ihr Konto bei ${p.name} ist für den ${app_cfg.public.app_name} nicht freigeschaltet. Bitte wenden Sie sich an den Administrator.`);
+        }
+        logger.event(`Anmeldung über Keycloak '${p.id}' fehlgeschlagen: ${(info && info.message) || "unbekannt"}`, {
+          ...logger.from_req(req),
+          level: "warn",
+          action: "login",
+          category: "authentication",
+          type: "start",
+          outcome: "failure",
+          reason: (info && info.message) || "unbekannt",
+          wachalarm: { login_methode: "keycloak", keycloak: p.id },
+        });
+        return fehler(`Die Anmeldung über ${p.name} wurde abgebrochen oder ist fehlgeschlagen.`);
+      }
+      const anmeldung = req.oidc_anmeldung;
+      req.logIn(user, (err) => {
+        if (err) {
+          return next(err);
+        }
+        // erst nach req.logIn speichern, Passport legt dabei eine neue Session an
+        const dauer = p.session_stunden * 60 * 60 * 1000;
+        req.session.oidc = { provider: p.id, id_token: anmeldung && anmeldung.id_token, ablauf: Date.now() + dauer };
+        req.session.cookie.maxAge = dauer;
+        login_success(req, user, "keycloak");
+        return res.redirect("/");
+      });
+    })(req, res, next);
+  };
+  app.get("/login/oidc/:provider", oidc_login);
+  app.get("/login/oidc/:provider/callback", oidc_login);
+
   // Logout verarbeiten
   app.post("/logout", function (req, res) {
     if (req.user) {
@@ -384,8 +457,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         outcome: "success",
       });
     }
+    // nach einer Anmeldung über Keycloak auch dort abmelden (geteilte PCs), danach zurück zur Startseite
+    const keycloak_abmelden = oidc.abmelde_url(req.session && req.session.oidc);
     req.session.destroy(function (err) {
-      res.redirect("/");
+      res.redirect(keycloak_abmelden || "/");
     });
   });
 
@@ -777,6 +852,11 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         title: "Benutzer und Rechte verwalten",
         user: req.user,
         users: data,
+        // Keycloaks zur Auswahl im Dialog; nicht mehr konfigurierte, aber noch verknüpfte erscheinen zusätzlich
+        anmeldungen: [
+          ...app_cfg.public.oidc_anmeldung,
+          ...[...new Set((data || []).map((u) => u.oidc_provider).filter((id) => id && !oidc.provider(id)))].map((id) => ({ id: id, name: id + " (nicht mehr eingerichtet)" })),
+        ],
         session_max_age: app_cfg.global.session_cookie_max_age,
         error: req.query.error || null,
         success: req.query.success || null,

@@ -338,6 +338,42 @@ module.exports = (bcrypt, app_cfg) => {
     // Spalte existiert bereits, kein Handlungsbedarf
   }
 
+  // Anmeldung über Keycloak/OpenID Connect (neu in Version 2.2), für neue und bestehende Datenbanken.
+  // Die Wachen-Rechte werden getrennt gespeichert: "permissions_extern" kommt bei jeder Anmeldung aus Keycloak,
+  // "permissions_lokal" pflegen die Administratoren (inkl. "admin"/"api"/"keine"). "permissions" bleibt der
+  // wirksame Wert, den alle Prüfungen lesen; er wird beim Login und beim Speichern daraus berechnet.
+  // rechte_modus: "ergaenzen" = Keycloak + lokal, "ersetzen" = nur lokal.
+  const spalten_neu = [
+    ["waip_user", "permissions_lokal", "TEXT"],
+    ["waip_user", "permissions_extern", "TEXT DEFAULT ''"],
+    ["waip_user", "rechte_modus", "TEXT DEFAULT 'ergaenzen'"],
+    ["waip_user", "extern_aktualisiert", "DATETIME"],
+    // Verknüpfung mit einem Keycloak-Konto: provider = ID aus OIDC_PROVIDER, external_id = Keycloak-User-ID (sub)
+    ["waip_user_credentials", "provider", "TEXT"],
+  ];
+  for (const [tabelle, spalte, typ] of spalten_neu) {
+    try {
+      db.exec(`ALTER TABLE ${tabelle} ADD COLUMN ${spalte} ${typ}`);
+      console.log(`START - Migration: Spalte '${spalte}' zur Tabelle ${tabelle} hinzugefuegt.`);
+    } catch (e) {
+      // Spalte existiert bereits, kein Handlungsbedarf
+    }
+  }
+  // bisherige Rechte einmalig als lokale Rechte übernehmen (auch für Standard-Admin/-API-Nutzer neuer Datenbanken)
+  const rechte_uebernommen = db.prepare("UPDATE waip_user SET permissions_lokal = permissions WHERE permissions_lokal IS NULL").run().changes;
+  if (rechte_uebernommen > 0) {
+    console.log(`START - Migration: Rechte von ${rechte_uebernommen} Benutzer(n) als lokale Rechte übernommen.`);
+  }
+  // ein Keycloak-Konto gehört genau einem Benutzer, ein Benutzer hat höchstens eine Verknüpfung
+  try {
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_waip_user_credentials_extern ON waip_user_credentials (provider, external_id) WHERE provider IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_waip_user_credentials_user ON waip_user_credentials (user_id) WHERE provider IS NOT NULL;
+    `);
+  } catch (e) {
+    console.error("START - Index für Keycloak-Verknüpfungen konnte nicht angelegt werden (doppelte Einträge in waip_user_credentials?): " + e.message);
+  }
+
   // Kurz-Archiv beendeter Brand- und Hilfeleistungseinsätze (neu in Version 2.2, für neue und bestehende
   // Datenbanken). Enthält nur die öffentlichen, datenschutzreduzierten Angaben, wird beim Löschen eines
   // Einsatzes einmalig befüllt und nach ARCHIVE_DAYS Tagen wieder geleert.

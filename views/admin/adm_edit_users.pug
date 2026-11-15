@@ -1,6 +1,8 @@
 extends ../layout
 
 block content
+  //- Name eines Keycloak anhand seiner ID (OIDC_PROVIDER) für die Anzeige
+  - const anmeldung_name = (id) => { const a = (anmeldungen || []).find((x) => x.id === id); return a ? a.name : id; }
   main(role='main')
     .container
       +seitenkopf('Benutzer und Rechte', 'Benutzer anlegen, bearbeiten und löschen.', 'bi-people-fill')
@@ -14,22 +16,43 @@ block content
               tr
                 th Benutzername
                 th Beschreibung
-                th Berechtigung
-                th Zusatzrollen
+                th Anmeldung
+                th Wachen-Rechte
+                th Lokale Rollen
                 th.text-end Aktionen
             tbody
               each val in users
                 tr
                   td= val.user
                   td.text-muted= val.description || ''
-                  td= val.permissions
                   td
+                    if val.oidc_provider
+                      span.badge.text-bg-info
+                        i.bi.bi-key.me-1(aria-hidden='true')
+                        | #{anmeldung_name(val.oidc_provider)}
+                    else
+                      span.text-body-secondary Wachalarm
+                  td
+                    if val.permissions == 'admin'
+                      span.text-body-secondary alle
+                    else
+                      | #{val.permissions}
+                    if val.oidc_provider && val.permissions != 'admin'
+                      .small.text-body-secondary
+                        | Keycloak: #{val.permissions_extern || '–'} · lokal: #{val.permissions_lokal || '–'}
+                        if val.rechte_modus == 'ersetzen'
+                          |  (ersetzt Keycloak)
+                  td
+                    if val.permissions_lokal == 'admin'
+                      span.badge.text-bg-danger.me-1
+                        i.bi.bi-shield-lock-fill.me-1(aria-hidden='true')
+                        | Administrator
                     if String(val.rollen || '').split(',').includes('datenpflege')
                       span.badge.text-bg-warning
                         i.bi.bi-exclamation-triangle-fill.me-1(aria-hidden='true')
                         | Datenpfleger
                   td.text-end.text-nowrap
-                    button.btn.btn-sm.btn-primary.mx-1.bi-pencil-square(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions=val.permissions, data-rollen=val.rollen || '', data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
+                    button.btn.btn-sm.btn-primary.mx-1.bi-pencil-square(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions_lokal=val.permissions_lokal, data-permissions_extern=val.permissions_extern, data-rechte_modus=val.rechte_modus, data-extern_aktualisiert=val.extern_aktualisiert || '', data-oidc_provider=val.oidc_provider || '', data-oidc_sub=val.oidc_sub || '', data-rollen=val.rollen || '', data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
                     form(action='/adm_edit_users', method='POST', style='display:inline-block;')
                       input(type="hidden" name="_csrf" value=csrf_token)
                       input(type='hidden', name='modal_method', value='DELETE')
@@ -49,44 +72,59 @@ block content
             .mb-3
               input#modal_method(type='hidden', name='modal_method', value='')
               input#modal_id(type='hidden', name='modal_id', value='')
-              label.form-label Benutzername
+              label.form-label(for='username') Benutzername
               input#username.form-control(type='text', name='username', placeholder='Benutzername ...', readonly='')
               .form-text.text-muted Der Benutzername sollte eindeutig und nachvollziehbar sein.
+            //- Anmeldung über Keycloak nur anbieten, wenn mindestens ein Keycloak eingerichtet ist
+            if anmeldungen && anmeldungen.length > 0
+              .mb-3
+                label.form-label(for='anmeldung') Anmeldung über
+                select#anmeldung.form-select(name='anmeldung')
+                  option(value='') Wachalarm (Passwort oder Zertifikat)
+                  each a in anmeldungen
+                    option(value=a.id)= a.name
+                #oidc_feld.mt-2.d-none
+                  label.form-label(for='oidc_sub') Keycloak-ID des Benutzers
+                  input#oidc_sub.form-control.font-monospace(type='text', name='oidc_sub', placeholder='z.B. 3f2c9a1e-7b4d-4c1a-9e2f-0a1b2c3d4e5f', pattern='[\\w.@:\\|+\\-]{1,255}')
+                  .form-text In Keycloak unter „Benutzer“ → Benutzer öffnen → Feld „ID“. Damit wird dieses Konto mit dem Keycloak-Konto verknüpft, die Anmeldung per Passwort entfällt.
             fieldset.mb-3
-              .row
-                legend.col-form-label.col-sm-3.pt-0 Berechtigung
-                .col-sm-9
-                  .form-check
-                    input#gridRadios1.form-check-input(type='radio', name='permissions', value='admin', required='')
-                    label.form-check-label(for='admin')
-                      | Administrator
-                    .form-text.text-muted Administratoren können alle Einstellungen bearbeiten und sehen alle Wachalarme.
-                  .form-check
-                    input#gridRadios2.form-check-input(type='radio', name='permissions', value='user', required='')
-                    label.form-check-label(for='user')
-                      | Benutzer
-                    .form-text.text-muted Benutzer können Wachalarme empfangen und eigene Einstellungen festlegen.
-                    input#waip_rights.form-control(type='text', name='waip_rights', pattern='(((^|,)([0-9]+))+)', placeholder='00,0000,00000,000001,...')
-            //- nur für Benutzer sichtbar, Administratoren dürfen ohnehin alles
-            fieldset#rollen_feld.mb-3.d-none
-              .row
-                legend.col-form-label.col-sm-3.pt-0 Zusatzrollen
-                .col-sm-9
-                  .border.border-warning.rounded.bg-warning.bg-opacity-10.p-2
-                    .form-check
-                      input#rolle_datenpflege.form-check-input(type='checkbox', name='rollen', value='datenpflege')
-                      label.form-check-label.fw-bold.text-warning(for='rolle_datenpflege')
-                        i.bi.bi-exclamation-triangle-fill.me-1(aria-hidden='true')
-                        | Datenpfleger
-                      .form-text Darf Wachen, Wetter-Standorte, Ticker-Quellen sowie Ersetzungen und Aussprache für alle Leitstellen bearbeiten – das wirkt auf alle Alarmmonitore. Keine Benutzerverwaltung, Einsätze und Log.
+              legend.form-label.fs-6.mb-2 Lokale Rollen
+              .form-check
+                input#rolle_admin.form-check-input(type='checkbox', name='rolle_admin', value='1')
+                label.form-check-label(for='rolle_admin') Administrator
+                .form-text.text-muted Darf alle Einstellungen bearbeiten und sieht alle Wachalarme.
+              .border.border-warning.rounded.bg-warning.bg-opacity-10.p-2.mt-2
+                .form-check
+                  input#rolle_datenpflege.form-check-input(type='checkbox', name='rollen', value='datenpflege')
+                  label.form-check-label.fw-bold.text-warning(for='rolle_datenpflege')
+                    i.bi.bi-exclamation-triangle-fill.me-1(aria-hidden='true')
+                    | Datenpfleger
+                  .form-text Darf Wachen, Wetter-Standorte, Ticker-Quellen sowie Ersetzungen und Aussprache für alle Leitstellen bearbeiten – das wirkt auf alle Alarmmonitore. Keine Benutzerverwaltung, Einsätze und Log.
+              .form-text.text-muted Lokale Rollen werden nur hier im Wachalarm vergeben, nie über Keycloak.
+            //- Wachen-Rechte entfallen für Administratoren (sehen ohnehin alle Wachalarme)
+            fieldset#rechte_feld.mb-3
+              legend.form-label.fs-6.mb-2 Wachen-Rechte
+              #rechte_extern_feld.d-none.mb-2
+                .small.text-body-secondary Aus Keycloak (bei jeder Anmeldung aktualisiert):
+                .font-monospace#rechte_extern –
+                .small.text-body-secondary#rechte_extern_zeit
+              label.form-label.small(for='waip_rights')#waip_rights_label Wachen-, Kreis- oder Leitstellennummern
+              input#waip_rights.form-control(type='text', name='waip_rights', pattern='api|keine|[0-9]+( *, *[0-9]+)*', placeholder='00,0000,00000,000001,...')
+              #rechte_modus_feld.d-none.mt-2
+                .form-check
+                  input#modus_ergaenzen.form-check-input(type='radio', name='rechte_modus', value='ergaenzen', checked='')
+                  label.form-check-label(for='modus_ergaenzen') zu den Rechten aus Keycloak hinzufügen (Standard)
+                .form-check
+                  input#modus_ersetzen.form-check-input(type='radio', name='rechte_modus', value='ersetzen')
+                  label.form-check-label(for='modus_ersetzen') statt der Rechte aus Keycloak verwenden
             .mb-3
-              label.form-label Beschreibung
+              label.form-label(for='description') Beschreibung
               input#description.form-control(type='text', name='description', placeholder='Optionale Beschreibung ...')
               .form-text.text-muted Kurze Beschreibung des Benutzers (optional).
-            .mb-3
-              label.form-label Passwort
+            #passwort_feld.mb-3
+              label.form-label(for='UserPassword') Passwort
               input#UserPassword.form-control(type='password', name='password', placeholder='...')
-              label.form-label Passwort erneut eingeben
+              label.form-label(for='UserPassword2') Passwort erneut eingeben
               input#UserPassword2.form-control(type='password', name='password2', placeholder='...')
             //.mb-3
               label.form-label IP-Adresse
@@ -98,56 +136,59 @@ block content
 
   script.
     $('#formModal').trigger("reset");
+    // neues Konto braucht ein Passwort, beim Bearbeiten bleibt es ohne Eingabe unverändert
+    let neues_konto = false;
     let addUser = function() {
       $('#formModal').trigger("reset");
+      neues_konto = true;
       $("#userModalTitle").text("neuen Benutzer hinzufügen");
       $("#modal_method").val("ADDNEW");
       $("#modal_id").val("");
       $("#username").prop("readonly", false);
       $("#username").prop("required", true);
-      $("#UserPassword").prop("required", true);
-      rollen_umschalten();
+      $("#rechte_extern").text("–");
+      $("#rechte_extern_zeit").text("");
+      felder_umschalten();
       $('#userModal').modal('show');
     }
     let EditUser = function(current_user) {
+      // attr statt data, damit Nummern wie "52" Text bleiben
+      const wert = (name) => $(current_user).attr("data-" + name) || "";
       $('#formModal').trigger("reset");
+      neues_konto = false;
       $("#userModalTitle").text("Benutzer bearbeiten");
       $("#modal_method").val("EDIT");
-      $("#modal_id").val($(current_user).data("id"));
-      $("#username").prop("readonly", true).val($(current_user).data("user"));
-      if ($(current_user).data("permissions") == "admin" ) {
-        $('#gridRadios1').click();  
-      } else {
-        $('#waip_rights').val($(current_user).data("permissions"));
-        $('#gridRadios2').val($(current_user).data("permissions"));
-        $('#gridRadios2').click(); 
-      }
-      $("#UserPassword").prop("required", false);
-      $("#rolle_datenpflege").prop("checked", String($(current_user).data("rollen") || "").split(",").includes("datenpflege"));
-      rollen_umschalten();
-      $("#ip").val($(current_user).data("ip_address"));
-      $("#description").val($(current_user).data("description"));
+      $("#modal_id").val(wert("id"));
+      $("#username").prop("readonly", true).val(wert("user"));
+      const lokal = wert("permissions_lokal");
+      $("#rolle_admin").prop("checked", lokal == "admin");
+      $("#waip_rights").val(lokal == "admin" ? "" : lokal);
+      $("#rolle_datenpflege").prop("checked", wert("rollen").split(",").includes("datenpflege"));
+      $("#anmeldung").val(wert("oidc_provider"));
+      $("#oidc_sub").val(wert("oidc_sub"));
+      $(wert("rechte_modus") == "ersetzen" ? "#modus_ersetzen" : "#modus_ergaenzen").prop("checked", true);
+      $("#rechte_extern").text(wert("permissions_extern") || "–");
+      $("#rechte_extern_zeit").text(wert("extern_aktualisiert") ? "zuletzt: " + wert("extern_aktualisiert") : "noch keine Anmeldung über Keycloak");
+      $("#ip").val(wert("ip_address"));
+      $("#description").val(wert("description"));
+      felder_umschalten();
       $('#userModal').modal('show');
     }
-    // Zusatzrollen nur für Benutzer (Administratoren dürfen ohnehin alles)
-    let rollen_umschalten = function() {
-      const benutzer = $('#gridRadios2').is(':checked');
-      $('#rollen_feld').toggleClass('d-none', !benutzer);
-      $('#rolle_datenpflege').prop('disabled', !benutzer);
-      if (!benutzer) $('#rolle_datenpflege').prop('checked', false);
+    // Felder je nach Anmeldung (Wachalarm/Keycloak) und Rolle Administrator ein- und ausblenden
+    let felder_umschalten = function() {
+      const keycloak = ($("#anmeldung").val() || "") !== "";
+      const admin = $("#rolle_admin").is(":checked");
+      $("#oidc_feld").toggleClass("d-none", !keycloak);
+      $("#oidc_sub").prop("required", keycloak);
+      $("#passwort_feld").toggleClass("d-none", keycloak);
+      $("#UserPassword").prop("required", neues_konto && !keycloak);
+      $("#rechte_feld").toggleClass("d-none", admin);
+      $("#rechte_extern_feld, #rechte_modus_feld").toggleClass("d-none", !keycloak);
+      $("#waip_rights_label").text(keycloak ? "Lokale Wachen-Rechte (optional)" : "Wachen-, Kreis- oder Leitstellennummern");
+      // ohne Keycloak sind Wachen-Rechte Pflicht, Administratoren brauchen keine
+      $("#waip_rights").prop("required", !admin && !keycloak);
+      // Administratoren dürfen ohnehin alles
+      $("#rolle_datenpflege").prop("disabled", admin);
+      if (admin) $("#rolle_datenpflege").prop("checked", false);
     }
-    $('#gridRadios1').change(function() {
-        if ($(this).is('input:checked')) {
-            $('#waip_rights').prop("required", false);
-        } 
-        rollen_umschalten();
-    });
-    $('#gridRadios2').change(function() {
-        if ($(this).is('input:checked')) {
-            $('#waip_rights').prop("required", true);
-        } 
-        rollen_umschalten();
-    });
-    $('#waip_rights').change(function() {
-      $('#gridRadios2').val($('#waip_rights').val());
-    });
+    $("#anmeldung, #rolle_admin").on("change", felder_umschalten);

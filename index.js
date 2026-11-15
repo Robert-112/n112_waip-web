@@ -50,7 +50,8 @@ let saver = require("./server/saver.js")(app_cfg, sql, waip, logger);
 let widgets = require("./server/widgets.js")(io, sql, app_cfg, logger);
 let socket = require("./server/socket.js")(io, sql, app_cfg, logger, waip, widgets);
 let auth = require("./server/auth.js")(app, app_cfg, sql, bcrypt, passport, io, logger);
-let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, saver, logger, tts, widgets);
+let oidc = require("./server/oidc.js")(app_cfg, sql, passport, logger);
+let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, saver, logger, tts, widgets, oidc);
 
 // Server starten
 webserver.listen(app_cfg.global.http_port, () => {
