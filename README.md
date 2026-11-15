@@ -97,20 +97,20 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 
 ## Standby-Anzeige
 
-![Standby-Anzeige mit Wetter und Terminen](docs/images/waip_standby.webp)
+![Standby-Anzeige mit Wetter, Terminen und Ticker](docs/images/waip_standby.webp)
 
-*Abbildung: Standby-Anzeige mit Wetter und Terminen*
+*Abbildung: Standby-Anzeige mit Wetter, Unwetterwarnung, Waldbrandgefahr, Terminen und Ticker (fiktive Meldungen)*
 
 - ist kein Einsatz aktiv, zeigt der Alarmmonitor Uhrzeit und Datum an
 - auf Wunsch werden zusätzlich angezeigt:
     - das aktuelle Wetter sowie die Vorhersage für morgen und übermorgen
     - amtliche Unwetterwarnungen des Deutschen Wetterdienstes
     - die Waldbrandgefahrenstufe (ab einer einstellbaren Stufe)
-    - die nächsten Termine aus einem öffentlichen Kalender (iCal/ICS), z.B. Dienstabende
-    - ein Ticker mit aktuellen Meldungen am unteren Rand, wichtige Meldungen in einer eigenen roten Zeile (nur angemeldete Monitore)
+    - die nächsten Termine aus einem Kalender (iCal/ICS), z.B. Dienstabende
+    - ein Ticker mit aktuellen Meldungen am unteren Rand, wichtige Meldungen in einer eigenen roten Zeile (nur angemeldete Monitore, nie im Einsatz)
 - alle Daten holt ausschließlich der Server, die Alarmmonitore selbst benötigen keinen Zugriff auf das Internet
 - die Wetterdaten stammen vom Deutschen Wetterdienst und werden über einen selbst betriebenen [Bright Sky](https://brightsky.dev/)-Dienst abgerufen
-- Termine und Ticker-Meldungen holt ein eigener Kalender-Dienst (Docker) aus SOGo, Nextcloud o.ä. (`WIDGET_KALENDER_URL`); die Meldungen werden im Kalender gepflegt: jeder laufende Termin ist eine Meldung, die Priorität „hoch“ oder Schlagwörter wie „dringend“ machen sie rot
+- Termine und Ticker-Meldungen holt ein eigener Kalender-Dienst (Docker) aus SOGo, Nextcloud o.ä. (`WIDGET_KALENDER_URL`); die Meldungen werden im Kalender gepflegt: jeder laufende Termin ist eine Meldung, die Priorität „hoch“, `!!` vor dem Titel oder Schlagwörter wie „dringend“ machen sie rot, Priorität „normal“, `!` oder „wichtig“ gelb
 - der Ticker eines Monitors zeigt die Meldungen seiner Leitstelle und seines Kreises (Administration › Ticker-Quellen) sowie den eigenen Ticker-Kalender des Benutzers
 - angemeldete Benutzer schalten Wetter und Kalender unter `Einstellungen` ein und tragen dort ihren Ticker-Kalender ein, für Monitore ohne Anmeldung gibt es den Parameter `wetter=on`
 - der gesamte Inhalt wandert regelmäßig ein Stück über den Bildschirm, der Ticker läuft ständig und wechselt leicht die Höhe, damit sich nichts in das Display einbrennt
@@ -235,6 +235,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - [OSRM](https://project-osrm.org/) für die Anfahrtswege
     - [Piper](https://github.com/rhasspy/piper) (Wyoming-Protokoll) für eine natürlichere Sprachansage
     - [Bright Sky](https://brightsky.dev/) für Wetter und Unwetterwarnungen
+    - ein eigener Kalender-Dienst (Docker) für Termine und Ticker im Standby
     - Filebeat und Elasticsearch für die Auswertung der Logs
     - [Keycloak](https://www.keycloak.org/) (oder ein anderer OpenID-Connect-Server) für die Anmeldung mit zentralen Benutzerkonten
 
@@ -263,6 +264,77 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 ## Benutzerverwaltung
 
 ![Benutzerverwaltung](docs/images/adm_benutzer.webp)
+
+---
+
+# Versionsverlauf
+
+## 2.2.1 (November 2026)
+
+- **Standby-Ticker**: Laufschrift mit Meldungen der Leitstelle, des Landkreises und einem eigenen Ticker des Benutzers, wichtige Meldungen in einer eigenen roten Zeile (nur Standby, nur angemeldete Monitore)
+- **Kalender-Dienst** (eigener Docker): holt Termine und Ticker-Meldungen aus SOGo, Nextcloud o.ä., der Alarmserver selbst lädt keine Kalender mehr
+- neue Seite `Ticker-Quellen` für die Kalender der Leitstellen und Kreise
+- neue lokale Rolle **Datenpfleger**: pflegt Wachen, Wetter-Standorte, Ticker-Quellen sowie Ersetzungen und Aussprache, ohne Zugriff auf Benutzer, Einsätze, Clients und Logs
+- Stammdaten-Seiten (Wachen, Wetter-Standorte) ruhiger gestaltet: Tabelle zum Lesen, Bearbeiten im Dialog, Koordinaten per Karte setzen
+- **Anmeldung über Keycloak** (OpenID Connect): Client-Rolle regelt den Zugang, Wachen-Rechte aus einem Gruppen-Attribut, lokale Rollen und Zusatzrechte bleiben im Wachalarm, mehrere Server bzw. Realms möglich
+
+> Hinweis zum Update: `npm install` ausführen (neues Paket für Keycloak).
+
+## 2.2.0 (November 2026)
+
+- **neues Design** auf Basis von Bootstrap 5: neue Startseite, Login mit allen Anmeldewegen, ruhigere Seiten, Bootstrap Icons, Alarmmonitore auf der Startseite kompakt je Berechtigung
+- **Standby-Widgets**: Wetter und Vorhersage, amtliche Unwetterwarnungen (DWD über Bright Sky), Waldbrandgefahrenstufe und Termine aus einem Kalender, Parameter `wetter=on/off`
+- **Dashboard-Übersicht** aller laufenden Einsätze als Kacheln, Rettungsdienst standardmäßig ausgeblendet
+- Alarmmonitor deutlich flüssiger auf schwacher Hardware (z.B. Raspberry Pi), Parameter `anim=off`
+- Rückmeldungen übersichtlicher: Restzeit, Name und Funktionen im Balken, zu lange Texte als Ticker
+- Alarmmonitore werden nicht mehr alle ~90 Sekunden getrennt (Sitzungsablauf behoben)
+- **Kurz-Archiv** beendeter Brand- und Hilfeleistungseinsätze (3 Tage, grobe Angaben), mit Seiten, Suche und Datumssuche, alte Dashboard-Links führen ins Archiv
+- **Ersetzungen und Aussprache**: alle Ersetzungen auf einer Seite, Sprachansage direkt probehören
+- Karte: zuverlässiges Einpassen, neuer Zielmarker, Routen nur auf gemeinsamen Straßen versetzt, Darstellung auf 4K wie in Full-HD
+- Kartenbreite im Alarmmonitor pro Benutzer einstellbar, Ablauf-Timer passt sich der Balkenhöhe an
+- Einsatzmittel ohne Alarmierungszeit lösen keinen Alarm mehr aus (nur noch Information)
+- kein Cookie-Hinweis mehr auf Alarmmonitor und Dashboard (nur technisch notwendige Cookies)
+- Fehlerbehebungen in der Schnittstelle (`/api/get_token`, `/api/einsatzstatus`)
+- Absturzsicherheit verbessert, pm2 im Betrieb ohne Dateiüberwachung
+- neue README mit aktuellen Abbildungen
+
+> Hinweise zum Update: Node.js ab Version 24.5 erforderlich. Für die geänderte pm2-Konfiguration einmalig `pm2 delete n112_waip-web` und `pm2 start ecosystem.config.js`.
+
+## 2.1.3 (November 2026)
+
+- Sicherheitsupdates, u.a. Schutz der Formulare gegen fremde Anfragen (CSRF) und sichere Ausgabe von Client-Daten in der Administration
+- Prüfung auf Netzkopplung verbessert (Status `Teilweise`, Prüfung auch nach Wiederverbindung)
+- strukturiertes Protokoll (JSON/ECS) für Elasticsearch, siehe [elastic/README.md](elastic/README.md)
+
+## 2.1.2 (Juli/August 2026)
+
+- Prüfung, ob ein Alarmmonitor unzulässig mit dem Internet verbunden ist (Netzkopplung)
+- Routen mehrerer Wachen nebeneinander, Wache auf der Karte auch bei reduzierter Darstellung
+- erste Administration von Ersetzungen für die Sprachansage
+- Fehlerbehebung bei Nachalarmierungen (2.1.2b), Symbol in der Fußzeile, wenn nicht angemeldet
+
+## 2.1.0 und 2.1.1 (Juni/Juli 2026)
+
+- Einstellungen in der Datei `.env` statt `app_cfg.js`, Wachen-Vorlage als `sql_seed.sql`
+- Sprachansage mit [Piper](https://github.com/rhasspy/piper)
+- Anfahrtswege der Wachen auf der Karte ([OSRM](https://project-osrm.org/))
+- Einsätze werden nur gespeichert, wenn eine aktive Wache beteiligt ist
+- vollständige Einsatzdaten werden nicht mehr durch reduzierte überschrieben
+
+## 2.0.x (Juni 2025 bis Juni 2026)
+
+- 2.0: Neuauflage mit Rest-Api und Token-Absicherung (JWT), neue Datenbankanbindung
+- 2.0.3: Anmeldung per Client-Zertifikat (Geräteanmeldung, z.B. BOS-Pad)
+- 2.0.4 bis 2.0.6: Verbesserungen bei Ton, Karte (HD/4K), Ablaufzeit und Dashboard, Parameter `sound=off`, Wachenname im Titel
+- 2.0.7: verknüpfte (virtuelle) Wachen, Ersetzungen in der Sprachansage, Anzeige der aktuellen Einsätze und Wachen für Benutzer
+- 2.0.9 und 2.0.10: Aktiv-Schalter für Wachen, Beschreibung bei Benutzern, Überwachung per Check_MK, Sekunden in der Standby-Uhr, Leistungsverbesserungen
+
+---
+
+# Geplant
+
+- mehrere Wachen bzw. Aufgabenträger auf einem Alarmmonitor (`/waip/<nr1>,<nr2>`), mit Wechsel zwischen den Einsätzen
+- Wechsel zwischen mehreren gleichzeitigen Einsätzen einer Wache
 
 # Lizenz
 #### [\[Creative Commons Attribution Share Alike 4.0 International\]](https://github.com/Robert-112/n112_waip-web/blob/master/LICENSE.md)
