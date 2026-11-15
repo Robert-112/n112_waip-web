@@ -1214,6 +1214,23 @@ audio {
   .hg-ping::before { opacity: 0.35; }
 }
 
+/* aufklappbare Liste aller Monitore im Statuskasten: begrenzte Höhe, eigener Scrollbereich */
+.start-monitorliste {
+  max-height: 45vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+/* Pfeil dreht sich beim Aufklappen */
+.start-monitore-link .bi-chevron-down {
+  display: inline-block;
+  transition: transform 0.2s;
+}
+
+.start-monitore-link[aria-expanded="true"] .bi-chevron-down {
+  transform: rotate(180deg);
+}
+
 /* Aktionskacheln (Alarmmonitor, Dashboard) */
 .start-icon {
   width: 3rem;
