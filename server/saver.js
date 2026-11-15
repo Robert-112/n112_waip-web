@@ -41,7 +41,10 @@ module.exports = (app_cfg, sql, waip, logger) => {
           // TODO: an dieser Stelle für die Einsatzmittel die koordinaten der Heimatwachen ermitteln und für diese eine Anfrage beim Routing-Server machen
 
           // Einsatz an Socket-IO-Räume verteilen
-          waip.einsatz_verteilen_rooms(waip_id);
+          // (läuft nach der Antwort an die Leitstelle weiter, Fehler deshalb hier protokollieren)
+          waip.einsatz_verteilen_rooms(waip_id).catch((error) =>
+            logger.log("error", `Fehler beim Verteilen des Einsatzes ${waip_id}: ${error && error.message}`)
+          );
 
           // Einsatzmittel an Socket-IO-Räume verteilen
           //TODO waip.einsatzmittel_verteilen_rooms(waip_id);
@@ -105,7 +108,9 @@ module.exports = (app_cfg, sql, waip, logger) => {
             resolve(`Von ${rmld_data.lenght} Rückmeldungen wurden ${arr_rmld_anzahl} gespeichert.`);
 
             // Rückmeldung verteilen
-            waip.rmld_verteilen_rooms(obj_waip_uuid_mit_rmld_uuid);
+            waip.rmld_verteilen_rooms(obj_waip_uuid_mit_rmld_uuid).catch((error) =>
+              logger.log("error", `Fehler beim Verteilen von Rückmeldungen: ${error && error.message}`)
+            );
           } else {
             // false zurückgeben
             resolve(`Von ${rmld_data.lenght} Rückmeldungen wurde keine gespeichert!`);

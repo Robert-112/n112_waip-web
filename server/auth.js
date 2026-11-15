@@ -178,12 +178,17 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
   // JWT-Authentifizierung
   passport.use(
     new JwtStrategy(jwtOptions, async (jwt_payload, done) => {
-      // User anhand der ID aus dem Token holen
-      let user_id = await sql.auth_getUser(jwt_payload.id);
-      if (user_id) {
-        return done(null, user_id);
+      try {
+        // User anhand der ID aus dem Token holen
+        let user_id = await sql.auth_getUser(jwt_payload.id);
+        if (user_id) {
+          return done(null, user_id);
+        }
+        return done(null, false);
+      } catch (error) {
+        logger.log("error", "Fehler bei der Authentifizierung per JWT: " + error);
+        return done(error);
       }
-      return done(null, false);
     })
   );
 

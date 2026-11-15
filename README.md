@@ -219,7 +219,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - `DEFAULT_PASS` und `DEFAULT_API_PASS` (Kennwörter für den ersten Start)
     - `SESSION_SECRET` und `JWT_SECRET` (lange, zufällige Zeichenketten)
     - `PUBLIC_URL`, `APP_NAME` und `COMPANY`
-- Anwendung starten mit `npm start` (für den Dauerbetrieb z.B. mit [pm2](https://pm2.keymetrics.io/))
+- Anwendung starten mit `npm start` (für den Dauerbetrieb z.B. mit [pm2](https://pm2.keymetrics.io/): `pm2 start ecosystem.config.js`; die Dateiüberwachung ist dabei aus, für die Entwicklung `PM2_WATCH=true pm2 start ecosystem.config.js`)
 - die Anwendung ist anschließend unter `http://<server>:3001` erreichbar, die Datenbank wird beim ersten Start angelegt
 - die Wachen werden per SQL importiert, die Datei `sql_seed.sql` enthält alle bekannten Wachen des Landes Brandenburg und einige Ersetzungen für die Sprachansage (z.B. `sqlite3 database.sqlite3 < sql_seed.sql`)
 - optionale Dienste, die jeweils in der `.env` eingetragen werden:

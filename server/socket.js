@@ -37,53 +37,67 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
     // Session-Reload: haelt die Session im Store am Leben damit sie nicht ablaeuft.
     // Aktualisiert zusaetzlich socket.data.user, damit Berechtigungsaenderungen
     // (z.B. durch Admin) ohne Seiten-Reload wirksam werden.
+    let session_fehlt_gemeldet = false;
     const session_timer = setInterval(() => {
-      socket.request.session.reload(async (err) => {
-        if (!err) {
-          try {
-            // Ablaufzeit verlängern: touch() setzt das Cookie wieder auf die volle Laufzeit, store.touch()
-            // schreibt nur das neue Ablaufdatum (und nur, solange die Session noch gültig ist).
-            // Kein save(): Das gespeicherte Session-JSON enthält das Cookie-Ablaufdatum vom Anlegen der
-            // Session (der HTTP-Keepalive aktualisiert per touch nur die Spalte "expired"). Ein save()
-            // schrieb dieses alte Datum zurück und ließ die Session sofort ablaufen -> Verbindungsabbruch.
-            socket.request.session.touch();
-            socket.request.sessionStore.touch(socket.request.session.id, socket.request.session, () => {});
-
-            // User frisch aus DB laden, damit Berechtigungsaenderungen wirken
-            const passport_id = socket.request.session && socket.request.session.passport
-              ? socket.request.session.passport.user
-              : null;
-            if (passport_id) {
-              const refreshed_user = await sql.auth_deserializeUser(passport_id);
-              if (refreshed_user) {
-                socket.data.user = refreshed_user;
-                logger.log("debug", `Session und User fuer ${remote_ip} (${socket.id}) erneuert: ${refreshed_user.user}.`);
-              } else {
-                // User nicht mehr in DB -> als Gast behandeln
-                socket.data.user = { id: null, user: "Gast", permissions: null };
-                logger.log("warn", `User nach Session-Reload nicht mehr in DB, Socket ${socket.id} wird als Gast behandelt.`);
-              }
-            } else {
-              logger.log("debug", `Session fuer ${remote_ip} (${socket.id}) erneuert (kein Passport-User).`);
-            }
-          } catch (refreshErr) {
-            logger.log("error", `Fehler beim Aktualisieren des Users nach Session-Reload fuer ${socket.id}: ${refreshErr.message}`);
-          }
-        } else {
-          const user_name = socket.data.user ? socket.data.user.user : "Gast";
-          logger.event(`Fehler beim Erneuern der Session fuer ${remote_ip} (${socket.id} ${user_name}), Verbindung wird zurueckgesetzt: ${err.message}`, {
-            ...socket_fields(socket, remote_ip),
-            level: "warn",
-            action: "session-erneuerung",
-            category: "session",
-            type: "error",
-            outcome: "failure",
-            error: err,
-          });
-          socket.emit("io.error", `Fehler beim Erneuern der Session fuer (${socket.id}), Verbindung wird zurueckgesetzt!`);
-          socket.conn.close();
+      // ohne Session (z.B. Session-Store beim Verbindungsaufbau nicht erreichbar) gibt es nichts zu erneuern;
+      // ein Fehler hier würde sonst im Timer auftreten und die gesamte Anwendung beenden
+      if (!socket.request.session || typeof socket.request.session.reload !== "function") {
+        if (!session_fehlt_gemeldet) {
+          session_fehlt_gemeldet = true;
+          logger.log("warn", `Keine Session für Socket ${socket.id} (${remote_ip}) vorhanden, Erneuerung übersprungen.`);
         }
-      });
+        return;
+      }
+      try {
+        socket.request.session.reload(async (err) => {
+          if (!err) {
+            try {
+              // Ablaufzeit verlängern: touch() setzt das Cookie wieder auf die volle Laufzeit, store.touch()
+              // schreibt nur das neue Ablaufdatum (und nur, solange die Session noch gültig ist).
+              // Kein save(): Das gespeicherte Session-JSON enthält das Cookie-Ablaufdatum vom Anlegen der
+              // Session (der HTTP-Keepalive aktualisiert per touch nur die Spalte "expired"). Ein save()
+              // schrieb dieses alte Datum zurück und ließ die Session sofort ablaufen -> Verbindungsabbruch.
+              socket.request.session.touch();
+              socket.request.sessionStore.touch(socket.request.session.id, socket.request.session, () => {});
+
+              // User frisch aus DB laden, damit Berechtigungsaenderungen wirken
+              const passport_id = socket.request.session && socket.request.session.passport
+                ? socket.request.session.passport.user
+                : null;
+              if (passport_id) {
+                const refreshed_user = await sql.auth_deserializeUser(passport_id);
+                if (refreshed_user) {
+                  socket.data.user = refreshed_user;
+                  logger.log("debug", `Session und User fuer ${remote_ip} (${socket.id}) erneuert: ${refreshed_user.user}.`);
+                } else {
+                  // User nicht mehr in DB -> als Gast behandeln
+                  socket.data.user = { id: null, user: "Gast", permissions: null };
+                  logger.log("warn", `User nach Session-Reload nicht mehr in DB, Socket ${socket.id} wird als Gast behandelt.`);
+                }
+              } else {
+                logger.log("debug", `Session fuer ${remote_ip} (${socket.id}) erneuert (kein Passport-User).`);
+              }
+            } catch (refreshErr) {
+              logger.log("error", `Fehler beim Aktualisieren des Users nach Session-Reload fuer ${socket.id}: ${refreshErr.message}`);
+            }
+          } else {
+            const user_name = socket.data.user ? socket.data.user.user : "Gast";
+            logger.event(`Fehler beim Erneuern der Session fuer ${remote_ip} (${socket.id} ${user_name}), Verbindung wird zurueckgesetzt: ${err.message}`, {
+              ...socket_fields(socket, remote_ip),
+              level: "warn",
+              action: "session-erneuerung",
+              category: "session",
+              type: "error",
+              outcome: "failure",
+              error: err,
+            });
+            socket.emit("io.error", `Fehler beim Erneuern der Session fuer (${socket.id}), Verbindung wird zurueckgesetzt!`);
+            socket.conn.close();
+          }
+        });
+      } catch (error) {
+        logger.log("error", `Fehler beim Erneuern der Session fuer ${socket.id}: ${error && error.message}`);
+      }
     }, app_cfg.global.session_cookie_max_age / 2); // Reload alle 30 Minuten (bei 1 Stunde Session-Cookie)
 
     // Verbindungsfehler protokollieren
@@ -102,7 +116,7 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
         reason: reason,
         duration_ms: Date.now() - connected_at,
       });
-      sql.db_client_delete(socket);
+      sql.db_client_delete(socket).catch((error) => logger.log("error", `Fehler beim Entfernen des Clients ${socket.id}: ${error}`));
       clearInterval(session_timer);
       widgets.monitor_trennen(socket);
     });
@@ -285,7 +299,7 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
         reason: reason,
         duration_ms: Date.now() - connected_at,
       });
-      sql.db_client_delete(socket);
+      sql.db_client_delete(socket).catch((error) => logger.log("error", `Fehler beim Entfernen des Clients ${socket.id}: ${error}`));
     });
 
     // bei jedem Connect die Server-Version senden, damit der Client diese prueft und die Seite ggf. neu laedt
@@ -323,7 +337,9 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
           });
 
           // Einsatz an Dashboard senden
-          waip.dbrd_verteilen_socket(dbrd.uuid, socket);
+          waip.dbrd_verteilen_socket(dbrd.uuid, socket).catch((error) =>
+            logger.log("error", `Fehler beim Senden des Dashboards ${dbrd.uuid} an ${socket.id}: ${error}`)
+          );
 
           // alle vorhanden Rückmeldungen zum Dashboard aus Datenbank laden
           const rmld_waip_arr = await sql.db_rmlds_get_for_wache(0, dbrd.id, null);

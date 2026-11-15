@@ -3,6 +3,14 @@ const e = require("express");
 module.exports = (io, sql, fs, logger, app_cfg, tts) => {
   const { tts_erstellen } = tts || require("./tts.js")(fs, logger, sql, app_cfg);
   const osrm = app_cfg.osrm.enabled ? require("./osrm.js")(app_cfg, logger) : null;
+  // Client-Status in waip_clients speichern, ohne auf das Ergebnis zu warten. Ein Fehler wird nur
+  // protokolliert, die Anzeige auf dem Monitor ist davon nicht abhängig.
+  const client_status_speichern = (socket, status) => {
+    sql.db_client_update_status(socket, status).catch((error) =>
+      logger.log("error", `Fehler beim Speichern des Client-Status für ${socket.id}: ${error}`)
+    );
+  };
+
   const waip_verteilen_socket = (einsatzdaten, socket, wachen_nr, reset_timestamp) => {
     return new Promise(async (resolve, reject) => {
       try {
@@ -67,7 +75,7 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
           });
 
           // Client-Status mit Wachennummer aktualisieren
-          sql.db_client_update_status(socket, data.id);
+          client_status_speichern(socket, data.id);
 
           // Sound erstellen und an Client senden
           const tts = await tts_erstellen(data, wachen_nr);
@@ -98,68 +106,82 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
           logger.log("warn", `Keine Wache für den Einsatz mit der ID ${waip_id} vorhanden! Einsatz wird gelöscht!`);
 
           // FIXME db_einsatz_loeschen liefert die Anzahl der gelöschten Daten zurück, hier beachten
-          sql.db_einsatz_loeschen(waip_id);
+          sql.db_einsatz_loeschen(waip_id).catch((error) => logger.log("error", `Fehler beim Löschen des Einsatzes ${waip_id}: ${error}`));
         } else {
           let basis_einsatzdaten = null;
 
-          // Einsatzdaten an alle beteiligten Wachen (Websocket-Raum) verteilen
+          // Einsatzdaten an alle beteiligten Wachen (Websocket-Raum) verteilen. Jede Wache und jeder Monitor
+          // für sich absichern: ein Fehler bei einer Wache darf die Alarmierung der übrigen nicht verhindern.
           for (const rooms of socket_rooms) {
             const wachen_nr = rooms.room;
+            try {
+              // Einsatzdaten passend pro Wache aus Datenbank laden
+              const einsatzdaten = await sql.db_einsatz_get_for_wache(waip_id, wachen_nr);
 
-            // Einsatzdaten passend pro Wache aus Datenbank laden
-            const einsatzdaten = await sql.db_einsatz_get_for_wache(waip_id, wachen_nr);
+              // ohne Einsatzdaten (z.B. Einsatz inzwischen gelöscht) gibt es für diese Wache nichts zu verteilen
+              if (!einsatzdaten) {
+                logger.log("warn", `Keine Einsatzdaten für Einsatz ${waip_id} und Wache ${wachen_nr} gefunden, wird nicht verteilt.`);
+                continue;
+              }
 
-            // Basis-Einsatzdaten (mit Koordinaten) für OSRM merken
-            if (!basis_einsatzdaten && einsatzdaten) basis_einsatzdaten = einsatzdaten;
+              // Basis-Einsatzdaten (mit Koordinaten) für OSRM merken
+              if (!basis_einsatzdaten && einsatzdaten) basis_einsatzdaten = einsatzdaten;
 
-            // alles Sockets der Wache ermitteln
-            const sockets = await io.of("/waip").in(wachen_nr.toString()).fetchSockets();
+              // alles Sockets der Wache ermitteln
+              const sockets = await io.of("/waip").in(wachen_nr.toString()).fetchSockets();
 
-            // prüfen ob für DIESE Wache (diesen Raum) tatsächlich Einsatzmittel alarmiert wurden.
-            // Einsatzmittel ohne Alarmierungszeit stehen nur zur Info im Einsatz (z.B. NEF im
-            // Einsatzvorschlag, das noch nicht alarmiert wurde) und dürfen den Einsatz auf dem
-            // Alarmmonitor dieser Wache NICHT auslösen - sie erscheinen nur unter em_weitere.
-            const keineAlarmiertenEinsatzmittel = !einsatzdaten.em_alarmiert || einsatzdaten.em_alarmiert.length === 0;
+              // prüfen ob für DIESE Wache (diesen Raum) tatsächlich Einsatzmittel alarmiert wurden.
+              // Einsatzmittel ohne Alarmierungszeit stehen nur zur Info im Einsatz (z.B. NEF im
+              // Einsatzvorschlag, das noch nicht alarmiert wurde) und dürfen den Einsatz auf dem
+              // Alarmmonitor dieser Wache NICHT auslösen - sie erscheinen nur unter em_weitere.
+              const keineAlarmiertenEinsatzmittel = !einsatzdaten.em_alarmiert || einsatzdaten.em_alarmiert.length === 0;
 
-            // jüngster Alarmierungszeitpunkt der für DIESE Wache alarmierten Einsatzmittel ermitteln.
-            // Wichtig bei Nachalarmierung: eine neu hinzugekommene Wache hat einen eigenen, viel
-            // aktuelleren Alarmzeitpunkt als der Einsatz insgesamt (der Einsatz-Zeitstempel bleibt auf
-            // der Erstalarmierung stehen), damit bekommt auch sie noch ihr eigenes Anzeigefenster.
-            const wachen_alarmzeit_iso =
-              (einsatzdaten.em_alarmiert || [])
-                .map((em) => em.zeit_alarmierung_iso)
-                .filter(Boolean)
-                .sort()
-                .pop() || null;
+              // jüngster Alarmierungszeitpunkt der für DIESE Wache alarmierten Einsatzmittel ermitteln.
+              // Wichtig bei Nachalarmierung: eine neu hinzugekommene Wache hat einen eigenen, viel
+              // aktuelleren Alarmzeitpunkt als der Einsatz insgesamt (der Einsatz-Zeitstempel bleibt auf
+              // der Erstalarmierung stehen), damit bekommt auch sie noch ihr eigenes Anzeigefenster.
+              const wachen_alarmzeit_iso =
+                (einsatzdaten.em_alarmiert || [])
+                  .map((em) => em.zeit_alarmierung_iso)
+                  .filter(Boolean)
+                  .sort()
+                  .pop() || null;
 
-            // an jeden Socket entsprechende Daten senden
-            for (const socket of sockets) {
-              if (keineAlarmiertenEinsatzmittel) {
-                // Nur wenn dieser Monitor genau diesen Einsatz bereits anzeigt (Alarmierung wurde
-                // zurückgenommen), auf Standby schalten. Monitore, die gerade einen anderen Einsatz
-                // oder Standby anzeigen, bleiben unberührt.
-                if (socket.data.waip_id === einsatzdaten.id) {
-                  standby_verteilen_socket(socket);
-                  logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr}: keine alarmierten Einsatzmittel mehr, sende Standby an ${socket.id}.`);
-                } else {
-                  logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr} nicht angezeigt: keine alarmierten Einsatzmittel dieser Wache.`);
-                }
-                resolve(false);
-              } else {
-                // Prüfen ob für den Client die Anzeigezeit abgelaufen ist
-                const reset_timestamp = await sql.db_client_get_alarm_anzeigbar(socket, einsatzdaten.id, wachen_alarmzeit_iso);
+              // an jeden Socket entsprechende Daten senden
+              for (const socket of sockets) {
+                try {
+                  if (keineAlarmiertenEinsatzmittel) {
+                    // Nur wenn dieser Monitor genau diesen Einsatz bereits anzeigt (Alarmierung wurde
+                    // zurückgenommen), auf Standby schalten. Monitore, die gerade einen anderen Einsatz
+                    // oder Standby anzeigen, bleiben unberührt.
+                    if (socket.data.waip_id === einsatzdaten.id) {
+                      standby_verteilen_socket(socket);
+                      logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr}: keine alarmierten Einsatzmittel mehr, sende Standby an ${socket.id}.`);
+                    } else {
+                      logger.log("waip", `Einsatz ${waip_id} für Wache ${wachen_nr} nicht angezeigt: keine alarmierten Einsatzmittel dieser Wache.`);
+                    }
+                    resolve(false);
+                  } else {
+                    // Prüfen ob für den Client die Anzeigezeit abgelaufen ist
+                    const reset_timestamp = await sql.db_client_get_alarm_anzeigbar(socket, einsatzdaten.id, wachen_alarmzeit_iso);
 
-                if (!einsatzdaten || !reset_timestamp) {
-                  // Standby senden
-                  standby_verteilen_socket(socket);
-                  logger.log("waip", `Kein anzuzeigender Einsatz für ${wachen_nr} vorhanden, sende keine Einsatzdaten, sondern Standby.`);
-                  resolve(false);
-                } else {
-                  // Einsatz an den einzelnen Socket versenden
-                  waip_verteilen_socket(einsatzdaten, socket, wachen_nr, reset_timestamp);
-                  resolve(true);
+                    if (!einsatzdaten || !reset_timestamp) {
+                      // Standby senden
+                      standby_verteilen_socket(socket);
+                      logger.log("waip", `Kein anzuzeigender Einsatz für ${wachen_nr} vorhanden, sende keine Einsatzdaten, sondern Standby.`);
+                      resolve(false);
+                    } else {
+                      // Einsatz an den einzelnen Socket versenden
+                      waip_verteilen_socket(einsatzdaten, socket, wachen_nr, reset_timestamp);
+                      resolve(true);
+                    }
+                  }
+                } catch (error) {
+                  logger.log("error", `Fehler beim Verteilen des Einsatzes ${waip_id} an Socket ${socket.id} (Wache ${wachen_nr}): ${error}`);
                 }
               }
+            } catch (error) {
+              logger.log("error", `Fehler beim Verteilen des Einsatzes ${waip_id} an Wache ${wachen_nr}: ${error}`);
             }
           }
 
@@ -186,9 +208,12 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
         socket.emit("io.standby", null);
 
         // Client-Status mit Standby aktualisieren
-        sql.db_client_update_status(socket, "Standby");
+        client_status_speichern(socket, "Standby");
+        resolve(true);
       } catch (error) {
-        reject(new Error(`Fehler senden des Standby-Befehls für einen Client ${socket.id}. ` + error));
+        // nur protokollieren: der Aufrufer wartet nicht auf das Ergebnis
+        logger.log("error", `Fehler beim Senden des Standby-Befehls für Client ${socket.id}: ${error}`);
+        resolve(false);
       }
     });
   };
@@ -301,7 +326,7 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
           socket.emit("io.deleted", null);
           const logMessage = `Der angefragte Einsatz ${dbrd_uuid} ist nicht - oder nicht mehr - vorhanden!, Dashboard-Socket ${socket.id} wurde getrennt.`;
           logger.log("log", logMessage);
-          sql.db_client_update_status(socket, null);
+          client_status_speichern(socket, null);
         } else {
           const permissions = await sql.db_user_check_permission_for_waip(socket, einsatzdaten.id);
 
@@ -333,11 +358,11 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
           if (osrm) routen_verteilen_socket(einsatzdaten.id, socket);
           const logMessage = `Einsatzdaten für Dashboard ${dbrd_uuid} an Socket ${socket.id} gesendet`;
           logger.log("log", logMessage);
-          sql.db_client_update_status(socket, einsatzdaten.id);
+          client_status_speichern(socket, einsatzdaten.id);
         }
 
         // Client-Status mit Wachennummer aktualisieren
-        sql.db_client_update_status(socket, dbrd_uuid.uuid);
+        client_status_speichern(socket, dbrd_uuid.uuid);
       } catch (error) {
         reject(new Error("Fehler beim Senden der Dashboard-Daten für einen Client. " + error));
       }
@@ -458,86 +483,116 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
 
   // TODO WAIP: Funktion um Clients remote "neuzustarten" (Seite neu laden), niedrige Prioritaet
 
-  // Funktion die alle xxx Sekunden ausgeführt wird
-  const system_cleanup = async () => {
-    // alte Einsätze aus der Datenbank laden
-    const alte_einsaetze = await sql.db_einsaetze_get_old();
+  // Standby an alle Alarmmonitore eines veralteten Einsatzes senden, die diesen noch anzeigen
+  const veralteten_einsatz_standby = async (waip) => {
+    // Alarmmonitore ermitteln an die ein Standby gesendet werden muss
+    const rooms_to_standby = await sql.db_einsatz_get_waip_rooms(waip.id);
+    if (!rooms_to_standby) return;
 
-    // wenn alte Einsäzte vorhanden sind, dann aufräumen
-    if (alte_einsaetze) {
-      alte_einsaetze.forEach(async (waip) => {
-        // Aufräumen der alten Einsätze
-        logger.log("log", `Einsatz mit der ID ${waip.id} ist veraltet. Datenbank wird aufgeräumt.`);
+    for (const room_to_standby of rooms_to_standby) {
+      try {
+        // für jede Wache (room_to_standby.room) die verbundenen Sockets(Clients) ermitteln und Standby senden
+        const room_sockets = await io.of("/waip").in(room_to_standby.room.toString()).fetchSockets();
 
-        // Alarmmonitore ermitteln an die ein Standby gesendet werden muss
-        const rooms_to_standby = await sql.db_einsatz_get_waip_rooms(waip.id);
+        // TODO hier wäre es besser, das standby an den Raum zu senden, nicht an jeden Socket
 
-        // Standby an die ermittelten Alarmmonitore senden
-        if (rooms_to_standby) {
-          rooms_to_standby.forEach(async (room_to_standby) => {
-            // für jede Wache (room_to_standby.room) die verbundenen Sockets(Clients) ermitteln und Standby senden
-            const room_sockets = await io.of("/waip").in(room_to_standby.room.toString()).fetchSockets();
-
-            // TODO hier wäre es besser, das standby an den Raum zu senden, nicht an jeden Socket
-
-            for (const socket of room_sockets) {
-              // Standby senden
-              const same_id = await sql.db_client_check_waip_id(socket.id, waip.id);
-              if (same_id) {
-                // Einsatz-ID aus dem Websocket entfernen
-                socket.data.waip_id = null;
-                // Standby senden
-                standby_verteilen_socket(socket);
-                // Audio stoppen
-                socket.emit("io.stopaudio", null);
-                logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet.`);
-                sql.db_client_update_status(socket, null);
-              }
-            }
-          });
+        for (const socket of room_sockets) {
+          // Standby senden
+          const same_id = await sql.db_client_check_waip_id(socket.id, waip.id);
+          if (same_id) {
+            // Einsatz-ID aus dem Websocket entfernen
+            socket.data.waip_id = null;
+            // Standby senden
+            standby_verteilen_socket(socket);
+            // Audio stoppen
+            socket.emit("io.stopaudio", null);
+            logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet.`);
+            client_status_speichern(socket, null);
+          }
         }
+      } catch (error) {
+        logger.log("error", `Fehler beim Senden des Standby für Einsatz ${waip.id} an Wache ${room_to_standby.room}: ${error}`);
+      }
+    }
+  };
 
-        // Brand-/Hilfeleistungseinsätze vor dem Löschen ins Kurz-Archiv übernehmen (nur öffentliche Angaben).
-        // Muss vor io.deleted passieren, damit die Dashboards direkt ins Archiv weiterleiten können.
-        let archiviert = false;
-        try {
-          archiviert = sql.db_einsatz_archivieren(waip.id);
-          if (archiviert) logger.log("log", `Einsatz ${waip.id} wurde ins Kurz-Archiv übernommen.`);
-        } catch (error) {
-          logger.log("error", `Fehler beim Archivieren des Einsatzes ${waip.id}: ${error}`);
-        }
+  // einen veralteten Einsatz aufräumen: Standby senden, archivieren, Dashboards trennen, löschen
+  const veralteten_einsatz_aufraeumen = async (waip) => {
+    logger.log("log", `Einsatz mit der ID ${waip.id} ist veraltet. Datenbank wird aufgeräumt.`);
 
-        // Dashboards trennen
-        // io.deletet an alle Socket senden die im Namespace /dbrd im Raum der alte_einsaetze.uuid sind
-        const dbrd_sockets = await io.of("/dbrd").in(waip.uuid.toString()).fetchSockets();
-        // io.deletet an dbrd_sockets senden (archiviert = Weiterleitung ins Archiv statt zur Startseite)
-        dbrd_sockets.forEach((socket) => {
-          socket.emit("io.deleted", { archiviert: archiviert });
-          logger.log("log", `Dashboard mit dem Socket ${socket.id} wurde getrennt, Einsatz gelöscht.`);
-        });
+    // Standby an die Alarmmonitore senden. Ein Fehler dabei darf das Löschen nicht verhindern,
+    // sonst bliebe der Einsatz dauerhaft in der Datenbank stehen.
+    try {
+      await veralteten_einsatz_standby(waip);
+    } catch (error) {
+      logger.log("error", `Fehler beim Senden des Standby für Einsatz ${waip.id}: ${error}`);
+    }
 
-        // Einsatz mit allen zugehörigen Daten löschen
-        sql.db_einsatz_loeschen(waip.id);
-        logger.log("log", `Einsatz-Daten zu Einsatz ${waip.id} gelöscht.`);
+    // Brand-/Hilfeleistungseinsätze vor dem Löschen ins Kurz-Archiv übernehmen (nur öffentliche Angaben).
+    // Muss vor io.deleted passieren, damit die Dashboards direkt ins Archiv weiterleiten können.
+    let archiviert = false;
+    try {
+      archiviert = sql.db_einsatz_archivieren(waip.id);
+      if (archiviert) logger.log("log", `Einsatz ${waip.id} wurde ins Kurz-Archiv übernommen.`);
+    } catch (error) {
+      logger.log("error", `Fehler beim Archivieren des Einsatzes ${waip.id}: ${error}`);
+    }
+
+    // Dashboards trennen
+    // io.deletet an alle Socket senden die im Namespace /dbrd im Raum der alte_einsaetze.uuid sind
+    try {
+      const dbrd_sockets = await io.of("/dbrd").in(String(waip.uuid)).fetchSockets();
+      // io.deletet an dbrd_sockets senden (archiviert = Weiterleitung ins Archiv statt zur Startseite)
+      dbrd_sockets.forEach((socket) => {
+        socket.emit("io.deleted", { archiviert: archiviert });
+        logger.log("log", `Dashboard mit dem Socket ${socket.id} wurde getrennt, Einsatz gelöscht.`);
       });
+    } catch (error) {
+      logger.log("error", `Fehler beim Trennen der Dashboards für Einsatz ${waip.id}: ${error}`);
+    }
+
+    // Einsatz mit allen zugehörigen Daten löschen
+    await sql.db_einsatz_loeschen(waip.id);
+    logger.log("log", `Einsatz-Daten zu Einsatz ${waip.id} gelöscht.`);
+  };
+
+  // Funktion die alle xxx Sekunden ausgeführt wird. Jeder Schritt ist für sich abgesichert, damit ein
+  // Fehler (z.B. gesperrte Datenbank) weder die Anwendung beendet noch die übrigen Schritte verhindert.
+  const system_cleanup = async () => {
+    // alte Einsätze aus der Datenbank laden und aufräumen
+    try {
+      const alte_einsaetze = await sql.db_einsaetze_get_old();
+      for (const waip of alte_einsaetze || []) {
+        try {
+          await veralteten_einsatz_aufraeumen(waip);
+        } catch (error) {
+          logger.log("error", `Fehler beim Aufräumen des veralteten Einsatzes ${waip.id}: ${error}`);
+        }
+      }
+    } catch (error) {
+      logger.log("error", `Fehler beim Ermitteln veralteter Einsätze: ${error}`);
     }
 
     // alle User-Einstellungen prüfen und ggf. Standby senden, z.B. wenn Reset_Timestamp erreicht ist
-    const socket_ids = await sql.db_socket_get_all_to_standby();
-    if (socket_ids) {
-      for (const row of socket_ids) {
-        const sockets = await io.of("/waip").in(row.socket_id).fetchSockets();
-        for (const socket of sockets) {
-          // Einsatz-ID aus dem Websocket entfernen
-          socket.data.waip_id = null;
-          // Standby senden
-          standby_verteilen_socket(socket);
-          // Audio stoppen
-          socket.emit("io.stopaudio", null);
-          logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet`);
-          sql.db_client_update_status(socket, null);
+    try {
+      const socket_ids = await sql.db_socket_get_all_to_standby();
+      if (socket_ids) {
+        for (const row of socket_ids) {
+          const sockets = await io.of("/waip").in(row.socket_id).fetchSockets();
+          for (const socket of sockets) {
+            // Einsatz-ID aus dem Websocket entfernen
+            socket.data.waip_id = null;
+            // Standby senden
+            standby_verteilen_socket(socket);
+            // Audio stoppen
+            socket.emit("io.stopaudio", null);
+            logger.log("log", `Standby an Alarmmonitor-Socket ${socket.id} gesendet`);
+            client_status_speichern(socket, null);
+          }
         }
       }
+    } catch (error) {
+      logger.log("error", `Fehler beim Zurücksetzen abgelaufener Alarmanzeigen: ${error}`);
     }
 
     // abgelaufene Einträge im Kurz-Archiv löschen (indizierte Abfrage, kostet ohne Treffer praktisch nichts)
@@ -552,7 +607,13 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
     const retentionMinutes = app_cfg.global.time_to_delete_waip;
     const retentionMs = retentionMinutes * 60 * 1000;
     const nowTs = Date.now();
-    fs.readdirSync(process.cwd() + app_cfg.global.soundpath).forEach((file) => {
+    let sound_dateien = [];
+    try {
+      sound_dateien = fs.readdirSync(process.cwd() + app_cfg.global.soundpath);
+    } catch (error) {
+      logger.log("error", `Sound-Verzeichnis ${app_cfg.global.soundpath} kann nicht gelesen werden: ${error}`);
+    }
+    sound_dateien.forEach((file) => {
       try {
         if (file.endsWith(".mp3") && !file.endsWith("_tmp.mp3") && !file.startsWith("bell")) {
           const fullPath = process.cwd() + app_cfg.global.soundpath + file;
@@ -569,8 +630,23 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
     });
   };
 
+  // Aufräumen nie doppelt laufen lassen: dauert ein Durchlauf länger als das Intervall (z.B. bei
+  // gesperrter Datenbank), wird der nächste Takt übersprungen statt parallel zu starten
+  let cleanup_laeuft = false;
+  const system_cleanup_takt = async () => {
+    if (cleanup_laeuft) return;
+    cleanup_laeuft = true;
+    try {
+      await system_cleanup();
+    } catch (error) {
+      logger.log("error", `Fehler beim Aufräumen: ${error}`);
+    } finally {
+      cleanup_laeuft = false;
+    }
+  };
+
   // System alle xxx Sekunden aufräumen
-  setInterval(system_cleanup, app_cfg.global.system_cleanup_time);
+  setInterval(system_cleanup_takt, app_cfg.global.system_cleanup_time);
 
   return {
     waip_verteilen_socket: waip_verteilen_socket,
