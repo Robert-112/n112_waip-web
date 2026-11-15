@@ -1250,16 +1250,16 @@ if (document.fonts && document.fonts.ready) {
 
 /* ##### Ticker ##### */
 
-// Laufgeschwindigkeit in Schriftgrößen pro Sekunde (TV 1080p: ca. 125 px/s)
-const TICKER_TEMPO = 4.5;
+// Laufgeschwindigkeit in Schriftgrößen pro Sekunde (TV 1080p: ca. 85 px/s)
+const TICKER_TEMPO = 3;
 
 function ticker_meldung_element(m, rot) {
   const el = element("span", "ticker-meldung" + (!rot && m.stufe === "warning" ? " gelb" : ""));
-  if (rot) el.appendChild(element("i", "bi bi-exclamation-octagon-fill")).setAttribute("aria-hidden", "true");
+  if (rot) el.appendChild(element("i", "bi bi-exclamation-octagon-fill ticker-symbol")).setAttribute("aria-hidden", "true");
   if (m.quelle) el.appendChild(element("span", "ticker-quelle", m.quelle));
-  if (!rot && m.stufe === "warning") el.appendChild(element("i", "bi bi-exclamation-triangle-fill")).setAttribute("aria-hidden", "true");
+  if (!rot && m.stufe === "warning") el.appendChild(element("i", "bi bi-exclamation-triangle-fill ticker-symbol")).setAttribute("aria-hidden", "true");
   el.appendChild(element("span", "ticker-text", m.text));
-  if (!rot) el.appendChild(element("i", "bi bi-dot ticker-trenner")).setAttribute("aria-hidden", "true");
+  el.appendChild(element("span", "ticker-trenner", "•")).setAttribute("aria-hidden", "true");
   return el;
 }
 

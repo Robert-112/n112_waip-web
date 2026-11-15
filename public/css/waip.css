@@ -564,8 +564,8 @@ audio {
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
-  padding-left: 1.6em;
 }
+
 
 .ticker-quelle {
   font-size: 0.62em;
@@ -588,7 +588,7 @@ audio {
   font-weight: 700;
 }
 
-.ticker-rot .bi {
+.ticker-rot .ticker-symbol {
   color: #ff6b5e;
   margin-right: 0.5em;
 }
@@ -598,14 +598,19 @@ audio {
   font-weight: 700;
 }
 
-.ticker-meldung.gelb .bi {
+.ticker-meldung.gelb .ticker-symbol {
   color: #e3d14b;
   margin-right: 0.45em;
 }
 
 .ticker-trenner {
-  margin-left: 0.9em;
+  /* gleicher Abstand links und rechts vom Punkt */
+  margin-inline: 1em;
   color: #4a4a4a;
+}
+
+.ticker-rot .ticker-trenner {
+  color: #6e2a22;
 }
 
 /*** Standby: Uhr, Gefahrenhinweise und Widgets als ein Block, der als Ganzes wandert (Einbrennschutz).
