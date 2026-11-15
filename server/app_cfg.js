@@ -45,9 +45,11 @@ app_cfg.global = {
   rightsRegex: process.env.RIGHTS_REGEX || "\\.(\\d+)[.-]",
 };
 
+// Entwicklungs-Schalter: ohne Eintrag in der .env ausgeschaltet. Eingeschaltet schreiben sie jede
+// SQL-Anweisung bzw. Debug-Ausgaben (auch mit Einsatzinhalten) ins Log und zeigen Fehlerdetails an.
 app_cfg.development = {
-  dev_log: (process.env.DEV_LOG ?? "true") === "true",
-  dev_sqlite: (process.env.DEV_SQLITE ?? "true") === "true",
+  dev_log: (process.env.DEV_LOG ?? "false") === "true",
+  dev_sqlite: (process.env.DEV_SQLITE ?? "false") === "true",
 };
 
 app_cfg.log = {

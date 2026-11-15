@@ -54,7 +54,9 @@ let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, s
 
 // Server starten
 webserver.listen(app_cfg.global.http_port, () => {
-  sql.db_log("Anwendung", "Wachalarm-IP-Webserver auf Port " + app_cfg.global.http_port + " gestartet");
+  sql.db_log("Anwendung", "Wachalarm-IP-Webserver auf Port " + app_cfg.global.http_port + " gestartet").catch((error) =>
+    logger.log("error", "Start konnte nicht in die Datenbank protokolliert werden: " + error)
+  );
   logger.event(`Wachalarm-IP-Webserver ${app_cfg.public.version} auf Port ${app_cfg.global.http_port} gestartet.`, {
     action: "anwendung-gestartet",
     category: "process",

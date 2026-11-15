@@ -120,6 +120,18 @@ module.exports = (sql, app_cfg) => {
   /* ##### Konsolen-Logger #### */
   /* ########################## */
 
+  // Eintrag in waip_log schreiben. Ein Fehler der Datenbank (z.B. gesperrt oder Platte voll) darf
+  // weder die Anwendung beenden noch die eigentliche Verarbeitung (z.B. die Alarmierung) abbrechen.
+  const db_log_sicher = (type, message) => {
+    try {
+      sql.db_log(type, message).catch((error) => {
+        console.error(`Log-Eintrag konnte nicht in die Datenbank geschrieben werden: ${error && error.message}`);
+      });
+    } catch (error) {
+      console.error(`Log-Eintrag konnte nicht in die Datenbank geschrieben werden: ${error && error.message}`);
+    }
+  };
+
   // Ausgabe auf der Konsole bzw. in waip_log (unverändertes Verhalten)
   const console_out = (type, message) => {
     switch (type) {
@@ -137,15 +149,15 @@ module.exports = (sql, app_cfg) => {
         break;
       case "waip":
         console.info("DB-Log: " + message);
-        sql.db_log(type, message);
+        db_log_sicher(type, message);
         break;
       case "dbrd":
         console.log("DB-Log: " + message);
-        sql.db_log(type, message);
+        db_log_sicher(type, message);
         break;
       case "rmld":
         console.log("DB-Log: " + message);
-        sql.db_log(type, message);
+        db_log_sicher(type, message);
         break;
       case "debug":
         if (app_cfg.development.dev_log) {
@@ -267,6 +279,25 @@ module.exports = (sql, app_cfg) => {
         outcome: "failure",
         reason: origin,
         error: error,
+      })
+    );
+  });
+
+  // Nicht abgefangene Promise-Fehler protokollieren, die Anwendung aber weiterlaufen lassen. Ohne diesen
+  // Handler beendet Node.js den Prozess bei jedem solchen Fehler (z.B. ein Datenbankfehler beim Verteilen
+  // eines Einsatzes), alle Alarmmonitore wären bis zum Neustart getrennt. Echte Programmfehler
+  // (uncaughtException) beenden den Prozess weiterhin, pm2 startet ihn dann neu.
+  process.on("unhandledRejection", (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    console.error(`Nicht abgefangener Fehler (Anwendung läuft weiter): ${reason instanceof Error ? reason.stack : message}`);
+    write_json(
+      build_doc("error", `Nicht abgefangener Fehler (Anwendung läuft weiter): ${message}`, {
+        action: "unbehandelter-fehler",
+        category: "process",
+        type: "error",
+        outcome: "failure",
+        reason: "unhandledRejection",
+        error: reason,
       })
     );
   });
