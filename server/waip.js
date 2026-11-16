@@ -5,10 +5,63 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
   const osrm = app_cfg.osrm.enabled ? require("./osrm.js")(app_cfg, logger) : null;
   // Client-Status in waip_clients speichern, ohne auf das Ergebnis zu warten. Ein Fehler wird nur
   // protokolliert, die Anzeige auf dem Monitor ist davon nicht abhängig.
-  const client_status_speichern = (socket, status) => {
-    sql.db_client_update_status(socket, status).catch((error) =>
+  const client_status_speichern = (socket, status, ablaufzeit = null) => {
+    sql.db_client_update_status(socket, status, ablaufzeit).catch((error) =>
       logger.log("error", `Fehler beim Speichern des Client-Status für ${socket.id}: ${error}`)
     );
+  };
+
+  // Sekunden bis zu einer Ablaufzeit im SQLite-Format "YYYY-MM-DD HH:MM:SS" (Ortszeit des Servers, wie
+  // DATETIME('now', 'localtime')). Der Monitor rechnet damit relativ und ist so unabhängig von seiner
+  // eigenen Uhr (Raspberrys ohne Internet haben oft keine genaue Zeit).
+  const restzeit_sekunden = (ablaufzeit) => {
+    const t = String(ablaufzeit || "").split(/[- :]/).map(Number);
+    if (t.length < 6 || t.some((n) => Number.isNaN(n))) return null;
+    const ende = new Date(t[0], t[1] - 1, t[2], t[3], t[4], t[5]);
+    return Math.round((ende.getTime() - Date.now()) / 1000);
+  };
+
+  // jüngster Alarmierungszeitpunkt der für eine Wache alarmierten Einsatzmittel. Wichtig bei
+  // Nachalarmierung: eine neu hinzugekommene Wache hat einen eigenen, viel aktuelleren Alarmzeitpunkt
+  // als der Einsatz insgesamt (der Einsatz-Zeitstempel bleibt auf der Erstalarmierung stehen), damit
+  // bekommt auch sie noch ihr eigenes Anzeigefenster.
+  const wachen_alarmzeit_ermitteln = (einsatzdaten) =>
+    ((einsatzdaten && einsatzdaten.em_alarmiert) || [])
+      .map((em) => em.zeit_alarmierung_iso)
+      .filter(Boolean)
+      .sort()
+      .pop() || null;
+
+  // Prüfen, ob ein Einsatz auf einem Alarmmonitor (Wache wachen_nr) noch angezeigt werden darf.
+  // Liefert { einsatzdaten, ablaufzeit } oder null (Einsatz gelöscht, für diese Wache nicht alarmiert
+  // oder Anzeigezeit abgelaufen). Gleiche Regel wie bei der Alarmierung in einsatz_verteilen_rooms.
+  const einsatz_anzeige_pruefen = async (socket, waip_id, wachen_nr) => {
+    const einsatzdaten = await sql.db_einsatz_get_for_wache(waip_id, wachen_nr);
+    if (!einsatzdaten || !einsatzdaten.em_alarmiert || einsatzdaten.em_alarmiert.length === 0) return null;
+    const ablaufzeit = await sql.db_client_get_alarm_anzeigbar(socket, einsatzdaten.id, wachen_alarmzeit_ermitteln(einsatzdaten));
+    return ablaufzeit ? { einsatzdaten, ablaufzeit } : null;
+  };
+
+  // Nachfrage eines Alarmmonitors, dessen Anzeigezeit für einen Einsatz laut eigener Restzeit seit einer
+  // Weile abgelaufen ist, ohne dass ein Standby kam. Ist der Einsatz nicht mehr anzuzeigen, wird der
+  // Standby (erneut) gesendet, sonst die aktuelle Restzeit zurückgemeldet.
+  const einsatz_ablauf_pruefen = async (socket, waip_id) => {
+    const wachen_nr = socket.data.wachen_nr;
+    const anzeige = wachen_nr ? await einsatz_anzeige_pruefen(socket, waip_id, wachen_nr) : null;
+
+    if (anzeige) {
+      // Anzeige läuft noch (z.B. durch Nachalarmierung verlängert): Merker für den Standby auffrischen
+      if (socket.data.waip_id === waip_id) client_status_speichern(socket, waip_id, anzeige.ablaufzeit);
+      logger.log("log", `Monitor ${socket.id} fragte nach Ablauf von Einsatz ${waip_id}, Anzeige läuft noch bis ${anzeige.ablaufzeit}.`);
+      return { anzeigen: true, restzeit_s: restzeit_sekunden(anzeige.ablaufzeit) };
+    }
+
+    // Monitor zeigt einen abgelaufenen Einsatz: hier hätte bereits ein Standby ankommen müssen
+    logger.log("warn", `Monitor ${socket.id} (Wache ${wachen_nr}) zeigte abgelaufenen Einsatz ${waip_id} noch an, Standby wird nachgesendet.`);
+    socket.data.waip_id = null;
+    standby_verteilen_socket(socket);
+    socket.emit("io.stopaudio", null);
+    return { anzeigen: false };
   };
 
   const waip_verteilen_socket = (einsatzdaten, socket, wachen_nr, reset_timestamp) => {
@@ -39,8 +92,10 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
           data.permissions = true;
         }
 
-        // Ablaufzeit zum Einsatz hinzufuegen, damit diese auf der Seite ausgewertet werden kann
+        // Ablaufzeit zum Einsatz hinzufuegen, damit diese auf der Seite ausgewertet werden kann. Die Restzeit
+        // in Sekunden nutzt der Monitor, um unabhängig von seiner Uhr nachzufragen, falls kein Standby kommt.
         data.ablaufzeit = reset_timestamp;
+        data.restzeit_s = restzeit_sekunden(reset_timestamp);
 
         // pruefen ob Einsatz bereits genau so beim Client angezeigt wurde (Doppelalarmierung)
         const doppelalarm = await sql.db_einsatz_check_history(data, socket);
@@ -74,8 +129,8 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
             wachalarm: { einsatz_id: data.id, wache_nr: String(wachen_nr), socket_id: socket.id, vollzugriff: data.permissions },
           });
 
-          // Client-Status mit Wachennummer aktualisieren
-          client_status_speichern(socket, data.id);
+          // Client-Status mit Einsatz-ID und genau der gesendeten Ablaufzeit speichern (Grundlage für den Standby)
+          client_status_speichern(socket, data.id, reset_timestamp);
 
           // Sound erstellen und an Client senden
           const tts = await tts_erstellen(data, wachen_nr);
@@ -136,16 +191,8 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
               // Alarmmonitor dieser Wache NICHT auslösen - sie erscheinen nur unter em_weitere.
               const keineAlarmiertenEinsatzmittel = !einsatzdaten.em_alarmiert || einsatzdaten.em_alarmiert.length === 0;
 
-              // jüngster Alarmierungszeitpunkt der für DIESE Wache alarmierten Einsatzmittel ermitteln.
-              // Wichtig bei Nachalarmierung: eine neu hinzugekommene Wache hat einen eigenen, viel
-              // aktuelleren Alarmzeitpunkt als der Einsatz insgesamt (der Einsatz-Zeitstempel bleibt auf
-              // der Erstalarmierung stehen), damit bekommt auch sie noch ihr eigenes Anzeigefenster.
-              const wachen_alarmzeit_iso =
-                (einsatzdaten.em_alarmiert || [])
-                  .map((em) => em.zeit_alarmierung_iso)
-                  .filter(Boolean)
-                  .sort()
-                  .pop() || null;
+              // jüngster Alarmierungszeitpunkt der für DIESE Wache alarmierten Einsatzmittel (Nachalarmierung)
+              const wachen_alarmzeit_iso = wachen_alarmzeit_ermitteln(einsatzdaten);
 
               // an jeden Socket entsprechende Daten senden
               for (const socket of sockets) {
@@ -652,6 +699,8 @@ module.exports = (io, sql, fs, logger, app_cfg, tts) => {
     waip_verteilen_socket: waip_verteilen_socket,
     einsatz_verteilen_rooms: einsatz_verteilen_rooms,
     standby_verteilen_socket: standby_verteilen_socket,
+    einsatz_anzeige_pruefen: einsatz_anzeige_pruefen,
+    einsatz_ablauf_pruefen: einsatz_ablauf_pruefen,
     rmld_arr_verteilen_socket: rmld_arr_verteilen_socket,
     rmld_verteilen_rooms: rmld_verteilen_rooms,
     dbrd_verteilen_socket: dbrd_verteilen_socket,

@@ -172,12 +172,10 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
         // anzuzeigenden Einsatz für die aktuelle Wache und den aktuellen User abfragen
         const waip_data = await sql.db_einsatz_for_client_ermitteln(socket, wachen_nr);
 
-        if (waip_data == null) {
-          var einsatzdaten = null;
-        } else {
-          // Einsatzdaten abfragen
-          var einsatzdaten = await sql.db_einsatz_get_for_wache(waip_data.id, wachen_nr);
-        }
+        // prüfen, ob der Einsatz noch angezeigt werden darf (gleiche Regel wie bei der Alarmierung,
+        // inkl. Alarmierungszeitpunkt der Wache bei Nachalarmierung)
+        const anzeige = waip_data ? await waip.einsatz_anzeige_pruefen(socket, waip_data.id, wachen_nr) : null;
+        const einsatzdaten = anzeige ? anzeige.einsatzdaten : null;
 
         // wenn Einsatz vorhanden, dann diesen senden, sonst Standby senden
         if (einsatzdaten) {
@@ -185,7 +183,7 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
           logger.log("log", `Einsatz ${einsatzdaten.id} für Wache ${wachen_nr} vorhanden, wird jetzt an Client ${socket.id} gesendet.`);
 
           // letzten Einsatz an Alarmmonitor senden
-          waip.waip_verteilen_socket(einsatzdaten, socket, wachen_nr, waip_data.reset_time);
+          waip.waip_verteilen_socket(einsatzdaten, socket, wachen_nr, anzeige.ablaufzeit);
 
           // alle vorhanden Rückmeldungen zur Wache aus Datenbank laden
           const rmld_waip_arr = await sql.db_rmlds_get_for_wache(wachen_nr, einsatzdaten.id, null);
@@ -220,6 +218,19 @@ module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
         // Fehlermeldung senden und Verbindung trennen
         socket.emit("io.error", logMessage);
         socket.disconnect(true);
+      }
+    });
+
+    // Nachfrage des Monitors, wenn seine Anzeigezeit abgelaufen ist, aber kein Standby kam
+    socket.on("waip_ablauf_pruefen", async (waip_id, ack) => {
+      if (typeof ack !== "function") return;
+      try {
+        const id = Number(waip_id);
+        if (!Number.isInteger(id) || id <= 0) return ack({ anzeigen: false });
+        ack(await waip.einsatz_ablauf_pruefen(socket, id));
+      } catch (error) {
+        logger.log("error", `Fehler bei der Ablauf-Nachfrage von ${remote_ip} (${socket.id}) zu Einsatz ${waip_id}: ${error}`);
+        ack({ anzeigen: null });
       }
     });
 

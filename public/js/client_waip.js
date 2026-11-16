@@ -814,27 +814,80 @@ function startNetzkopplungCheck() {
   scheduleNext();
 }
 
+/* ################################## */
+/* ##### VERBINDUNG HALTEN (KIOSK) #### */
+/* ################################## */
+
+// Die Monitore hängen ohne Bedienung in den Wachen. Sie dürfen die Verbindung nie dauerhaft verlieren:
+// Socket.IO verbindet sich nur bei Netzwerkfehlern selbst neu, nicht wenn der Server die Verbindung
+// trennt oder den Verbindungsaufbau ablehnt. Dann hier selbst mit wachsender Pause neu verbinden.
+let neu_verbinden_timer = null;
+let neu_verbinden_versuche = 0;
+
+function neu_verbinden_planen(grund) {
+  if (neu_verbinden_timer) return;
+  const pause = Math.min(60000, 5000 * Math.pow(2, neu_verbinden_versuche)) + Math.floor(Math.random() * 3000);
+  neu_verbinden_versuche++;
+  console.warn("Verbindung vom Server beendet (" + grund + "), neuer Versuch in " + Math.round(pause / 1000) + " s.");
+  neu_verbinden_timer = setTimeout(function () {
+    neu_verbinden_timer = null;
+    if (!socket.connected) socket.connect();
+  }, pause);
+}
+
+socket.on("connect", function () {
+  clearTimeout(neu_verbinden_timer);
+  neu_verbinden_timer = null;
+  neu_verbinden_versuche = 0;
+});
+
 socket.on("connect_error", function (err) {
   $("#waipModalTitle").text("FEHLER");
   $("#waipModalBody").text("Verbindung zum Server getrennt!");
   $("#waipModal").modal("show");
+  // abgelehnter Verbindungsaufbau: Socket.IO versucht es nicht selbst erneut
+  if (!socket.active) neu_verbinden_planen("Verbindungsaufbau abgelehnt");
 });
 
 socket.on("disconnect", function (reason) {
   console.log("Socket-Verbindung geschlossen:", reason);
+  // vom Server getrennt: Socket.IO versucht es nicht selbst erneut
+  if (reason === "io server disconnect") neu_verbinden_planen(reason);
 });
+
+// Seite erst neu laden, wenn der Server sie wirklich ausliefert. Ein blinder Reload während eines
+// (erneuten) Neustarts oder eines Proxy-Fehlers (502) ließe den Monitor auf einer Fehlerseite ohne
+// JavaScript stehen, aus der er nicht mehr von selbst zurückkommt.
+let seite_neu_laden_geplant = false;
+
+function seite_sicher_neu_laden(pause_ms) {
+  setTimeout(function () {
+    fetch(location.href, { cache: "no-store", credentials: "same-origin" })
+      .then(function (resp) {
+        if (resp.ok) {
+          location.reload();
+        } else {
+          console.warn("Seite für Reload nicht abrufbar (HTTP " + resp.status + "), neuer Versuch.");
+          seite_sicher_neu_laden(10000 + Math.floor(Math.random() * 20000));
+        }
+      })
+      .catch(function (e) {
+        console.warn("Server für Reload nicht erreichbar, neuer Versuch.", e);
+        seite_sicher_neu_laden(10000 + Math.floor(Math.random() * 20000));
+      });
+  }, pause_ms);
+}
 
 // ID von Server und Client vergleichen, falls ungleich -> Seite neu laden
 socket.on("io.version", function (server_id) {
-  if (client_id != server_id) {
+  if (client_id != server_id && !seite_neu_laden_geplant) {
+    seite_neu_laden_geplant = true;
     $("#waipModal").modal("hide");
     setTimeout(function () {
       $("#waipModalTitle").text("ACHTUNG");
       $("#waipModalBody").text("Neue Server-Version. Seite wird gleich automatisch neu geladen!");
       $("#waipModal").modal("show");
-      setTimeout(function () {
-        location.reload();
-      }, Math.floor(Math.random() * (15000 - 1000 + 1)) + 1000);
+      seite_sicher_neu_laden(Math.floor(Math.random() * (15000 - 1000 + 1)) + 1000);
     }, 1000);
   }
 });
@@ -845,11 +898,12 @@ socket.on("io.error", function (data) {
 });
 
 // Sounds stoppen
-socket.on("io.stopaudio", function (data) {
+function audio_stoppen() {
   tmp_audio = document.getElementById("audio");
   tmp_audio.pause();
   tmp_audio.currentTime = 0;
-});
+}
+socket.on("io.stopaudio", audio_stoppen);
 
 // Sounds abspielen
 socket.on("io.playtts", function (data) {
@@ -891,9 +945,68 @@ socket.on("io.playtts", function (data) {
 });
 
 // Daten löschen, Uhr anzeigen
-socket.on("io.standby", function (data) {
+/* ################################### */
+/* ##### ABLAUF-WÄCHTER (STANDBY) ##### */
+/* ################################### */
+
+// Der Monitor kennt aus dem Einsatz seine Restzeit. Kommt bis 60 s nach deren Ende kein Standby vom
+// Server, fragt er dort nach. Ist der Einsatz nicht mehr anzuzeigen, sendet der Server den Standby
+// (erneut). Antwortet der Server nicht (Verbindung weg), geht der Monitor selbst in den Standby.
+// Gerechnet wird relativ ab Empfang des Einsatzes, nicht mit der Uhr des Monitors.
+const ABLAUF_NACHFRAGE_S = 60;
+const ABLAUF_ANTWORT_MS = 15000;
+let ablauf_waechter = null;
+
+function ablauf_waechter_stoppen() {
+  clearTimeout(ablauf_waechter);
+  ablauf_waechter = null;
+}
+
+function ablauf_waechter_starten(id, restzeit_s) {
+  ablauf_waechter_stoppen();
+  if (typeof restzeit_s !== "number" || !isFinite(restzeit_s)) return;
+  ablauf_waechter = setTimeout(function () {
+    ablauf_nachfragen(id);
+  }, (Math.max(0, restzeit_s) + ABLAUF_NACHFRAGE_S) * 1000);
+}
+
+function ablauf_nachfragen(id) {
+  ablauf_waechter = null;
+  // inzwischen Standby oder ein anderer Einsatz: nichts zu tun
+  if (waip_id !== id) return;
+  // ohne Verbindung keine Antwort möglich: Anzeigezeit ist abgelaufen, also selbst in den Standby
+  if (!socket.connected) {
+    console.warn("Anzeigezeit abgelaufen, keine Verbindung zum Server: lokaler Standby.");
+    audio_stoppen();
+    standby_anzeigen(null);
+    return;
+  }
+  console.warn("Anzeigezeit abgelaufen, aber kein Standby erhalten: frage Server nach Einsatz", id);
+  socket.timeout(ABLAUF_ANTWORT_MS).emit("waip_ablauf_pruefen", id, function (err, antwort) {
+    if (waip_id !== id) return; // Standby oder neuer Einsatz kam in der Zwischenzeit
+    if (err) {
+      console.warn("Keine Antwort auf Ablauf-Nachfrage: lokaler Standby.");
+      audio_stoppen();
+      standby_anzeigen(null);
+    } else if (antwort && antwort.anzeigen === true) {
+      // Anzeige läuft laut Server noch (z.B. Nachalarmierung): mit neuer Restzeit weiter warten
+      ablauf_waechter_starten(id, antwort.restzeit_s);
+    } else if (antwort && antwort.anzeigen === false) {
+      // Server hat den Standby gesendet; falls der nicht angekommen ist, hier selbst umschalten
+      standby_anzeigen(null);
+    } else {
+      // Fehler auf dem Server: später erneut fragen
+      ablauf_waechter_starten(id, 0);
+    }
+  });
+}
+
+socket.on("io.standby", standby_anzeigen);
+
+function standby_anzeigen(data) {
   console.log("Standby", data);
   waip_id = null;
+  ablauf_waechter_stoppen();
   takt_remove("ablauf");
 
   $("#einsatz_art").removeClass(function (index, className) {
@@ -936,8 +1049,7 @@ socket.on("io.standby", function (data) {
     updateWachennameAnimation();
     updateRandomPosition();
   }, 200);
-
-});
+}
 
 /* ############################ */
 /* ##### STANDBY-WIDGETS ###### */
@@ -1559,6 +1671,8 @@ socket.on("io.new_waip", function (data) {
 
   // Ablaufzeit setzen
   start_counter(data.zeitstempel, data.ablaufzeit);
+  // falls nach Ablauf kein Standby kommt, beim Server nachfragen
+  ablauf_waechter_starten(data.id, data.restzeit_s);
   // alte Rückmeldung entfernen
   reset_rmld();
   recount_rmld(data.uuid);

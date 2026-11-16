@@ -267,42 +267,12 @@ module.exports = (db, app_cfg) => {
         `);
         const row1 = stmt1.get();
 
+        // Ob der Einsatz noch angezeigt werden darf, prüft der Aufrufer (waip.einsatz_anzeige_pruefen) mit
+        // derselben Regel wie bei der Alarmierung (inkl. Alarmierungszeitpunkt der Wache bei Nachalarmierung)
         if (row1 === undefined) {
           resolve(null);
         } else {
-          // User-ID aus socket.data.user lesen
-          const client_user = socket.data && socket.data.user ? socket.data.user : null;
-          const user_id = client_user && client_user.id ? client_user.id : null;
-
-          // Reset-Counter des Users ermitteln
-          const stmt2 = db.prepare(`
-            SELECT config_value FROM waip_user_config
-            WHERE user_id = ? AND config_type = 'resetcounter';
-          `);
-          const row2 = stmt2.get(user_id);
-
-          // Standard-Reset-Zeit aus app_cfg als Fallback
-          reset_timestamp = app_cfg.global.default_time_for_standby;
-
-          // Wenn ein benutzerdefinierter Reset-Counter vorhanden ist, diesen verwenden
-          if (row2 !== undefined && row2.config_value) {
-            reset_timestamp = row2.config_value;
-          }
-
-          // prüfen ob der Zeitstempel des Einsatzes + Reset-Counter nicht über der aktuellen Uhrzeit liegt
-          const stmt3 = db.prepare(`
-            SELECT we.id, DATETIME(we.zeitstempel, ? || ' minutes') reset_time
-            FROM waip_einsaetze we
-            WHERE we.id = ? 
-            AND DATETIME(we.zeitstempel, ? || ' minutes') > DATETIME('now', 'localtime');
-          `);
-          const row3 = stmt3.get(reset_timestamp, row1.waip_id, reset_timestamp);
-
-          if (row3 === undefined) {
-            resolve(null);
-          } else {
-            resolve(row3);
-          }
+          resolve({ id: row1.waip_id });
         }
       } catch (error) {
         reject(new Error("Fehler beim Abfragen der Einsätze für Wachen-ID " + wachen_nr + "). " + error));
@@ -1302,8 +1272,8 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Client-Status aktualisieren / speichern
-  const db_client_update_status = (socket, client_status) => {
+  // Client-Status aktualisieren / speichern (ablaufzeit: optional die an den Monitor gesendete Ablaufzeit)
+  const db_client_update_status = (socket, client_status, ablaufzeit = null) => {
     return new Promise(async (resolve, reject) => {
       try {
         // Socket ID
@@ -1365,7 +1335,13 @@ module.exports = (db, app_cfg) => {
         // Reset-Zeitstempel in Abhängigkeit der Einstellungen ermitteln
         let reset_timestamp = null;
 
-        if (client_status !== "Standby") {
+        if (client_status !== "Standby" && ablaufzeit) {
+          // Ablaufzeit, die der Alarmmonitor mit dem Einsatz bekommen hat, unverändert übernehmen. Sie
+          // berücksichtigt bei Nachalarmierung den Alarmierungszeitpunkt der Wache. Würde hier neu (nur ab
+          // Erstalarmierung) gerechnet, wäre der Wert bei später nachalarmierten Wachen schon abgelaufen
+          // (NULL) und der Monitor ginge erst beim Löschen des Einsatzes wieder in den Standby.
+          reset_timestamp = ablaufzeit;
+        } else if (client_status !== "Standby") {
           // User-ID aus socket.data.user lesen
           const user_id = socket.data && socket.data.user && socket.data.user.id ? socket.data.user.id : null;
 
