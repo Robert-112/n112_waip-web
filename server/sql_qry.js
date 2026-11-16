@@ -886,7 +886,16 @@ module.exports = (db, app_cfg) => {
       .all(einsatz_id);
     if (em.length === 0) return false;
 
-    const { anzahl } = db.prepare(`SELECT COUNT(*) AS anzahl FROM waip_rueckmeldungen WHERE waip_uuid = ?;`).get(einsatz.uuid);
+    // nur Zusagen zählen, wie im Dashboard (db_rmlds_get_for_wache): type_decision 'accept' und einer Wache zugeordnet
+    const { anzahl } = db
+      .prepare(`
+        SELECT COUNT(*) AS anzahl
+        FROM waip_rueckmeldungen
+        WHERE waip_uuid = ?
+          AND type_decision = 'accept'
+          AND wache_id IN (SELECT id FROM waip_wachen);
+      `)
+      .get(einsatz.uuid);
 
     db.prepare(`
       INSERT INTO waip_archiv (
