@@ -234,7 +234,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 - optionale Dienste, die jeweils in der `.env` eingetragen werden:
     - [OSRM](https://project-osrm.org/) für die Anfahrtswege
     - [Piper](https://github.com/rhasspy/piper) (Wyoming-Protokoll) für eine natürlichere Sprachansage
-    - [Bright Sky](https://brightsky.dev/) für Wetter und Unwetterwarnungen
+    - [Bright Sky](https://brightsky.dev/) für Wetter und Unwetterwarnungen (fertige Wetter-Standorte für die fünf Leitstellen und alle Kreise in Brandenburg: `sqlite3 database.sqlite3 < sql_wetter_orte.sql`)
     - ein eigener Kalender-Dienst (Docker) für Termine und Ticker im Standby
     - Filebeat und Elasticsearch für die Auswertung der Logs
     - [Keycloak](https://www.keycloak.org/) (oder ein anderer OpenID-Connect-Server) für die Anmeldung mit zentralen Benutzerkonten
