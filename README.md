@@ -103,7 +103,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 
 - ist kein Einsatz aktiv, zeigt der Alarmmonitor Uhrzeit und Datum an
 - auf Wunsch werden zusätzlich angezeigt:
-    - das aktuelle Wetter sowie die Vorhersage für morgen und übermorgen
+    - das aktuelle Wetter mit Höchst- und Tiefstwert sowie die Vorhersage für die nächsten zwei Tage (die Wetteranzeige wird so groß, wie es der Platz erlaubt)
     - amtliche Unwetterwarnungen des Deutschen Wetterdienstes
     - die Waldbrandgefahrenstufe (ab einer einstellbaren Stufe)
     - die nächsten Termine aus einem Kalender (iCal/ICS), z.B. Dienstabende
@@ -127,14 +127,14 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 - es zeigt, ebenso wie der Alarmmonitor, alle einsatzrelevanten Informationen an und berücksichtigt dabei die Berechtigungen des Nutzers (sofern angemeldet)
 - im Dashboard werden alle beteiligten Wachen inkl. der alarmierten Einsatzmittel und deren Anfahrtswege angezeigt
 - es werden alle positiven Rückmeldungen zum Einsatz angezeigt, dabei erfolgt eine Zuordnung der Rückmeldungen zu den alarmierten Wachen
-- die Rückmeldungen werden je Wache gezählt, inkl. einer Gesamt-Übersicht
+- die Rückmeldungen werden je Wache gezählt, inkl. einer Gesamt-Übersicht (erscheint erst, wenn Rückmeldungen eingehen)
 - das Dashboard des Einsatzes aktualisiert sich von selbst, ohne dass die Seite neu geladen werden muss
 
 ![Übersicht der laufenden Einsätze](docs/images/dbrd_uebersicht.webp)
 
 *Abbildung: Übersicht der laufenden Einsätze mit Kurz-Archiv*
 
-- die Übersicht zeigt alle laufenden Einsätze als Kacheln mit kleiner Karte
+- die Übersicht zeigt alle laufenden Einsätze als Kacheln mit kleiner Karte sowie der Anzahl der alarmierten Einsatzmittel und der bisherigen Rückmeldungen
 - Rettungseinsätze und Krankentransporte sind standardmäßig ausgeblendet und lassen sich per Schalter einblenden
 - beendete Brand- und Hilfeleistungseinsätze bleiben für einige Tage (Standard: 3 Tage) im Kurz-Archiv sichtbar
     - dort stehen nur grobe Angaben: Zeit, Ort und Ortsteil, Einsatzart und Stichwort, alarmierte Einsatzmittel sowie die Anzahl der Rückmeldungen
@@ -268,6 +268,13 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 ---
 
 # Versionsverlauf
+
+## 2.2.2 (November 2026)
+
+- Dashboard: Zähler der Rückmeldungen erscheinen erst, wenn Rückmeldungen eingehen
+- Dashboard-Übersicht: Kacheln zeigen die Anzahl der alarmierten Einsatzmittel und der Rückmeldungen
+- Dashboard-Karte zeigt den Einsatzkreis bzw. Einsatzort auch dann vollständig, wenn eine Wache im Einsatzkreis liegt
+- Standby-Wetter: Höchst- und Tiefstwert untereinander, Datum statt „Übermorgen“, Wetteranzeige wird so groß, wie es der Platz erlaubt
 
 ## 2.2.1 (November 2026)
 
