@@ -46,7 +46,13 @@ block content
                       span= val.einsatzart + ' – ' + val.stichwort
                     if val.zeitstempel
                       span.badge.text-bg-secondary.flex-shrink-0(data-alarmzeit=val.zeitstempel)
-                  p.card-text.text-body-secondary.mb-3= val.ortsteil ? val.ort + ', ' + val.ortsteil : val.ort
+                  p.card-text.text-body-secondary.mb-2= val.ortsteil ? val.ort + ', ' + val.ortsteil : val.ort
+                  //- Kennzahlen wie im Kurz-Archiv; Rückmeldungen erst ab der ersten (viele Wachen nutzen sie nicht)
+                  .d-flex.flex-wrap.gap-2.mb-3
+                    if val.anzahl_einsatzmittel > 0
+                      span.badge.text-bg-secondary= val.anzahl_einsatzmittel + ' Einsatzmittel'
+                    if val.anzahl_rueckmeldungen > 0
+                      span.badge.text-bg-secondary= val.anzahl_rueckmeldungen + (val.anzahl_rueckmeldungen === 1 ? ' Rückmeldung' : ' Rückmeldungen')
                   a.stretched-link.mt-auto.small.text-info.text-decoration-none(href='/dbrd/' + val.uuid)
                     | Dashboard öffnen
                     i.bi.bi-arrow-right.ms-1(aria-hidden='true')
