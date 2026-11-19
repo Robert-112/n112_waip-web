@@ -96,9 +96,11 @@ function fitFullscreenMap() {
     } catch (_) {}
   });
   if (allBounds.length) {
-    var combined = allBounds[0];
-    for (var i = 1; i < allBounds.length; i++) combined = combined.extend(allBounds[i]);
-    fullscreenMap.fitBounds(combined, { padding: [40, 40] });
+    var eb = einsatz_bounds();
+    if (eb) allBounds.push(eb);
+    var combined = L.latLngBounds(allBounds[0].getSouthWest(), allBounds[0].getNorthEast());
+    for (var i = 1; i < allBounds.length; i++) combined.extend(allBounds[i]);
+    fullscreenMap.fitBounds(combined, { padding: [40, 40], maxZoom: KARTE_MAX_ZOOM_EINPASSEN });
   } else if (currentGeometry) {
     if (currentGeometry.type === "point" && currentGeometry.coords) {
       fullscreenMap.setView(currentGeometry.coords, 15);
@@ -164,6 +166,24 @@ var geojson = L.geoJSON().addTo(map);
 var routeLayers = [];
 var fullscreenRouteLayers = [];
 var currentRoutes = [];
+// Einsatzort: Zielpunkt (mit Berechtigung) oder Einsatzkreis (Gäste), gesetzt in io.Einsatz
+var currentGeometry = null;
+
+// Einsatzbereich als Bounds. Gehört immer in den Kartenausschnitt: liegt eine Wache im Einsatzkreis, gibt es
+// keine Route, und die Karte würde sonst auf diesen einen Wachenpunkt zoomen statt den Kreis zu zeigen.
+function einsatz_bounds() {
+  if (!currentGeometry) return null;
+  try {
+    if (currentGeometry.type === "point" && currentGeometry.coords) return L.latLngBounds([currentGeometry.coords, currentGeometry.coords]);
+    if (currentGeometry.geojson) {
+      var b = L.geoJSON(currentGeometry.geojson).getBounds();
+      return b.isValid() ? b : null;
+    }
+  } catch (_) {}
+  return null;
+}
+// nicht näher heranzoomen, wenn Wache und Einsatzort dicht beieinander liegen
+var KARTE_MAX_ZOOM_EINPASSEN = 16;
 
 // Routen zeichnen (gemeinsam mit dem Alarmmonitor, siehe karte_routen.js)
 function drawRoutesOnMap(routes, targetMap, layerArr) {
@@ -750,11 +770,15 @@ socket.on("io.routes", function (routes) {
   if (allBounds.length) {
     var combined = allBounds[0];
     for (var i = 1; i < allBounds.length; i++) combined = combined.extend(allBounds[i]);
-    try {
-      var mPos = marker.getLatLng();
-      if (mPos.lat !== 0 || mPos.lng !== 0) combined = combined.extend(mPos);
-    } catch (_) {}
-    map.fitBounds(combined, { padding: [30, 30] });
+    // Zielpunkt bzw. Einsatzkreis immer mit einpassen (siehe einsatz_bounds)
+    var eb = einsatz_bounds();
+    if (eb) combined = combined.extend(eb);
+    var einpassen = function () {
+      map.fitBounds(combined, { padding: [30, 30], maxZoom: KARTE_MAX_ZOOM_EINPASSEN });
+    };
+    // Während einer Zoom-Animation (z.B. aus io.Einsatz) verwirft Leaflet fitBounds stillschweigend -> danach einpassen
+    if (map._animatingZoom) map.once("zoomend", einpassen);
+    else einpassen();
   }
 });
 
