@@ -620,7 +620,19 @@ module.exports = (db, app_cfg) => {
             GROUP_CONCAT(DISTINCT wa.nr_leitstelle) l,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 3 )) a,
             GROUP_CONCAT(DISTINCT SUBSTR( wa.nr_wache, 0, 5 )) b,
-            GROUP_CONCAT(DISTINCT wa.nr_wache) c
+            GROUP_CONCAT(DISTINCT wa.nr_wache) c,
+            -- Kennzahlen für die Kacheln der Dashboard-Übersicht, gezählt wie im Kurz-Archiv (db_einsatz_archivieren):
+            -- alarmierte Einsatzmittel und Zusagen, die einer Wache zugeordnet sind
+            (SELECT COUNT(DISTINCT e2.em_funkrufname || '|' || IFNULL(e2.em_station_name, ''))
+              FROM waip_einsatzmittel e2
+              WHERE e2.em_waip_einsaetze_id = we.id
+                AND e2.em_zeitstempel_alarmierung IS NOT NULL AND e2.em_zeitstempel_alarmierung != ''
+                AND e2.em_funkrufname IS NOT NULL AND e2.em_funkrufname != '') AS anzahl_einsatzmittel,
+            (SELECT COUNT(*)
+              FROM waip_rueckmeldungen r
+              WHERE r.waip_uuid = we.uuid
+                AND r.type_decision = 'accept'
+                AND r.wache_id IN (SELECT id FROM waip_wachen)) AS anzahl_rueckmeldungen
           FROM waip_einsaetze we
           JOIN waip_einsatzmittel em ON em.em_waip_einsaetze_id = we.id
           JOIN waip_wachen wa ON wa.id = em.em_station_id AND wa.aktiv = 1

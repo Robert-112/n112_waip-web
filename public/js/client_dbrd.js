@@ -456,12 +456,8 @@ function recount_rmld(p_uuid) {
   $("#fzf-counter").text($(".p_fzf").length);
   $("#med-counter").text($(".p_med").length);
 
-  // Rückmeldecontainer anzeigen/ausblenden
-  if ($("#ek-counter").text() == "0" && $("#gf-counter").text() == "0" && $("#zf-counter").text() == "0" && $("#vf-counter").text() == "0") {
-    $("#rmld_container").addClass("d-none");
-  } else {
-    $("#rmld_container").removeClass("d-none");
-  }
+  // Rückmeldecontainer erst anzeigen, wenn es Rückmeldungen gibt (auch solche ohne erkannte Rolle)
+  $("#rmld_container").toggleClass("d-none", $("#gs-counter").text() == "0");
 }
 
 /* ########################### */
