@@ -807,8 +807,12 @@ audio {
   white-space: nowrap;
 }
 
+/* Höchst- und Tiefstwert untereinander (↑ oben, ↓ unten) */
 .standby-wetter-minmax {
-  font-size: 1.3em;
+  display: flex;
+  flex-direction: column;
+  font-size: 1.5em;
+  line-height: 1.1;
   color: #888;
   white-space: nowrap;
 }
@@ -836,6 +840,7 @@ audio {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .standby-tag-temp {

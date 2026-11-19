@@ -1180,6 +1180,13 @@ function waldbrand_rendern(wb) {
   return true;
 }
 
+// Vorhersagetag als "Sa 21.11." (wie die Termine); datum kommt als YYYY-MM-DD, fehlt es, ab heute gerechnet
+function wetter_tag_datum(datum, plus_tage) {
+  const teile = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datum || "");
+  const d = teile ? new Date(+teile[1], teile[2] - 1, +teile[3]) : new Date(tages_start(new Date(), plus_tage));
+  return d.toLocaleDateString("de-DE", { weekday: "short" }).replace(".", "") + " " + zwei(d.getDate()) + "." + zwei(d.getMonth() + 1) + ".";
+}
+
 function wetter_rendern(w) {
   const box = document.getElementById("standby_wetter");
   if (!widgetDaten.aktiv.wetter || !w || veraltet(w.abgerufen) || (!w.aktuell && !w.heute)) {
@@ -1193,16 +1200,17 @@ function wetter_rendern(w) {
   icon.className = "bi standby-wetter-icon " + symbol[0];
   icon.title = symbol[1];
   box.querySelector(".standby-wetter-temp").textContent = grad(typeof a.temperatur === "number" ? a.temperatur : h.max);
-  box.querySelector(".standby-wetter-minmax").textContent = "↓ " + grad(h.min) + "  ↑ " + grad(h.max);
+  // Höchst- und Tiefstwert untereinander: braucht weniger Breite, das Wetter kann dafür größer werden
+  const minmax = box.querySelector(".standby-wetter-minmax");
+  minmax.replaceChildren(element("span", null, "↑ " + grad(h.max)), element("span", null, "↓ " + grad(h.min)));
 
   const tage = box.querySelector(".standby-wetter-tage");
-  const namen = ["Morgen", "Übermorgen"];
   const kinder = (w.tage || []).slice(0, 2).map(function (t, i) {
     const s = wetter_symbol(t.icon);
     const tag = element("div", "standby-tag");
     tag.appendChild(element("i", "bi " + s[0])).setAttribute("aria-hidden", "true");
     const text = element("div", "standby-tag-text");
-    text.appendChild(element("span", "standby-klein", namen[i]));
+    text.appendChild(element("span", "standby-klein", i === 0 ? "Morgen" : wetter_tag_datum(t.datum, 2)));
     const temp = element("span", "standby-tag-temp", grad(t.max) + " ");
     temp.appendChild(element("span", null, "/ " + grad(t.min)));
     text.appendChild(temp);
@@ -1294,6 +1302,8 @@ function widgets_einpassen() {
   const box = document.getElementById("standby_widgets");
   if (!box || box.classList.contains("d-none") || !$("#waipclock").is(":visible")) return;
   box.style.fontSize = "";
+  // Vergrößerung des Wetters vom letzten Durchlauf zurücksetzen, sonst wird mit ihr gemessen
+  document.getElementById("standby_wetter").style.fontSize = "";
   const inhalt_hoehe = function () {
     const kinder = Array.from(box.children).filter((el) => !el.classList.contains("d-none"));
     if (kinder.length === 0) return 0;
@@ -1314,7 +1324,32 @@ function widgets_einpassen() {
     termin.remove();
     if (gruppe && !gruppe.querySelector(".standby-termin")) gruppe.remove();
   }
+  wetter_vergroessern(inhalt_hoehe);
   widgets_ausrichten();
+}
+
+// Wetter so weit vergrößern, wie Breite und Höhe der Widget-Spalte reichen (höchstens 1,6-fach).
+// Bei breiter Spalte (z.B. Querformat) wird das Wetter gut lesbar, bei enger Spalte bleibt es wie bisher.
+function wetter_vergroessern(inhalt_hoehe) {
+  const box = document.getElementById("standby_widgets");
+  const wetter = document.getElementById("standby_wetter");
+  wetter.style.fontSize = "";
+  if (wetter.classList.contains("d-none")) return;
+  // nur Temperaturzeile und Vorhersagetage prüfen; die Quellenzeile kürzt sich selbst (Auslassungspunkte)
+  const teile = wetter.querySelectorAll(".standby-wetter-jetzt > *, .standby-tag *");
+  const passt = function () {
+    const rechts = wetter.getBoundingClientRect().right + 1;
+    for (const el of teile) if (el.getBoundingClientRect().right > rechts) return false;
+    return inhalt_hoehe() <= box.clientHeight;
+  };
+  if (!passt()) return;
+  let faktor = 1;
+  while (faktor < 1.6) {
+    wetter.style.fontSize = faktor + 0.05 + "em";
+    if (!passt()) break;
+    faktor += 0.05;
+  }
+  wetter.style.fontSize = faktor > 1 ? faktor.toFixed(2) + "em" : "";
 }
 
 // Querformat: rechte Spalte an der Mitte des sichtbaren Inhalts links ausrichten (Ziffern der Uhr bis
