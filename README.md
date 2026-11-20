@@ -50,6 +50,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 
 - Individueller Alarmmonitor für eine oder mehrere Wachen
 - Darstellung von Einsatzart, Stichwort, Sondersignal, Ortsdaten (Objekt, Teilobjekt, Ort, Ortsteil, Straße, Hausnummer) inkl. Karte mit Markierung des Einsatzortes
+    - das Sondersignal steht als runde Plakette neben dem Stichwort: weiß mit Glocke und langsam ausstrahlendem Ring = mit Sondersignal, dunkel mit durchgestrichener Glocke = ohne Sondersignal
 - Anzeige der Anfahrtswege von den alarmierten Wachen zum Einsatzort (optional, über einen eigenen [OSRM](https://project-osrm.org/)-Server)
 - mit Login zusätzlich eine kleine Detailkarte des Einsatzortes
 - Anzeige der alarmierten eigenen Einsatzmittel und weiterer beteiligter fremder Einsatzmittel
@@ -275,6 +276,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 - Dashboard-Übersicht: Kacheln zeigen die Anzahl der alarmierten Einsatzmittel und der Rückmeldungen
 - Dashboard-Karte zeigt den Einsatzkreis bzw. Einsatzort auch dann vollständig, wenn eine Wache im Einsatzkreis liegt
 - Standby-Wetter: Höchst- und Tiefstwert untereinander, Datum statt „Übermorgen“, Wetteranzeige wird so groß, wie es der Platz erlaubt
+- **Sondersignal** im Alarmmonitor und Dashboard als gut sichtbare Plakette (mit Sondersignal hell mit dezent ausstrahlendem Ring, ohne dunkel), bei jeder Einsatzart mit hohem Kontrast
 
 ## 2.2.1 (November 2026)
 
