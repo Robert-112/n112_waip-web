@@ -2,6 +2,8 @@
 
 // optionaler Parameter ?anim=off: Animationen für leistungsschwache Geräte reduzieren
 const reduceAnimation = typeof anim_off !== "undefined" && anim_off === true;
+// für CSS-Animationen (z.B. Ring der Sondersignal-Plakette), die bei anim=off stillstehen sollen
+if (reduceAnimation) document.documentElement.classList.add("anim-aus");
 
 /* ############################ */
 /* ####### SEKUNDENTAKT ####### */
