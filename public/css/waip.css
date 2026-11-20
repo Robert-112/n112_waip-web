@@ -1176,6 +1176,85 @@ audio {
   margin-bottom: var(--waip-abstand) !important;
 }
 
+/* Sondersignal im Stichwort-Balken (Alarmmonitor und Dashboard): runde Plakette mit eigenem Hintergrund,
+   dadurch auf jeder Einsatzfarbe gleich gut zu sehen. Mit Sondersignal weiß mit Glocke in der Einsatzfarbe,
+   ein Ring strahlt ruhig nach außen; ohne Sondersignal dunkel und still. Animiert werden nur transform und
+   opacity des Rings (läuft auf dem Grafikchip, auch für schwache Hardware). */
+#sondersignal {
+  --sosi-farbe: #111;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55em;
+  height: 1.55em;
+  border-radius: 50%;
+  font-size: 1.15em;
+  line-height: 1;
+}
+
+/* Glocke in der Farbe des Balkens */
+#einsatz_art.bg-danger #sondersignal { --sosi-farbe: var(--bs-danger); }
+#einsatz_art.bg-info #sondersignal { --sosi-farbe: var(--bs-info); }
+#einsatz_art.bg-warning #sondersignal { --sosi-farbe: var(--bs-warning); }
+#einsatz_art.bg-success #sondersignal { --sosi-farbe: var(--bs-success); }
+#einsatz_art.bg-secondary #sondersignal { --sosi-farbe: var(--bs-secondary); }
+
+/* Alarmmonitor: feste Größe statt textFit (das setzt die Plakette auf die Textgrundlinie, also zu tief):
+   Plakette = 60 % der Balkenhöhe (quer 12,5vh, hoch 7vh), höchstens 80 % der Spaltenbreite (1/12) */
+#waiptableau #sondersignal {
+  font-size: min(4.84vh, 4.3vw);
+}
+
+@media (orientation: portrait) {
+  #waiptableau #sondersignal {
+    font-size: min(2.7vh, 4.3vw);
+  }
+}
+
+#sondersignal.bi-bell-fill {
+  background: #fff;
+  color: var(--sosi-farbe);
+}
+
+#sondersignal.bi-bell-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 0.08em solid #fff;
+  opacity: 0;
+  animation: sosi-welle 4s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+#sondersignal.bi-bell-slash-fill {
+  background: rgba(0, 0, 0, 0.6);
+  color: #e6e6e6;
+}
+
+/* Ring löst sich vom Rand, wird langsam größer und verblasst, dann Pause */
+@keyframes sosi-welle {
+  0% { transform: scale(1); opacity: 0.6; }
+  70% { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+/* ohne Animation (Parameter anim=off bzw. Systemeinstellung): Ring steht dicht um die Plakette */
+.anim-aus #sondersignal.bi-bell-fill::after {
+  animation: none;
+  transform: scale(1.2);
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #sondersignal.bi-bell-fill::after {
+    animation: none;
+    transform: scale(1.2);
+    opacity: 0.9;
+  }
+}
+
 @media (orientation: landscape) {
   #waiptableau .pr-3_ls {
     padding-right: var(--waip-abstand) !important;
