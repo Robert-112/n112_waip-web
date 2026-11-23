@@ -1650,15 +1650,20 @@ module.exports = (db, app_cfg) => {
     });
   };
 
-  // Konfiguration der Anzeigezeit eines Users speichern
+  // Konfiguration der Anzeigezeit eines Users speichern. Erlaubt sind ganze Minuten von 1 bis TIME_TO_DELETE_WAIP
+  // (danach wird der Einsatz ohnehin gelöscht); "Standard" bzw. ein leerer Wert entfernt die eigene Einstellung,
+  // dann gilt DEFAULT_TIME_FOR_STANDBY. Liefert die gespeicherten Minuten bzw. null für „Standard“.
   const db_user_set_config_time = (user_id, reset_counter) => {
     return new Promise((resolve, reject) => {
       try {
-        // reset_counter validieren, ansonsten auf default setzen
-        if (!(reset_counter >= 1 && reset_counter <= app_cfg.global.time_to_delete_waip)) {
-          reset_counter = app_cfg.global.default_time_for_standby;
+        const n = Number(reset_counter);
+        if (reset_counter === undefined || reset_counter === null || reset_counter === "" || reset_counter === "Standard") {
+          db.prepare(`DELETE FROM waip_user_config WHERE user_id = ? AND config_type = 'resetcounter';`).run(user_id);
+          return resolve(null);
         }
-        // Anzeigezeit speichern
+        if (!Number.isInteger(n) || n < 1 || n > app_cfg.global.time_to_delete_waip) {
+          throw new Error(`Die Anzeigezeit muss zwischen 1 und ${app_cfg.global.time_to_delete_waip} Minuten liegen.`);
+        }
         const stmt = db.prepare(`
           INSERT OR REPLACE INTO waip_user_config
           (id, user_id, config_type, config_value)
@@ -1669,27 +1674,24 @@ module.exports = (db, app_cfg) => {
             ?
           );
         `);
-        const info = stmt.run(user_id, user_id, "resetcounter", reset_counter);
-        resolve(info.changes);
+        stmt.run(user_id, user_id, "resetcounter", n);
+        resolve(n);
       } catch (error) {
-        reject(new Error("Fehler beim speichern / aktualisieren der Einstellung der Anzeigezeit eines Benutzers. " + reset_counter + error));
+        reject(new Error("Fehler beim Speichern der Anzeigezeit. " + error.message));
       }
     });
   };
 
-  // Einstellungen eines Benutzers laden
+  // Einstellungen eines Benutzers laden: resetcounter = wirksame Anzeigezeit in Minuten,
+  // resetcounter_eigen = eigene Einstellung oder null (dann gilt der Standard)
   const db_user_get_config = (user_id) => {
     return new Promise((resolve, reject) => {
       try {
-        const stmt = db.prepare(`
-          SELECT 
-            COALESCE(
-              (SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'resetcounter'), 
-              ${app_cfg.global.default_time_for_standby}
-            ) AS resetcounter;
-        `);
-        const row = stmt.get(user_id);
-        resolve(row);
+        const row = db
+          .prepare(`SELECT config_value FROM waip_user_config WHERE user_id = ? AND config_type = 'resetcounter';`)
+          .get(user_id);
+        const eigen = row && Number(row.config_value) > 0 ? Number(row.config_value) : null;
+        resolve({ resetcounter: eigen || app_cfg.global.default_time_for_standby, resetcounter_eigen: eigen });
       } catch (error) {
         reject(new Error("Fehler beim laden von Benutzer-Einstellungen. " + error));
       }

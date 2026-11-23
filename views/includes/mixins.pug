@@ -34,3 +34,26 @@ mixin kachel(titel, farbe, icon)
           i.bi(class=icon, aria-hidden='true')
         span= titel
       block
+
+//- Hinweis zu den erlaubten Kalender-Servern (Einstellungen, Benutzerverwaltung)
+mixin kalender_hinweis(aktiv, erlaubt)
+  if !aktiv
+    .form-text Auf diesem Server sind Kalender und Ticker nicht eingerichtet.
+  else if erlaubt && erlaubt.length > 0
+    .alert.alert-info.small.d-flex.align-items-start.gap-2.mb-0(role='note')
+      i.bi.bi-info-circle-fill.flex-shrink-0(aria-hidden='true')
+      div
+        div.mb-1
+          | Aus Sicherheitsgründen sind nur Kalender von diesen Servern erlaubt:
+          each d in erlaubt
+            span.badge.text-bg-light.border.ms-1.font-monospace= d
+        div
+          | Andere Kalender können auf Anfrage und nach Prüfung durch den Betreiber des Wachalarm IP-Web freigegeben werden.
+          | Es werden nur öffentliche Kalender ohne Login unterstützt.
+          | Neue Adressen werden beim Speichern geprüft und einmal probeweise geladen.
+  else
+    .form-text.text-warning Der Kalender-Dienst ist derzeit nicht erreichbar oder es sind keine Kalender freigegeben.
+
+//- Verbindungsstatus einer gespeicherten Kalender-Adresse, wird per /js/kalender_status.js nachgeladen
+mixin kalender_status(feld)
+  .form-text.d-none(data-kalender-status=feld, aria-live='polite')

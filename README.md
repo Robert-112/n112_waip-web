@@ -114,6 +114,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 - Termine und Ticker-Meldungen holt ein eigener Kalender-Dienst (Docker) aus SOGo, Nextcloud o.ä. (`WIDGET_KALENDER_URL`); die Meldungen werden im Kalender gepflegt: jeder laufende Termin ist eine Meldung, die Priorität „hoch“, `!!` vor dem Titel oder Schlagwörter wie „dringend“ machen sie rot, Priorität „normal“, `!` oder „wichtig“ gelb
 - der Ticker eines Monitors zeigt die Meldungen seiner Leitstelle und seines Kreises (Administration › Ticker-Quellen) sowie den eigenen Ticker-Kalender des Benutzers
 - angemeldete Benutzer schalten Wetter und Kalender unter `Einstellungen` ein und tragen dort ihren Ticker-Kalender ein, für Monitore ohne Anmeldung gibt es den Parameter `wetter=on`
+- erlaubt sind nur öffentliche Kalender (ohne Login) von Servern, die der Betreiber freigegeben hat (`KALENDER_DOMAINS` im Kalender-Dienst); die Einstellungen zeigen diese Server und unter jeder gespeicherten Adresse, ob die Verbindung funktioniert
 - der gesamte Inhalt wandert regelmäßig ein Stück über den Bildschirm, der Ticker läuft ständig und wechselt leicht die Höhe, damit sich nichts in das Display einbrennt
 
 ---
@@ -195,6 +196,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 
 - als Benutzer mit der Berechtigung "Administrator" können zentrale Einstellungen des **`Wachalarm IP-Web`** verwaltet werden, dazu gehören:
     - anlegen, bearbeiten und löschen von Benutzern inkl. Kennwortvergabe und Zuweisung der Berechtigungen
+    - Einsicht und Änderung der persönlichen Einstellungen eines Benutzers (Anzeigezeit, Kartenbreite, Standby mit Kalender und Ticker), inkl. Verbindungsstatus der Kalender
     - Bearbeiten der Stammdaten der hinterlegten Wachen sowie das Anlegen von neuen Wachen
     - Einsicht in die derzeit aufgerufenen Alarmmonitore und Dashboards inkl. von Informationen zu den verbundenen [Websockets](https://socket.io)
     - Prüfung, ob ein Alarmmonitor unzulässig mit dem Internet verbunden ist (Netzkopplung)
@@ -269,6 +271,13 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 ---
 
 # Versionsverlauf
+
+## 2.2.3 (November 2026)
+
+- Einstellungen: Hinweis, dass nur öffentliche Kalender von freigegebenen Servern möglich sind und weitere Server auf Anfrage vom Betreiber freigegeben werden können
+- Einstellungen: unter jeder gespeicherten Kalender-Adresse (Termine und eigener Ticker) wird angezeigt, ob die Verbindung funktioniert
+- Benutzerverwaltung: neuer Button `Einstellungen`, mit dem Administratoren die persönlichen Einstellungen eines Benutzers einsehen und ändern können (Anzeigezeit, Kartenbreite, Wetter, Kalender, Ticker)
+- Anzeigezeit: Auswahl nur noch bis zur Löschzeit der Einsätze (`TIME_TO_DELETE_WAIP`), größere Werte wurden bisher stillschweigend auf den Standard zurückgesetzt; `Standard` folgt jetzt wieder `DEFAULT_TIME_FOR_STANDBY`
 
 ## 2.2.2 (November 2026)
 
