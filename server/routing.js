@@ -552,7 +552,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         public: app_cfg.public,
         title: "Einstellungen",
         user: req.user,
-        user_reset_counter: data.resetcounter,
+        user_reset_counter: data.resetcounter_eigen,
+        anzeigezeit_max: app_cfg.global.time_to_delete_waip,
+        anzeigezeit_standard: app_cfg.global.default_time_for_standby,
         standby: sql.db_user_get_config_standby(req.user.id),
         user_karte_breite: sql.db_user_get_config_karte(req.user.id),
         widgets_wetter_aktiv: widgets.wetter_aktiv || widgets.waldbrand_aktiv,
@@ -573,10 +575,10 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   // Einstellungen zur Anzeigezeit speichern
   app.post("/einstellungen_zeit", auth.ensureAuthenticated, async (req, res) => {
     try {
-      await sql.db_user_set_config_time(req.user.id, req.body.set_reset_counter);
-      res.redirect("/einstellungen?success=" + encodeURIComponent("Einstellungen für die Anzeigezeit wurden erfolgreich gespeichert"));
+      const minuten = await sql.db_user_set_config_time(req.user.id, req.body.set_reset_counter);
+      res.redirect("/einstellungen?success=" + encodeURIComponent(`Anzeigezeit wurde gespeichert (${minuten === null ? "Standard" : minuten + " Minuten"}).`));
     } catch (error) {
-      res.redirect("/einstellungen?error=" + encodeURIComponent("Fehler beim Speichern der Einstellungen für die Anzeigezeit. " + error));
+      res.redirect("/einstellungen?error=" + encodeURIComponent(error.message));
     }
   });
 
@@ -598,52 +600,75 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     }
   });
 
+  // Standby-Einstellungen eines Benutzers prüfen und speichern (eigene Einstellungen und Benutzerverwaltung).
+  // Adressen prüft (und lädt probeweise) der Kalender-Dienst; unveränderte Adressen werden nicht erneut geprüft.
+  // Liefert { fehler } bei ungültiger Eingabe, sonst die gespeicherten Werte inkl. Domains fürs Log.
+  const standby_speichern = async (user_id, body) => {
+    const wetter = body.standby_wetter === "on";
+    const kalender = body.standby_kalender === "on";
+    const bisher = sql.db_user_get_config_standby(user_id);
+    const adresse_pruefen = async (feld, bezeichnung) => {
+      const eingabe = String(body[feld] || "").trim().slice(0, 2000);
+      if (!eingabe) return { url: "", domain: null };
+      if (eingabe === bisher[feld]) return { url: eingabe, domain: null };
+      try {
+        const geprueft = await widgets.kalender_url_pruefen(eingabe);
+        return { url: geprueft.url, domain: geprueft.domain };
+      } catch (error) {
+        if (error instanceof widgets.KalenderFehler) throw new widgets.KalenderFehler(error.code, `${bezeichnung}: ${error.message}`);
+        throw error;
+      }
+    };
+    let termine, ticker;
+    try {
+      termine = await adresse_pruefen("ical_url", "Termin-Kalender");
+      ticker = await adresse_pruefen("ticker_url", "Ticker-Kalender");
+    } catch (error) {
+      if (error instanceof widgets.KalenderFehler) return { fehler: error.message };
+      throw error;
+    }
+    if (kalender && !termine.url) {
+      return { fehler: "Bitte eine öffentliche Kalender-Adresse angeben oder die Termine ausschalten." };
+    }
+    await sql.db_user_set_config_standby(user_id, { wetter, kalender, ical_url: termine.url, ticker_url: ticker.url });
+    // verbundene Monitore des Benutzers sofort umstellen
+    widgets.benutzer_aktualisiert(user_id);
+    return {
+      wetter,
+      kalender,
+      ticker: Boolean(ticker.url),
+      log: { wetter: wetter, kalender: kalender, kalender_domain: termine.domain || undefined, ticker: Boolean(ticker.url), ticker_domain: ticker.domain || undefined },
+    };
+  };
+
   // Einstellungen zur Standby-Anzeige speichern (Wetter/Kalender ein/aus, Kalender-Adresse)
   app.post("/einstellungen_standby", auth.ensureAuthenticated, async (req, res) => {
     const zurueck = (art, text) => res.redirect("/einstellungen?" + art + "=" + encodeURIComponent(text));
     try {
-      const wetter = req.body.standby_wetter === "on";
-      const kalender = req.body.standby_kalender === "on";
-      // Adressen prüft (und lädt probeweise) der Kalender-Dienst; unveränderte Adressen werden nicht erneut geprüft
-      const bisher = sql.db_user_get_config_standby(req.user.id);
-      const adresse_pruefen = async (feld, bezeichnung) => {
-        const eingabe = String(req.body[feld] || "").trim().slice(0, 2000);
-        if (!eingabe) return { url: "", domain: null };
-        if (eingabe === bisher[feld]) return { url: eingabe, domain: null };
-        try {
-          const geprueft = await widgets.kalender_url_pruefen(eingabe);
-          return { url: geprueft.url, domain: geprueft.domain };
-        } catch (error) {
-          if (error instanceof widgets.KalenderFehler) throw new widgets.KalenderFehler(error.code, `${bezeichnung}: ${error.message}`);
-          throw error;
-        }
-      };
-      let termine, ticker;
-      try {
-        termine = await adresse_pruefen("ical_url", "Termin-Kalender");
-        ticker = await adresse_pruefen("ticker_url", "Ticker-Kalender");
-      } catch (error) {
-        if (error instanceof widgets.KalenderFehler) return zurueck("error", error.message);
-        throw error;
-      }
-      if (kalender && !termine.url) {
-        return zurueck("error", "Bitte eine öffentliche Kalender-Adresse angeben oder die Termine ausschalten.");
-      }
-      await sql.db_user_set_config_standby(req.user.id, { wetter, kalender, ical_url: termine.url, ticker_url: ticker.url });
-      logger.event(`Standby-Einstellungen von ${req.user.user} geändert (Wetter: ${wetter ? "an" : "aus"}, Kalender: ${kalender ? "an" : "aus"}, Ticker: ${ticker.url ? "an" : "aus"}).`, {
+      const r = await standby_speichern(req.user.id, req.body);
+      if (r.fehler) return zurueck("error", r.fehler);
+      logger.event(`Standby-Einstellungen von ${req.user.user} geändert (Wetter: ${r.wetter ? "an" : "aus"}, Kalender: ${r.kalender ? "an" : "aus"}, Ticker: ${r.ticker ? "an" : "aus"}).`, {
         ...logger.from_req(req),
         action: "standby-einstellungen",
         category: "configuration",
         type: "change",
         outcome: "success",
-        wachalarm: { standby: { wetter: wetter, kalender: kalender, kalender_domain: termine.domain || undefined, ticker: Boolean(ticker.url), ticker_domain: ticker.domain || undefined } },
+        wachalarm: { standby: r.log },
       });
-      // verbundene Monitore des Benutzers sofort umstellen
-      widgets.benutzer_aktualisiert(req.user.id);
       zurueck("success", "Einstellungen für die Standby-Anzeige wurden gespeichert.");
     } catch (error) {
       logger.log("error", error);
       zurueck("error", "Fehler beim Speichern der Standby-Einstellungen.");
+    }
+  });
+
+  // Verbindungsstatus der gespeicherten Kalender (wird nach dem Laden der Seite abgefragt)
+  app.post("/einstellungen/kalender_status", auth.ensureAuthenticated, checkContentType, async (req, res) => {
+    try {
+      res.json(await widgets.standby_kalender_status(sql.db_user_get_config_standby(req.user.id)));
+    } catch (error) {
+      logger.log("error", error);
+      res.status(500).json({ error: "Status konnte nicht ermittelt werden." });
     }
   });
 
@@ -847,11 +872,26 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   app.get("/adm_edit_users", auth.ensureAdmin, async (req, res, next) => {
     try {
       const data = await sql.db_user_get_all();
+      // persönliche Einstellungen je Benutzer (Anzeigezeit, Kartenbreite, Standby), im Dialog „Einstellungen“ bearbeitbar
+      const einstellungen = {};
+      for (const u of data || []) {
+        einstellungen[u.id] = {
+          resetcounter: (await sql.db_user_get_config(u.id)).resetcounter_eigen,
+          karte_breite: sql.db_user_get_config_karte(u.id),
+          standby: sql.db_user_get_config_standby(u.id),
+        };
+      }
       res.render("admin/adm_edit_users", {
         public: app_cfg.public,
         title: "Benutzer und Rechte verwalten",
         user: req.user,
         users: data,
+        einstellungen,
+        anzeigezeit_max: app_cfg.global.time_to_delete_waip,
+        anzeigezeit_standard: app_cfg.global.default_time_for_standby,
+        widgets_wetter_aktiv: widgets.wetter_aktiv || widgets.waldbrand_aktiv,
+        widgets_kalender_aktiv: widgets.kalender_aktiv,
+        widgets_kalender_erlaubt: await widgets.erlaubte_kalender(),
         // Keycloaks zur Auswahl im Dialog; nicht mehr konfigurierte, aber noch verknüpfte erscheinen zusätzlich
         anmeldungen: [
           ...app_cfg.public.oidc_anmeldung,
@@ -884,6 +924,47 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       }
     } else {
       res.redirect("/adm_edit_users");
+    }
+  });
+
+  // persönliche Einstellungen eines Benutzers durch die Administration ändern (ohne den Benutzer zu fragen)
+  app.post("/adm_edit_users/einstellungen", auth.ensureAdmin, async (req, res) => {
+    const zurueck = (art, text) => res.redirect("/adm_edit_users?" + art + "=" + encodeURIComponent(text));
+    try {
+      const ziel = ((await sql.db_user_get_all()) || []).find((u) => String(u.id) === String(req.body.user_id));
+      if (!ziel) return zurueck("error", "Benutzer nicht gefunden.");
+      const minuten = Number(req.body.set_reset_counter);
+      if (req.body.set_reset_counter && !(Number.isInteger(minuten) && minuten >= 1 && minuten <= app_cfg.global.time_to_delete_waip)) {
+        return zurueck("error", `Einstellungen von ${ziel.user}: Die Anzeigezeit muss zwischen 1 und ${app_cfg.global.time_to_delete_waip} Minuten liegen.`);
+      }
+      const r = await standby_speichern(ziel.id, req.body);
+      if (r.fehler) return zurueck("error", `Einstellungen von ${ziel.user}: ${r.fehler}`);
+      await sql.db_user_set_config_time(ziel.id, req.body.set_reset_counter);
+      const breite = sql.db_user_set_config_karte(ziel.id, req.body.karte_breite);
+      logger.event(`Einstellungen von ${ziel.user} durch ${req.user.user} geändert (Kartenbreite: ${breite === null ? "Standard" : breite + " %"}, Wetter: ${r.wetter ? "an" : "aus"}, Kalender: ${r.kalender ? "an" : "aus"}, Ticker: ${r.ticker ? "an" : "aus"}).`, {
+        ...logger.from_req(req),
+        action: "benutzer-einstellungen",
+        category: "configuration",
+        type: "change",
+        outcome: "success",
+        wachalarm: { ziel_benutzer: ziel.user, standby: r.log },
+      });
+      zurueck("success", `Einstellungen von ${ziel.user} wurden gespeichert. Geöffnete Alarmmonitore übernehmen Anzeigezeit und Kartenbreite nach dem Neuladen.`);
+    } catch (error) {
+      logger.log("error", error);
+      zurueck("error", "Fehler beim Speichern der Einstellungen des Benutzers.");
+    }
+  });
+
+  // Verbindungsstatus der gespeicherten Kalender eines Benutzers (Dialog „Einstellungen“)
+  app.post("/adm_edit_users/kalender_status", auth.ensureAdmin, checkContentType, async (req, res) => {
+    try {
+      const id = Number(req.body.user_id);
+      if (!Number.isInteger(id)) return res.status(400).json({ error: "Ungültige Benutzer-ID." });
+      res.json(await widgets.standby_kalender_status(sql.db_user_get_config_standby(id)));
+    } catch (error) {
+      logger.log("error", error);
+      res.status(500).json({ error: "Status konnte nicht ermittelt werden." });
     }
   });
 

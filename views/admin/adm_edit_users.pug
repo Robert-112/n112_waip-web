@@ -53,6 +53,7 @@ block content
                         | Datenpfleger
                   td.text-end.text-nowrap
                     button.btn.btn-sm.btn-primary.mx-1.bi-pencil-square(onclick='EditUser(this);', data-id=val.id, data-user=val.user, data-permissions_lokal=val.permissions_lokal, data-permissions_extern=val.permissions_extern, data-rechte_modus=val.rechte_modus, data-extern_aktualisiert=val.extern_aktualisiert || '', data-oidc_provider=val.oidc_provider || '', data-oidc_sub=val.oidc_sub || '', data-rollen=val.rollen || '', data-ip_address=val.ip_address, data-description=val.description)  Bearbeiten
+                    button.btn.btn-sm.btn-secondary.mx-1.bi-gear(type='button', onclick='EinstellungenUser(this);', data-id=val.id, data-user=val.user)  Einstellungen
                     form(action='/adm_edit_users', method='POST', style='display:inline-block;')
                       input(type="hidden" name="_csrf" value=csrf_token)
                       input(type='hidden', name='modal_method', value='DELETE')
@@ -133,6 +134,77 @@ block content
         .modal-footer
           button.btn.btn-primary(type='submit', form="formModal", value='submit') Speichern
           button#userModalClose.btn.btn-secondary(type='button', data-bs-dismiss='modal') Abbrechen
+
+  //- persönliche Einstellungen eines Benutzers (wie unter „Einstellungen“ des Benutzers selbst)
+  #einstellungenModal.modal.fade(tabindex='-1', aria-labelledby='einstellungenTitel', aria-hidden='true')
+    .modal-dialog.modal-dialog-centered.modal-lg.modal-dialog-scrollable
+      .modal-content
+        .modal-header
+          h5#einstellungenTitel.modal-title Einstellungen
+          button.btn-close(type='button', data-bs-dismiss='modal', aria-label='Schließen')
+        .modal-body
+          form#einstellungenForm(action='/adm_edit_users/einstellungen', method='POST')
+            input(type='hidden', name='_csrf', value=csrf_token)
+            input#einst_user_id(type='hidden', name='user_id', value='')
+            p.small.text-body-secondary Persönliche Einstellungen des Benutzers. Änderungen gelten sofort für alle seine Alarmmonitore (Anzeigezeit und Kartenbreite nach dem Neuladen).
+            .row.g-3.mb-3
+              .col-12.col-md-6
+                label.form-label(for='einst_reset') Anzeigezeit für Wachalarme (Minuten)
+                select#einst_reset.form-select(name='set_reset_counter')
+                  option(value='') Standard (#{anzeigezeit_standard} Min.)
+                  each _, i in Array(anzeigezeit_max)
+                    option(value=i+1)= i+1
+              .col-12.col-md-6
+                label.form-label(for='einst_karte') Kartenbreite im Alarmmonitor
+                select#einst_karte.form-select(name='karte_breite')
+                  option(value='') Standard
+                  each b in [20, 25, 30, 35, 40, 45, 50, 55, 60]
+                    option(value=b)= b + ' %'
+            h6.mt-2 Standby-Anzeige
+            .d-flex.flex-column.gap-3
+              .form-check.form-switch
+                input#einst_wetter.form-check-input(type='checkbox', role='switch', name='standby_wetter', disabled=!widgets_wetter_aktiv)
+                label.form-check-label(for='einst_wetter') Wetter und amtliche Unwetterwarnungen
+              div
+                .form-check.form-switch
+                  input#einst_kalender.form-check-input(type='checkbox', role='switch', name='standby_kalender', disabled=!widgets_kalender_aktiv)
+                  label.form-check-label(for='einst_kalender') Termine aus einem Kalender
+                label.form-label.mt-2(for='einst_ical') Öffentliche Kalender-Adresse (iCal/ICS)
+                input#einst_ical.form-control(type='url', name='ical_url', maxlength='2000', placeholder='https://…', disabled=!widgets_kalender_aktiv)
+                +kalender_status('ical_url')
+              div
+                label.form-label(for='einst_ticker') Kalender-Adresse für Ticker-Meldungen (iCal/ICS, optional)
+                input#einst_ticker.form-control(type='url', name='ticker_url', maxlength='2000', placeholder='https://…', disabled=!widgets_kalender_aktiv)
+                +kalender_status('ticker_url')
+              +kalender_hinweis(widgets_kalender_aktiv, widgets_kalender_erlaubt)
+        .modal-footer
+          button.btn.btn-primary(type='submit', form='einstellungenForm') Speichern
+          button.btn.btn-secondary(type='button', data-bs-dismiss='modal') Abbrechen
+
+  script(src='/js/kalender_status.js')
+  script#einstellungen_daten(type='application/json')!= JSON.stringify(einstellungen || {}).replace(/</g, '\\u003c')
+  script.
+    const einstellungen_alle = JSON.parse(document.getElementById("einstellungen_daten").textContent);
+    let EinstellungenUser = function(knopf) {
+      const id = knopf.getAttribute("data-id");
+      const e = einstellungen_alle[id] || { standby: {} };
+      const form = document.getElementById("einstellungenForm");
+      form.reset();
+      document.getElementById("einstellungenTitel").textContent = "Einstellungen von " + knopf.getAttribute("data-user");
+      document.getElementById("einst_user_id").value = id;
+      document.getElementById("einst_reset").value = e.resetcounter ? String(e.resetcounter) : "";
+      document.getElementById("einst_karte").value = e.karte_breite == null ? "" : String(e.karte_breite);
+      document.getElementById("einst_wetter").checked = Boolean(e.standby.wetter);
+      document.getElementById("einst_kalender").checked = Boolean(e.standby.kalender);
+      document.getElementById("einst_ical").value = e.standby.ical_url || "";
+      document.getElementById("einst_ticker").value = e.standby.ticker_url || "";
+      bootstrap.Modal.getOrCreateInstance(document.getElementById("einstellungenModal")).show();
+      if (#{widgets_kalender_aktiv ? 'true' : 'false'} && (e.standby.ical_url || e.standby.ticker_url)) {
+        kalender_status_laden(form, "/adm_edit_users/kalender_status", { _csrf: form.elements._csrf.value, user_id: Number(id) });
+      } else {
+        form.querySelectorAll("[data-kalender-status]").forEach((z) => z.classList.add("d-none"));
+      }
+    }
 
   script.
     $('#formModal').trigger("reset");

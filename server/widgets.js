@@ -449,6 +449,53 @@ module.exports = (io, sql, app_cfg, logger) => {
     return { meldungen: daten.meldungen || [], abgerufen: q.abgerufen || null, veraltet: Boolean(q.veraltet), dauer_ms: Date.now() - start };
   };
 
+  // Verständliche Texte zu den Fehlercodes des Kalender-Dienstes (Einstellungsseiten)
+  const KALENDER_FEHLER_TEXT = {
+    http: "der Kalender-Server meldet einen Fehler (Adresse gelöscht oder nicht mehr öffentlich?)",
+    timeout: "der Kalender-Server antwortet nicht",
+    netz: "der Kalender-Server ist nicht erreichbar",
+    format: "keine gültige Kalenderdatei",
+    "zu-gross": "der Kalender ist zu groß",
+    "nicht-freigegeben": "der Server ist nicht (mehr) freigegeben",
+    weiterleitung: "zu viele Weiterleitungen",
+    ungueltig: "die Adresse ist ungültig",
+    "nur-https": "nur HTTPS-Adressen sind erlaubt",
+  };
+
+  // Verbindungsstatus der gespeicherten Kalender eines Benutzers (Termine und eigener Ticker).
+  // Termine über den Zwischenspeicher der Monitore, damit das Öffnen der Seite keine zusätzlichen Abrufe erzeugt.
+  const standby_kalender_status = async (einstellungen) => {
+    if (!kalender_aktiv) return { aktiv: false };
+    const fehler = (error) => {
+      const code = (error && error.code) || "abruf";
+      if (["dienst", "token", "aus"].includes(code)) return { ok: false, code, text: "Der Kalender-Dienst ist derzeit nicht erreichbar, bitte später erneut prüfen." };
+      return { ok: false, code, text: "Nicht erreichbar: " + (KALENDER_FEHLER_TEXT[code] || "Fehler (" + code + ")") + "." };
+    };
+    const termine = async () => {
+      if (!einstellungen.ical_url) return null;
+      try {
+        const d = await kalender_laden(einstellungen.ical_url);
+        const jetzt = Date.now();
+        return { ok: true, anzahl: d.termine.filter((t) => termin_laeuft_noch(t, jetzt)).length, abgerufen: d.abgerufen };
+      } catch (error) {
+        return fehler(error);
+      }
+    };
+    const ticker = async () => {
+      if (!einstellungen.ticker_url) return null;
+      try {
+        const d = await kalender_dienst("/ticker", { quellen: [{ url: einstellungen.ticker_url, ebene: "0" }] });
+        const q = (d.quellen || [])[0] || {};
+        if (q.ok === false) return fehler(q);
+        return { ok: true, anzahl: q.meldungen || 0, abgerufen: q.abgerufen || null, veraltet: Boolean(q.veraltet) };
+      } catch (error) {
+        return fehler(error);
+      }
+    };
+    const [t, k] = await Promise.all([termine(), ticker()]);
+    return { aktiv: true, ical_url: t, ticker_url: k };
+  };
+
   /* ######################################################## */
   /* ##### Waldbrandgefahrenstufe (eigener Waldbrand-Dienst) ## */
   /* ######################################################## */
@@ -780,6 +827,7 @@ module.exports = (io, sql, app_cfg, logger) => {
     benutzer_aktualisiert,
     kalender_url_pruefen,
     kalender_dienst_status,
+    standby_kalender_status,
     ticker_testen,
     ticker_quellen_status,
     ticker_quellen_geaendert,
