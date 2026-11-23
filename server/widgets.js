@@ -553,11 +553,12 @@ module.exports = (io, sql, app_cfg, logger) => {
   const monitor_konfiguration = (socket) => {
     const user = socket.data.user;
     const einstellungen = user && user.id ? sql.db_user_get_config_standby(user.id) : { wetter: false, kalender: false, ical_url: "", ticker_url: "" };
-    // Wetter: Benutzereinstellung, Monitor-Parameter ?wetter=on oder WIDGET_WETTER_STANDARD schalten ein,
-    // ?wetter=off schaltet für diesen Monitor in jedem Fall aus
+    // Wetter: angemeldet zählt die Benutzereinstellung (Standard an), ohne Anmeldung WIDGET_WETTER_STANDARD;
+    // der Monitor-Parameter ?wetter=on/off überstimmt beides für diesen Monitor
     const parameter = socket.data.widgets_parameter || {};
     if (parameter.wetter === "off") einstellungen.wetter = false;
-    else if (parameter.wetter === "on" || cfg.wetter_standard) einstellungen.wetter = true;
+    else if (parameter.wetter === "on") einstellungen.wetter = true;
+    else if (!(user && user.id)) einstellungen.wetter = cfg.wetter_standard;
     let ort = null;
     if (einstellungen.wetter && wetter_aktiv) {
       ort = sql.db_wetter_ort_ermitteln(socket.data.wachen_nr);
