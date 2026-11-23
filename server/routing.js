@@ -949,7 +949,7 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         outcome: "success",
         wachalarm: { ziel_benutzer: ziel.user, standby: r.log },
       });
-      zurueck("success", `Einstellungen von ${ziel.user} wurden gespeichert. Geöffnete Alarmmonitore übernehmen Anzeigezeit und Kartenbreite nach dem Neuladen.`);
+      zurueck("success", `Einstellungen von ${ziel.user} wurden gespeichert. Die Kartenbreite gilt nach dem Neuladen des Alarmmonitors, die Anzeigezeit ab dem nächsten Einsatz.`);
     } catch (error) {
       logger.log("error", error);
       zurueck("error", "Fehler beim Speichern der Einstellungen des Benutzers.");

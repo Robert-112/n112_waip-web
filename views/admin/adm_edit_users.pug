@@ -146,7 +146,7 @@ block content
           form#einstellungenForm(action='/adm_edit_users/einstellungen', method='POST')
             input(type='hidden', name='_csrf', value=csrf_token)
             input#einst_user_id(type='hidden', name='user_id', value='')
-            p.small.text-body-secondary Persönliche Einstellungen des Benutzers. Änderungen gelten sofort für alle seine Alarmmonitore (Anzeigezeit und Kartenbreite nach dem Neuladen).
+            p.small.text-body-secondary Persönliche Einstellungen des Benutzers. Standby-Änderungen gelten sofort auf allen seinen Alarmmonitoren, die Anzeigezeit ab dem nächsten Einsatz, die Kartenbreite nach dem Neuladen des Alarmmonitors.
             .row.g-3.mb-3
               .col-12.col-md-6
                 label.form-label(for='einst_reset') Anzeigezeit für Wachalarme (Minuten)
