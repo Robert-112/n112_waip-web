@@ -3103,7 +3103,9 @@ module.exports = (db, app_cfg) => {
     }
   };
 
-  // Standby-Einstellungen eines Benutzers laden (Wetter/Kalender an, Kalender-Adresse)
+  // Standby-Einstellungen eines Benutzers laden (Wetter/Kalender an, Kalender-Adresse).
+  // Wetter ist für jedes Konto eingeschaltet, solange der Benutzer (oder die Administration) es nicht ausschaltet,
+  // damit auch neue Konten (Passwort, Zertifikat, Keycloak) es ohne eigenen Eintrag erhalten.
   const db_user_get_config_standby = (user_id) => {
     try {
       const rows = db
@@ -3114,7 +3116,7 @@ module.exports = (db, app_cfg) => {
         .all(user_id);
       const cfg = Object.fromEntries(rows.map((r) => [r.config_type, r.config_value]));
       return {
-        wetter: cfg.standby_wetter === "1",
+        wetter: cfg.standby_wetter === undefined ? true : cfg.standby_wetter === "1",
         kalender: cfg.standby_kalender === "1",
         ical_url: cfg.ical_url || "",
         ticker_url: cfg.ticker_url || "",

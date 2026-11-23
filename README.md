@@ -277,6 +277,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 - Einstellungen: Hinweis, dass nur öffentliche Kalender von freigegebenen Servern möglich sind und weitere Server auf Anfrage vom Betreiber freigegeben werden können
 - Einstellungen: unter jeder gespeicherten Kalender-Adresse (Termine und eigener Ticker) wird angezeigt, ob die Verbindung funktioniert
 - Benutzerverwaltung: neuer Button `Einstellungen`, mit dem Administratoren die persönlichen Einstellungen eines Benutzers einsehen und ändern können (Anzeigezeit, Kartenbreite, Wetter, Kalender, Ticker)
+- Wetter im Standby ist für jedes Benutzerkonto eingeschaltet (auch neue Konten mit Zertifikat oder Keycloak), bis der Benutzer es ausschaltet; Monitore ohne Anmeldung unverändert (`WIDGET_WETTER_STANDARD`, `wetter=on`)
 - Anzeigezeit: Auswahl nur noch bis zur Löschzeit der Einsätze (`TIME_TO_DELETE_WAIP`), größere Werte wurden bisher stillschweigend auf den Standard zurückgesetzt; `Standard` folgt jetzt wieder `DEFAULT_TIME_FOR_STANDBY`
 
 ## 2.2.2 (November 2026)
