@@ -26,7 +26,8 @@ selbst ist davon nicht betroffen.
 | `netzkopplung-pruefung` | Ergebnis jeder Netzkopplungsprüfung eines Alarmmonitors; bei Verdacht `event.kind: alert` | info / warn |
 | `monitor-verbunden` / `monitor-getrennt` | Alarmmonitor verbunden (Wache, IP, User-Agent, Benutzer) bzw. getrennt (Grund, Verbindungsdauer) | info / warn |
 | `dashboard-verbunden` / `dashboard-getrennt` | dasselbe für Dashboards | info / warn |
-| `socket-verbindungsfehler` | abgelehnter Socket.IO-Verbindungsaufbau | warn |
+| `socket-verbindungsfehler` | abgelehnter Socket.IO-Verbindungsaufbau mit Fehlercode, `EIO` und Transport (`wachalarm.socket_*`); pro IP und Fehlercode nur der erste Fehler in 10 Minuten. Code 5 mit `EIO=3` = veralteter Client (socket.io 2.x), meist ein Skript, nicht ein eigener Alarmmonitor | warn |
+| `socket-verbindungsfehler-zusammenfassung` | nach Ablauf der 10 Minuten: Anzahl der weiteren, nicht einzeln protokollierten Fehler dieser IP (`wachalarm.anzahl_unterdrueckt`) | warn |
 | `session-erneuerung` | Session eines Monitors konnte nicht erneuert werden, Verbindung wird zurückgesetzt | warn |
 | `einsatz-empfangen` / `einsatz-verworfen` | Einsatz über die API empfangen (nur ID und Anzahl Wachen/Einsatzmittel) | info / error |
 | `einsatz-gesendet` / `einsatz-doppelalarm` | Einsatz an einen Monitor gesendet; `wachalarm.vollzugriff` zeigt, ob vollständige Daten übertragen wurden | info |

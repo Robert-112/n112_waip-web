@@ -1,20 +1,89 @@
 module.exports = (io, sql, app_cfg, logger, waip, widgets) => {
   // Socket.IO-Konfigurationen
 
-  // Fehlgeschlagene Verbindungsaufbauten (z.B. unbekannte Session-ID nach Neustart, ungültiger Transport)
+  // Fehlgeschlagene Verbindungsaufbauten (z.B. unbekannte Session-ID nach Neustart, ungültiger Transport,
+  // Code 5 = veralteter Client mit socket.io 2.x / EIO=3, meist Skripte, die sich in einer Schleife neu verbinden).
+  // Pro IP und Fehlercode wird nur der erste Fehler eines Zeitfensters als Warnung geschrieben, weitere
+  // werden gezählt und nach Ablauf des Fensters als eine Zusammenfassung protokolliert.
+  const VERBINDUNGSFEHLER_FENSTER_MS = 10 * 60 * 1000;
+  const VERBINDUNGSFEHLER_MAX_EINTRAEGE = 5000;
+  const verbindungsfehler = new Map(); // "ip|code" -> { fields, code, message, eio, transport, beginn, unterdrueckt }
+
+  // Query-Werte stammen vom Client: nur kurze, harmlose Zeichen übernehmen
+  const query_wert = (wert) => (typeof wert === "string" && wert !== "" ? wert.replace(/[^\w.-]/g, "").slice(0, 16) : "-");
+
+  const verbindungsfehler_zusammenfassen = (eintrag) => {
+    if (eintrag.unterdrueckt === 0) return;
+    const minuten = Math.max(1, Math.round((Date.now() - eintrag.beginn) / 60000));
+    logger.event(
+      `Socket.IO-Verbindungsfehler von ${eintrag.fields.client_ip}: ${eintrag.unterdrueckt} weitere in ${minuten} Min. ` +
+        `(${eintrag.message}, Code ${eintrag.code}, EIO=${eintrag.eio}, Transport ${eintrag.transport})`,
+      {
+        ...eintrag.fields,
+        level: "warn",
+        action: "socket-verbindungsfehler-zusammenfassung",
+        category: "network",
+        type: ["connection", "error"],
+        outcome: "failure",
+        reason: eintrag.message,
+        wachalarm: {
+          socket_fehlercode: eintrag.code,
+          socket_eio: eintrag.eio,
+          socket_transport: eintrag.transport,
+          anzahl_unterdrueckt: eintrag.unterdrueckt,
+        },
+      }
+    );
+  };
+
   io.engine.on("connection_error", (err) => {
     const fields = err.req ? logger.from_req(err.req) : {};
-    logger.event(`Socket.IO-Verbindungsfehler von ${fields.client_ip}: ${err.message} (Code ${err.code})`, {
-      ...fields,
-      level: "warn",
-      action: "socket-verbindungsfehler",
-      category: "network",
-      type: ["connection", "error"],
-      outcome: "failure",
-      reason: err.message,
-      wachalarm: { socket_fehlercode: err.code },
-    });
+    const query = (err.req && err.req._query) || {};
+    const eio = query_wert(query.EIO);
+    const transport = query_wert(query.transport);
+    const schluessel = `${fields.client_ip}|${err.code}`;
+    const jetzt = Date.now();
+
+    const eintrag = verbindungsfehler.get(schluessel);
+    if (eintrag && jetzt - eintrag.beginn < VERBINDUNGSFEHLER_FENSTER_MS) {
+      eintrag.unterdrueckt++;
+      return;
+    }
+    if (eintrag) {
+      verbindungsfehler_zusammenfassen(eintrag);
+      verbindungsfehler.delete(schluessel);
+    }
+    // Schutz vor unbegrenztem Wachstum bei sehr vielen Adressen: dann ohne Zählung weiter protokollieren
+    if (verbindungsfehler.size < VERBINDUNGSFEHLER_MAX_EINTRAEGE) {
+      verbindungsfehler.set(schluessel, { fields, code: err.code, message: err.message, eio, transport, beginn: jetzt, unterdrueckt: 0 });
+    }
+
+    logger.event(
+      `Socket.IO-Verbindungsfehler von ${fields.client_ip}: ${err.message} (Code ${err.code}, EIO=${eio}, Transport ${transport})` +
+        ` – weitere gleiche Fehler dieser IP werden ${VERBINDUNGSFEHLER_FENSTER_MS / 60000} Min. lang nur gezählt`,
+      {
+        ...fields,
+        level: "warn",
+        action: "socket-verbindungsfehler",
+        category: "network",
+        type: ["connection", "error"],
+        outcome: "failure",
+        reason: err.message,
+        wachalarm: { socket_fehlercode: err.code, socket_eio: eio, socket_transport: transport },
+      }
+    );
   });
+
+  // abgelaufene Zeitfenster zusammenfassen und aufräumen, auch wenn die IP keine weiteren Fehler mehr erzeugt
+  setInterval(() => {
+    const jetzt = Date.now();
+    for (const [schluessel, eintrag] of verbindungsfehler) {
+      if (jetzt - eintrag.beginn >= VERBINDUNGSFEHLER_FENSTER_MS) {
+        verbindungsfehler_zusammenfassen(eintrag);
+        verbindungsfehler.delete(schluessel);
+      }
+    }
+  }, 60 * 1000).unref();
 
   // Gemeinsame Felder fuer Ereignisse eines Alarmmonitors/Dashboards
   const socket_fields = (socket, remote_ip, extra) => ({
