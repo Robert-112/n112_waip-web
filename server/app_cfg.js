@@ -87,6 +87,15 @@ app_cfg.public = {
     .filter(Boolean),
 };
 
+// Netze (kommagetrennt), auf die sich die Netzkopplungs-Meldung im Checkmk-Check beschraenkt,
+// z.B. "165.149.0.0/16" oder "165.149." (leer = alle Clients). Auswertung in routing.js.
+app_cfg.netzkopplung = {
+  checkmk_netze: (process.env.NETZKOPPLUNG_CHECKMK_NETZE || "")
+    .split(",")
+    .map((netz) => netz.trim())
+    .filter(Boolean),
+};
+
 app_cfg.osrm = {
   enabled: (process.env.OSRM_ENABLED ?? "false") === "true",
   host: process.env.OSRM_HOST || "localhost",

@@ -281,6 +281,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 - `WIDGET_WETTER_STANDARD` gilt nur noch für Monitore ohne Anmeldung und überstimmt nicht mehr die Einstellung angemeldeter Benutzer
 - Keycloak: neuer Schalter `OIDC_<ID>_PROXY`, der Server erreicht Keycloak dann über einen HTTP-Proxy (nur diese Verbindungen, alle anderen bleiben direkt); beim Update `npm install` ausführen (neues Paket `undici`)
 - Anzeigezeit: Auswahl nur noch bis zur Löschzeit der Einsätze (`TIME_TO_DELETE_WAIP`), größere Werte wurden bisher stillschweigend auf den Standard zurückgesetzt; `Standard` folgt jetzt wieder `DEFAULT_TIME_FOR_STANDBY`
+- Checkmk: neuer Schalter `NETZKOPPLUNG_CHECKMK_NETZE` (kommagetrennt, z.B. `165.149.0.0/16` oder `165.149.`), die Netzkopplungs-Meldung zählt dann nur Clients aus diesen Netzen und nennt ihre IP-Adressen
 
 ## 2.2.2 (November 2026)
 
