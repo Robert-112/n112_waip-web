@@ -160,11 +160,25 @@ app_cfg.oidc = (process.env.OIDC_PROVIDER || "")
       // feste Höchstdauer der Anmeldung, danach neu anmelden (Rechte aus Keycloak werden dabei aktualisiert)
       session_stunden: Number(env("SESSION_STUNDEN", "12")) || 12,
       callback_url: `${app_cfg.public.url.replace(/\/+$/, "")}/login/oidc/${id}/callback`,
+      // HTTP-Proxy nur für die Verbindungen des Servers zu Keycloak, z.B. http://proxy.example.de:8080, leer = direkt
+      proxy: env("PROXY"),
     };
     const fehlt = ["issuer", "client_id", "client_secret"].filter((k) => !provider[k]);
     if (fehlt.length > 0) {
       console.warn(`START - Keycloak '${id}': ${fehlt.map((k) => `OIDC_${id.toUpperCase()}_${k.toUpperCase()}`).join(", ")} fehlt, Anmeldung über '${id}' ist deaktiviert.`);
       return null;
+    }
+    if (provider.proxy) {
+      let gueltig = false;
+      try {
+        gueltig = ["http:", "https:"].includes(new URL(provider.proxy).protocol);
+      } catch {
+        gueltig = false;
+      }
+      if (!gueltig) {
+        console.warn(`START - Keycloak '${id}': OIDC_${id.toUpperCase()}_PROXY ist keine gültige Adresse (z.B. http://proxy.example.de:8080), Anmeldung über '${id}' ist deaktiviert.`);
+        return null;
+      }
     }
     return provider;
   })

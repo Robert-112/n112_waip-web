@@ -387,7 +387,12 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     try {
       strategie = await oidc.strategie(p);
     } catch (error) {
-      logger.event(`Keycloak '${p.id}' (${p.issuer}) ist nicht erreichbar: ${error.message}`, {
+      // fetch meldet nur "fetch failed", die eigentliche Ursache (z.B. Proxy, DNS, Zertifikat) steht in der
+      // innersten error.cause (bei Proxy-Fehlern zwei Ebenen tief)
+      let innerste = error;
+      for (let i = 0; i < 5 && innerste.cause; i++) innerste = innerste.cause;
+      const ursache = innerste !== error && innerste.message ? ` (${innerste.message})` : "";
+      logger.event(`Keycloak '${p.id}' (${p.issuer}${p.proxy ? ", über Proxy" : ""}) ist nicht erreichbar: ${error.message}${ursache}`, {
         ...logger.from_req(req),
         level: "error",
         action: "login",

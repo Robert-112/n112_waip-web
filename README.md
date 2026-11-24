@@ -279,6 +279,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 - Benutzerverwaltung: neuer Button `Einstellungen`, mit dem Administratoren die persönlichen Einstellungen eines Benutzers einsehen und ändern können (Anzeigezeit, Kartenbreite, Wetter, Kalender, Ticker)
 - Wetter im Standby ist für jedes Benutzerkonto eingeschaltet (auch neue Konten mit Zertifikat oder Keycloak), bis der Benutzer es ausschaltet
 - `WIDGET_WETTER_STANDARD` gilt nur noch für Monitore ohne Anmeldung und überstimmt nicht mehr die Einstellung angemeldeter Benutzer
+- Keycloak: neuer Schalter `OIDC_<ID>_PROXY`, der Server erreicht Keycloak dann über einen HTTP-Proxy (nur diese Verbindungen, alle anderen bleiben direkt); beim Update `npm install` ausführen (neues Paket `undici`)
 - Anzeigezeit: Auswahl nur noch bis zur Löschzeit der Einsätze (`TIME_TO_DELETE_WAIP`), größere Werte wurden bisher stillschweigend auf den Standard zurückgesetzt; `Standard` folgt jetzt wieder `DEFAULT_TIME_FOR_STANDBY`
 
 ## 2.2.2 (November 2026)
