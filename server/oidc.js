@@ -15,6 +15,35 @@ module.exports = (app_cfg, sql, passport, logger) => {
     }
   };
 
+  // Proxy für die Verbindungen zu Keycloak (OIDC_<ID>_PROXY): undici erst laden, wenn ein Proxy eingetragen ist.
+  // Es wird fetch aus demselben Paket verwendet, damit ProxyAgent und fetch sicher zusammenpassen.
+  let undici = null;
+  const proxy_bibliothek = () => {
+    if (!undici) undici = require("undici");
+    return undici;
+  };
+
+  // Proxy-Adresse ohne Zugangsdaten für das Log
+  const proxy_anzeige = (adresse) => {
+    try {
+      const url = new URL(adresse);
+      if (url.username || url.password) {
+        url.username = "***";
+        url.password = "";
+      }
+      return url.href.replace(/\/$/, "");
+    } catch {
+      return "(ungültig)";
+    }
+  };
+
+  // fetch für openid-client, das über den Proxy des Providers läuft (gilt für Discovery, Token-Abruf und Userinfo)
+  const proxy_fetch = (p) => {
+    const { ProxyAgent, fetch } = proxy_bibliothek();
+    const agent = new ProxyAgent(p.proxy);
+    return (url, optionen) => fetch(url, { ...optionen, dispatcher: agent });
+  };
+
   // je Provider: { promise, config } – promise läuft, solange die Discovery nicht abgeschlossen ist
   const zustand = {};
 
@@ -116,6 +145,8 @@ module.exports = (app_cfg, sql, passport, logger) => {
         optionen.execute = [client.allowInsecureRequests];
         logger.log("warn", `Keycloak '${p.id}' wird ohne TLS angesprochen (${p.issuer}). Nur für Tests verwenden!`);
       }
+      // wird von openid-client in die Konfiguration übernommen und gilt auch für alle späteren Abfragen
+      if (p.proxy) optionen[client.customFetch] = proxy_fetch(p);
       zustand[p.id] = {
         promise: client
           .discovery(new URL(p.issuer), p.client_id, p.client_secret, undefined, optionen)
@@ -159,11 +190,21 @@ module.exports = (app_cfg, sql, passport, logger) => {
   };
 
   if (app_cfg.oidc.length > 0) {
-    logger.log("log", `Anmeldung über Keycloak aktiviert: ${app_cfg.oidc.map((p) => p.id + " (" + p.issuer + ")").join(", ")}`);
+    logger.log(
+      "log",
+      `Anmeldung über Keycloak aktiviert: ${app_cfg.oidc.map((p) => p.id + " (" + p.issuer + (p.proxy ? ", über Proxy " + proxy_anzeige(p.proxy) : "") + ")").join(", ")}`
+    );
     try {
       bibliothek();
     } catch (error) {
       logger.log("error", `Anmeldung über Keycloak nicht möglich, das Paket openid-client fehlt (npm install ausführen): ${error.message}`);
+    }
+    if (app_cfg.oidc.some((p) => p.proxy)) {
+      try {
+        proxy_bibliothek();
+      } catch (error) {
+        logger.log("error", `Anmeldung über Keycloak mit Proxy nicht möglich, das Paket undici fehlt (npm install ausführen): ${error.message}`);
+      }
     }
   }
 
