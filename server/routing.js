@@ -488,6 +488,57 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   /* ##### Monitoring     ##### */
   /* ######################### */
 
+  // Netze, auf die sich die Netzkopplungs-Meldung im Checkmk-Check beschraenkt (NETZKOPPLUNG_CHECKMK_NETZE).
+  // Erlaubt sind CIDR-Angaben (165.149.0.0/16, auch IPv6) und der Anfang einer IPv4-Adresse (165.149. oder 165.149.*).
+  const net = require("net");
+  const checkmk_netze = new net.BlockList();
+  const checkmk_netze_text = [];
+  for (const eintrag of app_cfg.netzkopplung.checkmk_netze) {
+    try {
+      let adresse, praefix;
+      if (eintrag.includes("/")) {
+        [adresse, praefix] = eintrag.split("/");
+        praefix = Number(praefix);
+      } else if (net.isIP(eintrag)) {
+        adresse = eintrag;
+        praefix = net.isIPv6(eintrag) ? 128 : 32;
+      } else {
+        // Anfang einer IPv4-Adresse: fehlende Oktette mit 0 auffuellen
+        const oktette = eintrag.replace(/[.*]+$/, "").split(".");
+        if (oktette.length < 1 || oktette.length > 4 || !oktette.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)) {
+          throw new Error("ungueltiges Format");
+        }
+        praefix = oktette.length * 8;
+        adresse = [...oktette, "0", "0", "0"].slice(0, 4).join(".");
+      }
+      const typ = net.isIPv6(adresse) ? "ipv6" : "ipv4";
+      if (!net.isIP(adresse) || !Number.isInteger(praefix) || praefix < 0 || praefix > (typ === "ipv6" ? 128 : 32)) {
+        throw new Error("ungueltiges Format");
+      }
+      checkmk_netze.addSubnet(adresse, praefix, typ);
+      checkmk_netze_text.push(`${adresse}/${praefix}`);
+    } catch (error) {
+      logger.log("warn", `NETZKOPPLUNG_CHECKMK_NETZE: Eintrag "${eintrag}" wird ignoriert (${error.message}).`);
+    }
+  }
+
+  // Erste Client-IP aus waip_clients.client_ips (X-Forwarded-For/Forwarded vor der Socket-Adresse) bereinigen
+  const client_haupt_ip = (client_ips) => {
+    let ip = String(client_ips || "").split(",")[0].trim().replace(/^"|"$/g, "");
+    const klammer = ip.match(/^\[([^\]]+)\]/); // [IPv6]:Port (Forwarded-Header)
+    if (klammer) ip = klammer[1];
+    else if (/^[\d.]+:\d+$/.test(ip)) ip = ip.split(":")[0]; // IPv4:Port
+    if (/^::ffff:[\d.]+$/i.test(ip)) ip = ip.slice(7); // IPv4-mapped IPv6
+    return net.isIP(ip) ? ip : null;
+  };
+
+  // liegt der Client in einem der Netze? ohne konfigurierte Netze zaehlt jeder Client
+  const client_in_checkmk_netz = (client) => {
+    if (checkmk_netze_text.length === 0) return true;
+    const ip = client_haupt_ip(client.client_ips);
+    return ip !== null && checkmk_netze.check(ip, net.isIPv6(ip) ? "ipv6" : "ipv4");
+  };
+
   // Check_MK Local Check: gibt Anwendungsstatus im Check_MK-Format aus (mehrere Services).
   // Nur von localhost erreichbar; keine Session-Auth erforderlich.
   app.get("/check_mk", async (req, res, next) => {
@@ -512,9 +563,14 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       lines.push(`0 waip_clients total=${total};;;0;|waip=${waip};;;0;|dbrd=${dbrd};;;0;|alarm=${alarm};;;0; ${total} Clients (${waip}x /waip, ${dbrd}x /dbrd, ${alarm}x im Einsatz)`);
 
       // Service 1b: Netzkopplung (reine Info, kein Warning/Error)
-      // 1 = alle, 2 = einzelne Internet-Testadressen erreichbar, beides gilt als Verdacht
-      const netzkopplung_count = clients.filter((c) => c.netzkopplung === 1 || c.netzkopplung === 2).length;
-      lines.push(`0 waip_netzkopplung count=${netzkopplung_count};;;0; ${netzkopplung_count} Client(s) mit erreichbaren Internet-Testadressen (moegliche Netzkopplung)`);
+      // 1 = alle, 2 = einzelne Internet-Testadressen erreichbar, beides gilt als Verdacht;
+      // mit NETZKOPPLUNG_CHECKMK_NETZE nur Clients aus diesen Netzen
+      const verdacht = clients.filter((c) => (c.netzkopplung === 1 || c.netzkopplung === 2) && client_in_checkmk_netz(c));
+      const netzkopplung_count = verdacht.length;
+      const netze_text = checkmk_netze_text.length > 0 ? ` in ${checkmk_netze_text.join(", ")}` : "";
+      const ips = [...new Set(verdacht.map((c) => client_haupt_ip(c.client_ips) || "unbekannt"))];
+      const ips_text = ips.length > 0 ? `: ${ips.slice(0, 10).join(", ")}${ips.length > 10 ? ` (+${ips.length - 10} weitere)` : ""}` : "";
+      lines.push(`0 waip_netzkopplung count=${netzkopplung_count};;;0; ${netzkopplung_count} Client(s)${netze_text} mit erreichbaren Internet-Testadressen (moegliche Netzkopplung)${ips_text}`);
 
       // Service 2: Einsätze in der Datenbank
       const einsatz_total = stats.einsatz.total ?? 0;
