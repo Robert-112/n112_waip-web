@@ -81,6 +81,9 @@ typings/
 # old Scripts
 _old/
 
+# Bilder der Webseiten im Standby (STANDBY_SEITEN_PATH)
+standby_seiten/
+
 # db
 *.sqlite3
 *.sqlite3-shm

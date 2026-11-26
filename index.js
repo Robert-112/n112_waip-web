@@ -48,10 +48,11 @@ let tts = require("./server/tts.js")(fs, logger, sql, app_cfg);
 let waip = require("./server/waip.js")(io, sql, fs, logger, app_cfg, tts);
 let saver = require("./server/saver.js")(app_cfg, sql, waip, logger);
 let widgets = require("./server/widgets.js")(io, sql, app_cfg, logger);
-let socket = require("./server/socket.js")(io, sql, app_cfg, logger, waip, widgets);
+let standby_seiten = require("./server/standby_seiten.js")(io, sql, app_cfg, logger);
+let socket = require("./server/socket.js")(io, sql, app_cfg, logger, waip, widgets, standby_seiten);
 let auth = require("./server/auth.js")(app, app_cfg, sql, bcrypt, passport, io, logger);
 let oidc = require("./server/oidc.js")(app_cfg, sql, passport, logger);
-let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, saver, logger, tts, widgets, oidc);
+let routes = require("./server/routing.js")(app, sql, app_cfg, passport, auth, saver, logger, tts, widgets, oidc, standby_seiten);
 
 // Server starten
 webserver.listen(app_cfg.global.http_port, () => {

@@ -3111,15 +3111,18 @@ module.exports = (db, app_cfg) => {
       const rows = db
         .prepare(`
           SELECT config_type, config_value FROM waip_user_config
-          WHERE user_id = ? AND config_type IN ('standby_wetter', 'standby_kalender', 'ical_url', 'ticker_url');
+          WHERE user_id = ? AND config_type IN ('standby_wetter', 'standby_kalender', 'ical_url', 'ticker_url', 'standby_seite');
         `)
         .all(user_id);
       const cfg = Object.fromEntries(rows.map((r) => [r.config_type, r.config_value]));
+      const seite = Number(cfg.standby_seite);
       return {
         wetter: cfg.standby_wetter === undefined ? true : cfg.standby_wetter === "1",
         kalender: cfg.standby_kalender === "1",
         ical_url: cfg.ical_url || "",
         ticker_url: cfg.ticker_url || "",
+        // gewählte Webseite statt der Uhr (ID aus waip_standby_seiten), null = Uhr
+        seite: Number.isInteger(seite) && seite > 0 ? seite : null,
       };
     } catch (error) {
       throw new Error("Fehler beim Laden der Standby-Einstellungen eines Benutzers. " + error);
@@ -3139,6 +3142,11 @@ module.exports = (db, app_cfg) => {
           stmt.run(user_id, "standby_kalender", user_id, "standby_kalender", standby.kalender ? "1" : "0");
           stmt.run(user_id, "ical_url", user_id, "ical_url", standby.ical_url || "");
           stmt.run(user_id, "ticker_url", user_id, "ticker_url", standby.ticker_url || "");
+          // Webseite nur ändern, wenn übergeben (ohne Render-Dienst steht sie nicht im Formular)
+          if (standby.seite !== undefined) {
+            if (standby.seite) stmt.run(user_id, "standby_seite", user_id, "standby_seite", String(standby.seite));
+            else db.prepare(`DELETE FROM waip_user_config WHERE user_id = ? AND config_type = 'standby_seite';`).run(user_id);
+          }
         });
         speichern();
         resolve(true);
@@ -3146,6 +3154,85 @@ module.exports = (db, app_cfg) => {
         reject(new Error("Fehler beim Speichern der Standby-Einstellungen eines Benutzers. " + error));
       }
     });
+  };
+
+  /* ##### Webseiten im Standby ##### */
+
+  const STANDBY_SEITEN_SPALTEN = `id, name, url, anmeldung, benutzer, geheimnis, proxy, intervall, warten, zoom, ausschnitt,
+    bereitgestellt, aktiv, geaendert_von, geaendert_am`;
+
+  // alle Webseiten (inkl. verschlüsseltem Geheimnis – nur für das Modul standby_seiten, nie ausliefern)
+  const db_standby_seiten_liste = () => {
+    try {
+      return db.prepare(`SELECT ${STANDBY_SEITEN_SPALTEN} FROM waip_standby_seiten ORDER BY name COLLATE NOCASE, id;`).all();
+    } catch (error) {
+      throw new Error("Fehler beim Laden der Standby-Webseiten. " + error);
+    }
+  };
+
+  // Webseite anlegen (ohne id) oder ändern; liefert die id
+  const db_standby_seite_speichern = (seite, benutzer) => {
+    try {
+      const werte = [
+        seite.name,
+        seite.url,
+        seite.anmeldung,
+        seite.benutzer || null,
+        seite.geheimnis || null,
+        seite.proxy ? 1 : 0,
+        seite.intervall,
+        seite.warten,
+        seite.zoom,
+        seite.ausschnitt || null,
+        seite.bereitgestellt,
+        seite.aktiv ? 1 : 0,
+        benutzer,
+        new Date().toISOString(),
+      ];
+      if (seite.id) {
+        const r = db
+          .prepare(`
+            UPDATE waip_standby_seiten SET name = ?, url = ?, anmeldung = ?, benutzer = ?, geheimnis = ?, proxy = ?, intervall = ?,
+              warten = ?, zoom = ?, ausschnitt = ?, bereitgestellt = ?, aktiv = ?, geaendert_von = ?, geaendert_am = ?
+            WHERE id = ?;
+          `)
+          .run(...werte, seite.id);
+        return r.changes > 0 ? seite.id : null;
+      }
+      return Number(
+        db
+          .prepare(`
+            INSERT INTO waip_standby_seiten (name, url, anmeldung, benutzer, geheimnis, proxy, intervall, warten, zoom, ausschnitt,
+              bereitgestellt, aktiv, geaendert_von, geaendert_am) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+          `)
+          .run(...werte).lastInsertRowid
+      );
+    } catch (error) {
+      throw new Error("Fehler beim Speichern einer Standby-Webseite. " + error);
+    }
+  };
+
+  // Webseite löschen, die Auswahl der Benutzer gleich mit
+  const db_standby_seite_loeschen = (id) => {
+    try {
+      return db.transaction(() => {
+        db.prepare(`DELETE FROM waip_user_config WHERE config_type = 'standby_seite' AND config_value = ?;`).run(String(id));
+        return db.prepare(`DELETE FROM waip_standby_seiten WHERE id = ?;`).run(id).changes;
+      })();
+    } catch (error) {
+      throw new Error("Fehler beim Löschen einer Standby-Webseite. " + error);
+    }
+  };
+
+  // aktive Wachen mit voller Nummer und Leitstelle (für die Zuordnung Nummer → Wachen)
+  const db_wachen_nummern_aktiv = () => {
+    try {
+      return db
+        .prepare(`SELECT CAST(nr_wache AS TEXT) AS wache, CAST(nr_leitstelle AS TEXT) AS leitstelle FROM waip_wachen WHERE aktiv = 1 AND nr_wache <> 0;`)
+        .all();
+    } catch (error) {
+      throw new Error("Fehler beim Laden der Wachen-Nummern. " + error);
+    }
   };
 
   // Kartenbreite im Alarmmonitor (Querformat): 20–60 % in 5er-Schritten, null = Standard-Layout
@@ -3199,6 +3286,10 @@ module.exports = (db, app_cfg) => {
     db_ticker_quellen_fuer_nr,
     db_user_get_config_standby,
     db_user_set_config_standby,
+    db_standby_seiten_liste,
+    db_standby_seite_speichern,
+    db_standby_seite_loeschen,
+    db_wachen_nummern_aktiv,
     db_alarmdaten_filter_aktiv,
     db_einsatz_speichern,
     db_einsatz_for_client_ermitteln,

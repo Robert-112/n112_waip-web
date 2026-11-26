@@ -162,6 +162,16 @@ block content
                     option(value=b)= b + ' %'
             h6.mt-2 Standby-Anzeige
             .d-flex.flex-column.gap-3
+              if seiten_aktiv
+                //- Webseite statt Uhr: nur Seiten, die für die Wachen dieses Benutzers bereitgestellt sind (per Skript gefiltert)
+                div#einst_seite_block
+                  .form-check.form-switch
+                    input#einst_seite_an.form-check-input(type='checkbox', role='switch', name='standby_seite_an')
+                    label.form-check-label(for='einst_seite_an') Webseite statt Uhr anzeigen
+                  select#einst_seite.form-select.mt-2(name='standby_seite', aria-label='Webseite')
+                    each x in seiten_alle
+                      option(value=x.id)= x.name
+                  #einst_seite_keine.form-text.d-none Für die Wachen dieses Benutzers ist keine Webseite bereitgestellt.
               .form-check.form-switch
                 input#einst_wetter.form-check-input(type='checkbox', role='switch', name='standby_wetter', disabled=!widgets_wetter_aktiv)
                 label.form-check-label(for='einst_wetter') Wetter und amtliche Unwetterwarnungen
@@ -198,6 +208,19 @@ block content
       document.getElementById("einst_kalender").checked = Boolean(e.standby.kalender);
       document.getElementById("einst_ical").value = e.standby.ical_url || "";
       document.getElementById("einst_ticker").value = e.standby.ticker_url || "";
+      // Webseite: nur die für diesen Benutzer wählbaren Seiten anbieten
+      const seite_an = document.getElementById("einst_seite_an");
+      if (seite_an) {
+        const erlaubt = new Set((e.seiten || []).map(String));
+        const auswahl = document.getElementById("einst_seite");
+        Array.from(auswahl.options).forEach((o) => (o.hidden = o.disabled = !erlaubt.has(o.value)));
+        const gewaehlt = e.standby.seite && erlaubt.has(String(e.standby.seite)) ? String(e.standby.seite) : null;
+        const erste = Array.from(auswahl.options).find((o) => !o.disabled);
+        auswahl.value = gewaehlt || (erste ? erste.value : "");
+        seite_an.checked = Boolean(gewaehlt);
+        seite_an.disabled = auswahl.disabled = erlaubt.size === 0;
+        document.getElementById("einst_seite_keine").classList.toggle("d-none", erlaubt.size > 0);
+      }
       bootstrap.Modal.getOrCreateInstance(document.getElementById("einstellungenModal")).show();
       if (#{widgets_kalender_aktiv ? 'true' : 'false'} && (e.standby.ical_url || e.standby.ticker_url)) {
         kalender_status_laden(form, "/adm_edit_users/kalender_status", { _csrf: form.elements._csrf.value, user_id: Number(id) });

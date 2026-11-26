@@ -56,8 +56,26 @@ block content
                         h2.h5.card-title.d-flex.align-items-center.gap-2
                           i.bi.bi-display(aria-hidden='true')
                           span Standby-Anzeige
-                        p.card-text.text-body-secondary.mb-0 Was der Alarmmonitor ohne laufenden Einsatz zeigt. Uhrzeit und Datum werden immer angezeigt.
+                        if seiten_auswahl.length
+                          p.card-text.text-body-secondary.mb-0 Was der Alarmmonitor ohne laufenden Einsatz zeigt. Ohne Webseite zeigt er Uhrzeit und Datum.
+                        else
+                          p.card-text.text-body-secondary.mb-0 Was der Alarmmonitor ohne laufenden Einsatz zeigt. Uhrzeit und Datum werden immer angezeigt.
                       .col-12.col-md-8.d-flex.flex-column.gap-3
+                        //- Webseite statt Uhr: nur, wenn für die Wachen des Benutzers mindestens eine bereitgestellt ist
+                        if seiten_auswahl.length
+                          - const seite_gewaehlt = seiten_auswahl.some((x) => x.id === standby.seite)
+                          div
+                            .form-check.form-switch
+                              input#einstellung_seite.form-check-input(type='checkbox', role='switch', name='standby_seite_an', checked=seite_gewaehlt)
+                              label.form-check-label.fw-bold(for='einstellung_seite') Webseite statt Uhr anzeigen
+                            .ms-5.mt-2
+                              label.form-label(for='standby_seite') Seite
+                              select#standby_seite.form-select(name='standby_seite', aria-describedby='seite_hilfe')
+                                each x in seiten_auswahl
+                                  option(value=x.id, selected=x.id === standby.seite)= x.name
+                              #seite_hilfe.form-text
+                                | Zur Auswahl stehen Seiten, die für Ihre Wachen bereitgestellt sind. Angezeigt wird die Seite auf Ihren Alarmmonitoren dieser Wachen;
+                                | Uhr und Datum entfallen dort, der Ticker bleibt. Ist die Seite gerade nicht verfügbar, erscheint die Uhr.
                         div
                           .form-check.form-switch
                             input#einstellung_wetter.form-check-input(type='checkbox', role='switch', name='standby_wetter', checked=standby.wetter, disabled=!widgets_wetter_aktiv)

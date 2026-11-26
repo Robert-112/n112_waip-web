@@ -2,6 +2,7 @@
   #screen_saver
     //- Uhr, Gefahrenhinweise und Widgets bilden einen Block, der als Ganzes wandert (Einbrennschutz).
     //- Querformat: links Uhr + Gefahren, rechts Wetter + Termine; Hochformat: untereinander (siehe waip.css)
+    //- Mit Webseite: links das Bild statt der Uhr, Gefahren wandern oben in die rechte Spalte
     #standby_block
       #standby_links
         #clock_day
@@ -9,6 +10,10 @@
             span#clock-hhmm -HH:MM-
             span#clock-seconds.clock-seconds :00
           #day.text-secondary.d-flex.align-items-start.day_frame -Datum-
+        //- Webseite im Standby statt der Uhr (Bild vom Server, zwei Ebenen zum Überblenden)
+        #standby_seite.d-none
+          img.standby-seite-bild(alt='')
+          img.standby-seite-bild(alt='')
         #standby_gefahren.d-none
           #standby_warnung.standby-gefahr.d-none(role='status')
             i.bi.bi-exclamation-triangle-fill(aria-hidden='true')
@@ -58,3 +63,5 @@
           i.bi.bi-building(aria-hidden='true')
         span.wachenname-text= data_wache || '-Wachenname-'
         span#wachenname-login-icon.bi-eye-slash.d-none(title="Nicht angemeldet")
+    //- Name und Stand der Webseite bzw. Hinweis, wenn sie nicht verfügbar ist
+    span#standby_seite_hinweis.standby-seite-hinweis.d-none(role='status')

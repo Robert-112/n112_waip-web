@@ -137,6 +137,17 @@ app_cfg.widgets = {
   waldbrand_ab_stufe: Math.min(5, Math.max(1, Number(process.env.WIDGET_WALDBRAND_AB_STUFE) || 3)),
 };
 
+// Webseiten im Standby: der Render-Dienst (eigener Docker) nimmt freigegebene Seiten als Bild auf, die
+// Alarmmonitore zeigen nur das Bild. Ohne Adresse, Token oder Schlüssel ist die Funktion aus.
+app_cfg.standby_seiten = {
+  url: (process.env.STANDBY_SEITEN_URL || "").replace(/\/+$/, ""),
+  token: process.env.STANDBY_SEITEN_TOKEN || "",
+  // verschlüsselt Passwörter/Token der Seiten in der Datenbank (beliebiger Text, mind. 32 Zeichen)
+  schluessel: process.env.STANDBY_SEITEN_SCHLUESSEL || "",
+  // Ablage der Bilder (außerhalb von public/, Auslieferung nur über eine Route mit Rechteprüfung)
+  pfad: process.env.STANDBY_SEITEN_PATH || "./standby_seiten/",
+};
+
 // Anmeldung über Keycloak (OpenID Connect), auch mehrere Server/Realms: OIDC_PROVIDER=kms,lk und je ID
 // die Einstellungen OIDC_<ID>_… (ID in Großbuchstaben). Die ID dient der Verknüpfung der Konten und darf
 // später nicht mehr geändert werden. Unvollständige Einträge werden beim Start mit Warnung übersprungen.

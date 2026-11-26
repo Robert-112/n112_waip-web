@@ -109,6 +109,10 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - die Waldbrandgefahrenstufe (ab einer einstellbaren Stufe)
     - die nächsten Termine aus einem Kalender (iCal/ICS), z.B. Dienstabende
     - ein Ticker mit aktuellen Meldungen am unteren Rand, wichtige Meldungen in einer eigenen roten Zeile (nur angemeldete Monitore, nie im Einsatz)
+- statt Uhr und Datum kann der Standby auch das Bild einer Webseite zeigen, z.B. ein Grafana-Dashboard mit Einsatzstatistiken:
+    - Administratoren legen die Seiten an (Adresse, Anmeldung, Abrufintervall) und stellen sie für Leitstellen, Kreise, Träger oder Wachen bereit, Benutzer wählen eine davon unter `Einstellungen`
+    - ein eigener Render-Dienst (Docker mit headless Chromium) nimmt die Seiten regelmäßig als Bild in Full-HD auf, die Alarmmonitore bekommen nur das Bild, nie die Seite selbst
+    - ist die Seite gestört, erscheint die normale Uhr mit einem kleinen Hinweis
 - alle Daten holt ausschließlich der Server, die Alarmmonitore selbst benötigen keinen Zugriff auf das Internet
 - die Wetterdaten stammen vom Deutschen Wetterdienst und werden über einen selbst betriebenen [Bright Sky](https://brightsky.dev/)-Dienst abgerufen
 - Termine und Ticker-Meldungen holt ein eigener Kalender-Dienst (Docker) aus SOGo, Nextcloud o.ä. (`WIDGET_KALENDER_URL`); die Meldungen werden im Kalender gepflegt: jeder laufende Termin ist eine Meldung, die Priorität „hoch“, `!!` vor dem Titel oder Schlagwörter wie „dringend“ machen sie rot, Priorität „normal“, `!` oder „wichtig“ gelb
@@ -204,6 +208,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - Anzeige einiger Log-Einträge
     - Pflege der Wetter-Standorte für die Standby-Anzeige
     - Pflege der Ticker-Quellen (Kalender der Leitstellen und Kreise)
+    - Pflege der Webseiten im Standby (Adresse, Anmeldung, Abrufintervall, Bereitstellung für Wachen) mit Vorschau und Status der Aufnahmen
     - Pflege von Ersetzungen für die Sprachansage, inkl. Probehören der Aussprache
 - Benutzer mit der lokalen Rolle "Datenpfleger" dürfen die Stammdaten pflegen (Wachen, Wetter-Standorte, Ticker-Quellen, Ersetzungen und Aussprache), sehen aber keine Benutzerverwaltung, Einsätze, verbundenen Clients und Logs
 - optional melden sich Benutzer über eine zentrale Benutzerverwaltung (Keycloak bzw. OpenID Connect) an, auch mehrere Server oder Realms sind möglich (`OIDC_PROVIDER` in der `.env`):
@@ -239,6 +244,7 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
     - [Piper](https://github.com/rhasspy/piper) (Wyoming-Protokoll) für eine natürlichere Sprachansage
     - [Bright Sky](https://brightsky.dev/) für Wetter und Unwetterwarnungen (fertige Wetter-Standorte für die fünf Leitstellen und alle Kreise in Brandenburg: `sqlite3 database.sqlite3 < sql_wetter_orte.sql`)
     - ein eigener Kalender-Dienst (Docker) für Termine und Ticker im Standby
+    - ein eigener Render-Dienst (Docker) für Webseiten im Standby
     - Filebeat und Elasticsearch für die Auswertung der Logs
     - [Keycloak](https://www.keycloak.org/) (oder ein anderer OpenID-Connect-Server) für die Anmeldung mit zentralen Benutzerkonten
 
@@ -271,6 +277,13 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 ---
 
 # Versionsverlauf
+
+## 2.2.4 (November 2026)
+
+- Standby: neue Funktion „Webseiten im Standby“ – statt Uhr und Datum zeigt der Alarmmonitor das Bild einer Webseite (z.B. Grafana-Dashboard); Wetter, Termine, Warnungen und Ticker bleiben, Warnungen stehen dann oben in der rechten Spalte
+- Administration: neue Seite `Webseiten im Standby` (nur Administratoren) zum Anlegen der Seiten mit Anmeldung (Token, Basic, Anmeldeformular), Abrufintervall (5–120 Minuten, Standard 30), Bereitstellung für Leitstellen, Kreise, Träger oder Wachen, Vorschau und Status
+- Einstellungen und Benutzerverwaltung: Auswahl `Webseite statt Uhr anzeigen` (nur Seiten, die für die Wachen des Benutzers bereitgestellt sind)
+- die Seiten nimmt ein neuer Render-Dienst (eigener Docker, Projekt `docker-render`) auf; neue Einstellungen `STANDBY_SEITEN_URL`, `STANDBY_SEITEN_TOKEN`, `STANDBY_SEITEN_SCHLUESSEL` und `STANDBY_SEITEN_PATH` (ohne sie ist die Funktion aus), neue Tabelle `waip_standby_seiten` (wird beim Start automatisch angelegt)
 
 ## 2.2.3 (November 2026)
 

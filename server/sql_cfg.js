@@ -329,6 +329,32 @@ module.exports = (bcrypt, app_cfg) => {
     );
   `);
 
+  // Webseiten im Standby (neu in Version 2.2.4, für neue und bestehende Datenbanken): Seiten, die der
+  // Render-Dienst regelmäßig als Bild aufnimmt und die Alarmmonitore statt der Uhr zeigen.
+  // anmeldung: keine | token | basic | formular; geheimnis: Passwort/Token, AES-256-GCM-verschlüsselt
+  // (Schlüssel STANDBY_SEITEN_SCHLUESSEL); intervall in Minuten (5–120, 5er-Schritte); bereitgestellt:
+  // Nummern (Leitstelle 1-, Kreis 2-, Träger 4-, Wache 6-stellig), deren Benutzer die Seite wählen dürfen.
+  // Die Auswahl des Benutzers steht in waip_user_config (config_type 'standby_seite').
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS waip_standby_seiten (
+      id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      anmeldung TEXT NOT NULL DEFAULT 'keine',
+      benutzer TEXT,
+      geheimnis TEXT,
+      proxy INTEGER NOT NULL DEFAULT 0,
+      intervall INTEGER NOT NULL DEFAULT 30,
+      warten INTEGER NOT NULL DEFAULT 0,
+      zoom INTEGER NOT NULL DEFAULT 100,
+      ausschnitt TEXT,
+      bereitgestellt TEXT NOT NULL DEFAULT '',
+      aktiv INTEGER NOT NULL DEFAULT 1,
+      geaendert_von TEXT,
+      geaendert_am TEXT
+    );
+  `);
+
   // Zusatzrollen der Benutzer (neu in Version 2.2), unabhängig von den Wachen-Rechten in "permissions",
   // kommagetrennt, derzeit nur "datenpflege". Für neue und bestehende Datenbanken.
   try {

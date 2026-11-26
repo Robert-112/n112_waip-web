@@ -1,0 +1,229 @@
+extends ../layout
+
+block content
+  main(role='main')
+    .container-fluid
+      +seitenkopf('Webseiten im Standby', 'Webseiten, die der Render-Dienst regelmäßig aufnimmt und die Alarmmonitore der bereitgestellten Wachen statt der Uhr zeigen können.', 'bi-window')
+      +meldungen(error, success)
+
+      if !aktiv
+        .alert.alert-info.d-flex.gap-2(role='status')
+          i.bi.bi-info-circle-fill.flex-shrink-0(aria-hidden='true')
+          div
+            | Diese Funktion ist auf diesem Server nicht eingerichtet. In der
+            code.mx-1 .env
+            | fehlt:
+            strong.ms-1= fehlt.join(', ')
+            | . Der Render-Dienst (eigener Docker, siehe Handbuch) nimmt die Seiten auf.
+      else
+        .row.g-3.mb-4
+          .col-12.col-lg-8
+            .card.border-0.h-100
+              .card-body
+                h2.h6.card-title.d-flex.align-items-center.gap-2
+                  i.bi.bi-diagram-3(aria-hidden='true')
+                  span So funktioniert es
+                p.card-text.text-body-secondary.mb-2
+                  | Der Render-Dienst öffnet jede Seite im eingestellten Abstand, meldet sich bei Bedarf mit den hinterlegten Zugangsdaten an
+                  | und macht ein Bild in Full-HD (16:9). Die Alarmmonitore bekommen nur dieses Bild, nie die Seite selbst.
+                  | Seiten, die gerade kein Monitor zeigt, werden nicht abgerufen.
+                p.card-text.text-body-secondary.mb-0
+                  | Benutzer wählen in ihren Einstellungen eine Seite, die für ihre Wachen bereitgestellt ist; ihre Wachendisplays zeigen sie dann statt der Uhr.
+                  | Die Seite muss selbst dunkel sein (Grafana:
+                  code.mx-1 &kiosk&theme=dark
+                  | ). Anmeldung nur mit einem eigenen Konto mit Leserechten, ohne zweiten Faktor.
+          .col-12.col-lg-4
+            .card.border-0.h-100
+              .card-body
+                h2.h6.card-title.d-flex.align-items-center.gap-2
+                  i.bi.bi-hdd-network(aria-hidden='true')
+                  span Render-Dienst
+                .d-flex.flex-column.gap-1.text-body-secondary
+                  .d-flex.justify-content-between.gap-2
+                    span Adresse
+                    code.text-break= dienst_url
+                  .d-flex.justify-content-between.gap-2
+                    span Status
+                    span#dienst_status.badge.text-bg-secondary.align-self-center wird geprüft …
+                  .d-flex.justify-content-between.gap-2
+                    span Erlaubte Server
+                    span#dienst_server.text-end.text-break –
+                  .d-flex.justify-content-between.gap-2
+                    span Letzte Stunde
+                    span#dienst_last.text-end –
+                p.small.text-body-secondary.mt-2.mb-0
+                  | Erlaubte Server und Proxy stehen in der
+                  code.mx-1 .env
+                  | des Render-Dienstes. Seiten auf anderen Servern nimmt er nicht auf.
+
+        .d-flex.justify-content-end.mb-2
+          button#seite_neu.btn.btn-primary.btn-sm(type='button')
+            i.bi.bi-plus-lg.me-1(aria-hidden='true')
+            | Seite anlegen
+
+        if seiten.length === 0
+          p.text-body-secondary Noch keine Seiten angelegt.
+        else
+          .card.border-0
+            .table-responsive
+              table.table.table-hover.align-middle.mb-0
+                thead
+                  tr
+                    th(scope='col') Name
+                    th(scope='col') Server
+                    th(scope='col') Anmeldung
+                    th(scope='col') Abruf
+                    th(scope='col') Bereitgestellt für
+                    th(scope='col') Letzte Aufnahme
+                    th(scope='col') Genutzt
+                    th.text-end(scope='col', style='width: 110px')
+                      span.visually-hidden Aktion
+                tbody
+                  each s in seiten
+                    tr
+                      td(class=s.aktiv ? 'fw-semibold' : 'fw-semibold text-body-secondary')
+                        | #{s.name}
+                        if !s.aktiv
+                          span.badge.text-bg-secondary.ms-2 pausiert
+                      td.text-nowrap
+                        i.bi.bi-globe2.me-2.text-body-secondary(aria-hidden='true')
+                        span= s.host
+                        if s.proxy
+                          span.badge.text-bg-secondary.ms-2 Proxy
+                      td
+                        = { keine: 'keine', token: 'Token', basic: 'Basic', formular: 'Formular' }[s.anmeldung]
+                        if !s.geheimnis_lesbar
+                          span.badge.text-bg-warning.ms-2(title='Schlüssel geändert? Passwort/Token bitte neu eingeben.') neu eingeben
+                      td.text-nowrap #{s.intervall} min
+                      td
+                        if s.bereitgestellt
+                          each nr, i in s.bereitgestellt.split(',')
+                            span.d-inline-block.me-2
+                              span.font-monospace.text-body-secondary.me-1= nr
+                              span= namen[nr] || ''
+                        else
+                          span.text-body-secondary niemandem
+                      td.small(data-status=s.id)
+                        span.text-body-secondary wird geprüft …
+                      td.small.text-body-secondary(data-genutzt=s.id)= s.monitore === 1 ? '1 Monitor' : s.monitore + ' Monitore'
+                      td.text-end.text-nowrap
+                        button.btn.btn-sm.btn-link.text-body-secondary.seite-vorschau(type='button', data-id=s.id, title='Vorschau', aria-label='Vorschau von ' + s.name)
+                          i.bi.bi-eye(aria-hidden='true')
+                        button.btn.btn-sm.btn-link.text-body.seite-bearbeiten(type='button', data-id=s.id, title='Bearbeiten', aria-label=s.name + ' bearbeiten')
+                          i.bi.bi-pencil(aria-hidden='true')
+
+  if aktiv
+    //- Anlegen/Bearbeiten
+    #seiteModal.modal.fade(tabindex='-1', aria-labelledby='seiteTitel', aria-hidden='true')
+      .modal-dialog.modal-dialog-centered.modal-xl
+        .modal-content
+          .modal-header
+            h2#seiteTitel.modal-title.h5 Seite bearbeiten
+            button.btn-close(type='button', data-bs-dismiss='modal', aria-label='Schließen')
+          .modal-body
+            .row.g-4
+              .col-12.col-lg-7
+                form#seiteForm.d-flex.flex-column.gap-3(action='/adm_edit_seiten/speichern', method='post', autocomplete='off')
+                  input(type='hidden', name='_csrf', value=csrf_token)
+                  input#f_id(type='hidden', name='id')
+                  .row.g-3
+                    .col-md-7
+                      label.form-label(for='f_name') Name (Auswahl beim Benutzer)
+                      input#f_name.form-control(type='text', name='name', maxlength='80', required)
+                    .col-md-5
+                      label.form-label(for='f_intervall') Abruf alle
+                      select#f_intervall.form-select(name='intervall')
+                        each m in intervalle
+                          option(value=m)= m + ' min' + (m === 30 ? ' (Standard)' : '')
+                  div
+                    label.form-label(for='f_url') Adresse
+                    input#f_url.form-control(type='url', name='url', maxlength='2000', required, placeholder='https://…', aria-describedby='f_url_hilfe')
+                    #f_url_hilfe.form-text
+                      | Nur Server, die der Render-Dienst erlaubt. Grafana: Dashboard-Link mit
+                      code.mx-1 &kiosk&theme=dark
+                      | (ohne Menü, dunkel).
+                  .row.g-3
+                    .col-md-4
+                      label.form-label(for='f_anmeldung') Anmeldung
+                      select#f_anmeldung.form-select(name='anmeldung')
+                        option(value='keine') keine
+                        option(value='token') Token (Header)
+                        option(value='basic') Benutzer + Passwort (Basic)
+                        option(value='formular') Anmeldeformular
+                    .col-md-4#f_benutzer_feld
+                      label#f_benutzer_label.form-label(for='f_benutzer') Benutzername
+                      input#f_benutzer.form-control(type='text', name='benutzer', maxlength='200', autocomplete='off')
+                    .col-md-4#f_geheimnis_feld
+                      label#f_geheimnis_label.form-label(for='f_geheimnis') Passwort
+                      input#f_geheimnis.form-control(type='password', name='geheimnis', maxlength='4000', autocomplete='new-password')
+                  .form-check.form-switch
+                    input#f_proxy.form-check-input(type='checkbox', role='switch', name='proxy')
+                    label.form-check-label(for='f_proxy') Über den Proxy des Render-Dienstes abrufen
+                  div
+                    label.form-label(for='f_bereitgestellt') Bereitgestellt für
+                    input#f_bereitgestellt.form-control.font-monospace(type='text', name='bereitgestellt', maxlength='500', placeholder='z.B. 52 oder 4, 520301', aria-describedby='f_bereit_hilfe')
+                    #f_bereit_hilfe.form-text
+                      | Leitstelle (1-stellig), Kreis (2), Träger (4) oder Wache (6), mehrere mit Komma. Benutzer mit Rechten für diese Wachen
+                      | können die Seite in ihren Einstellungen wählen; angezeigt wird sie auf ihren Monitoren dieser Wachen.
+                  details.text-body-secondary
+                    summary Erweitert
+                    .row.g-3.mt-1
+                      .col-md-4
+                        label.form-label(for='f_warten') Nach dem Laden warten
+                        select#f_warten.form-select(name='warten')
+                          each w in warten_stufen
+                            option(value=w)= w === 0 ? 'bis Ruhe (Standard)' : '+ ' + w + ' s'
+                      .col-md-4
+                        label.form-label(for='f_zoom') Zoom
+                        select#f_zoom.form-select(name='zoom')
+                          each z in zoom_stufen
+                            option(value=z, selected=z === 100)= z + ' %'
+                      .col-md-4
+                        label.form-label(for='f_ausschnitt') Nur Ausschnitt (CSS)
+                        input#f_ausschnitt.form-control.font-monospace(type='text', name='ausschnitt', maxlength='200', placeholder='optional')
+                    .form-text Zoom über 100 % vergrößert Schrift und Inhalte (die Seite wird für eine kleinere Fläche gestaltet). Ausschnitt: nur dieses Element aufnehmen.
+                  .form-check.form-switch
+                    input#f_aktiv.form-check-input(type='checkbox', role='switch', name='aktiv', checked)
+                    label.form-check-label(for='f_aktiv') Aktiv (pausiert: nicht abrufen, nicht wählbar)
+              .col-12.col-lg-5
+                .d-flex.justify-content-between.align-items-center.mb-2
+                  span.fw-bold Vorschau
+                  button#f_aufnehmen.btn.btn-sm.btn-outline-info(type='button')
+                    i.bi.bi-camera.me-1(aria-hidden='true')
+                    | Jetzt aufnehmen
+                .ratio.ratio-16x9.rounded.border.border-secondary-subtle.bg-black
+                  img#f_vorschau.d-none(alt='Vorschau', style='object-fit: contain')
+                  #f_vorschau_leer.d-flex.align-items-center.justify-content-center.text-body-secondary.small.p-3.text-center Noch keine Aufnahme.
+                #f_status.small.text-body-secondary.mt-2
+          .modal-footer
+            form#loeschForm(action='/adm_edit_seiten/loeschen', method='post')
+              input(type='hidden', name='_csrf', value=csrf_token)
+              input#l_id(type='hidden', name='id')
+            button#f_loeschen.btn.btn-outline-danger.me-auto(type='button')
+              i.bi.bi-trash.me-1(aria-hidden='true')
+              span Löschen
+            button.btn.btn-secondary(type='button', data-bs-dismiss='modal') Abbrechen
+            button.btn.btn-primary(type='submit', form='seiteForm') Speichern
+
+    //- Vorschau groß
+    #vorschauModal.modal.fade(tabindex='-1', aria-labelledby='vorschauTitel', aria-hidden='true')
+      .modal-dialog.modal-dialog-centered.modal-xl
+        .modal-content
+          .modal-header
+            h2.modal-title.h5.d-flex.align-items-center.gap-2
+              i.bi.bi-eye(aria-hidden='true')
+              span#vorschauTitel Vorschau
+            button.btn-close(type='button', data-bs-dismiss='modal', aria-label='Schließen')
+          .modal-body
+            .ratio.ratio-16x9.rounded.border.border-secondary-subtle.bg-black
+              img#v_bild.d-none(alt='Vorschau', style='object-fit: contain')
+              #v_leer.d-flex.align-items-center.justify-content-center.text-body-secondary.small Noch keine Aufnahme.
+            #v_status.small.text-body-secondary.mt-2
+          .modal-footer
+            button#v_aufnehmen.btn.btn-outline-info.me-auto(type='button')
+              i.bi.bi-camera.me-1(aria-hidden='true')
+              | Jetzt aufnehmen
+            button.btn.btn-secondary(type='button', data-bs-dismiss='modal') Schließen
+
+    script#seiten_daten(type='application/json')!= JSON.stringify({ csrf: csrf_token, seiten: seiten.map((s) => ({ id: s.id, name: s.name, url: s.url, anmeldung: s.anmeldung, benutzer: s.benutzer, geheimnis_gesetzt: s.geheimnis_gesetzt, proxy: s.proxy, intervall: s.intervall, warten: s.warten, zoom: s.zoom, ausschnitt: s.ausschnitt, bereitgestellt: s.bereitgestellt, aktiv: s.aktiv })) }).replace(/</g, '\\u003c')
+    script(src='/js/adm_edit_seiten.js')

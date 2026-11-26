@@ -11,7 +11,7 @@ module.exports = {
     restart_delay: 2000,
     combine_logs: true,
     watch: process.env.PM2_WATCH === "true",
-    ignore_watch: ["database.*","sessions*","node_modules","public","\\.git",".playwright-mcp"],
+    ignore_watch: ["database.*","sessions*","node_modules","public","\\.git",".playwright-mcp","standby_seiten"],
     log_file: "~/log/n112_waip-web.log"
   }]
 }

@@ -59,6 +59,7 @@ module.exports = (app, app_cfg, sql, bcrypt, passport, io, logger) => {
     "/adm_edit_users": "/adm_edit_users",
     "/adm_edit_wachen": "/adm_edit_wachen",
     "/adm_edit_replace": "/adm_edit_replace",
+    "/adm_edit_seiten": "/adm_edit_seiten",
   };
   app.use((req, res, next) => {
     const expected = crypto.createHmac("sha256", app_cfg.global.sessionsecret).update("csrf:" + req.sessionID).digest("hex");

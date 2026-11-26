@@ -337,6 +337,8 @@ function resize_text(reProcess) {
       textFit(document.getElementsByClassName("day_frame"), { minFontSize: 3, maxFontSize: 500, reProcess: reProcess });
     } catch (e) { console.error("resize_text clock_frame/day_frame:", e); }
     widgets_einpassen();
+  } else if ($("#standby_seite").is(":visible")) {
+    widgets_einpassen();
   }
   // Tableau nur Anpassen wenn sichtbar
   if ($("#waiptableau").is(":visible")) {
@@ -1047,6 +1049,9 @@ function standby_anzeigen(data) {
   // 200ms warten
   setTimeout(function () {
     ticker_rendern();
+    // während des Einsatzes angekommene Bilder erst jetzt laden
+    seite_laden();
+    seite_rendern();
     resize_text(true);
     updateWachennameAnimation();
     updateRandomPosition();
@@ -1368,7 +1373,7 @@ function widgets_ausrichten() {
     const neu = Math.abs(wert) >= 1 ? "translateY(" + Math.round(wert) + "px)" : "";
     if (box.style.transform !== neu) box.style.transform = neu;
   };
-  if (box.classList.contains("d-none") || getComputedStyle(block).flexDirection !== "row") return setzen(0);
+  if (box.classList.contains("d-none") || block.classList.contains("mit-seite") || getComputedStyle(block).flexDirection !== "row") return setzen(0);
   const uhr = document.querySelector("#time span");
   const datum = document.querySelector("#day span");
   const gefahren = document.getElementById("standby_gefahren");
@@ -1479,9 +1484,10 @@ function widgets_rendern() {
     const mit_waldbrand = waldbrand_rendern(widgetDaten.waldbrand);
     const mit_wetter = wetter_rendern(widgetDaten.wetter);
     const mit_kalender = kalender_rendern(widgetDaten.kalender);
-    const mit_widgets = mit_wetter || mit_kalender;
     const mit_gefahren = mit_warnung || mit_waldbrand;
     const block = document.getElementById("standby_block");
+    // mit Webseite stehen die Gefahrenhinweise oben in der rechten Spalte (sonst unter der Uhr)
+    const mit_widgets = mit_wetter || mit_kalender || (block.classList.contains("mit-seite") && mit_gefahren);
     const vorher = block.className;
     document.getElementById("standby_widgets").classList.toggle("d-none", !mit_widgets);
     document.getElementById("standby_gefahren").classList.toggle("d-none", !mit_gefahren);
@@ -1514,6 +1520,130 @@ socket.on("io.widgets", function (data) {
 // einmal pro Minute: veraltete Daten und vergangene Termine ausblenden, Tageswechsel
 takt_add("widgets", function () {
   if (new Date().getSeconds() === 0) widgets_rendern();
+});
+
+/* ############################ */
+/* ### WEBSEITE IM STANDBY #### */
+/* ############################ */
+
+// Statt der Uhr ein Bild einer Webseite (Admin stellt bereit, Benutzer wählt). Das Bild erzeugt der Server;
+// der Monitor lädt es nur, wenn er im Standby ist, und blendet neue Bilder weich über. Ist kein gültiges
+// Bild da, erscheint die normale Uhr (bei Störung mit kleinem Hinweis unten rechts).
+const seiteDaten = { paket: { aktiv: false }, geladen: null, laedt: null, fehler: null, modus: "aus" };
+
+function seite_schluessel(p) {
+  return p.id + ":" + p.v;
+}
+
+function seite_laden() {
+  const p = seiteDaten.paket;
+  if (!p.aktiv || !p.v || p.status !== "ok") return;
+  const schluessel = seite_schluessel(p);
+  if (seiteDaten.geladen === schluessel || seiteDaten.laedt === schluessel) return;
+  // im Einsatz nichts nachladen; standby_anzeigen holt es nach
+  if (!$("#waipclock").is(":visible")) return;
+  seiteDaten.laedt = schluessel;
+  const bild = new Image();
+  bild.onload = function () {
+    if (seiteDaten.laedt !== schluessel) return;
+    seiteDaten.laedt = null;
+    seiteDaten.fehler = null;
+    const ebenen = document.querySelectorAll("#standby_seite .standby-seite-bild");
+    const alt = document.querySelector("#standby_seite .standby-seite-bild.sichtbar");
+    const neu = alt === ebenen[0] ? ebenen[1] : ebenen[0];
+    neu.src = bild.src;
+    neu.alt = p.name;
+    seiteDaten.geladen = schluessel;
+    seite_rendern();
+    // nächster Frame: Überblenden (opacity, kein Layout)
+    requestAnimationFrame(function () {
+      neu.classList.add("sichtbar");
+      if (alt) alt.classList.remove("sichtbar");
+    });
+  };
+  bild.onerror = function () {
+    if (seiteDaten.laedt !== schluessel) return;
+    seiteDaten.laedt = null;
+    seiteDaten.fehler = schluessel;
+    seite_rendern();
+  };
+  bild.src = "/standby_seite/" + p.id + ".png?v=" + p.v;
+}
+
+// bild: Webseite zeigen; fehler: Uhr + Hinweis; wartet/aus: Uhr
+function seite_modus() {
+  const p = seiteDaten.paket;
+  if (!p.aktiv) return "aus";
+  const gueltig = p.status === "ok" && p.gueltig_bis && Date.now() < new Date(p.gueltig_bis).getTime();
+  // bis das neue Bild geladen ist, bleibt das bisherige derselben Seite stehen
+  const vorhanden = seiteDaten.geladen && seiteDaten.geladen.split(":")[0] === String(p.id);
+  if (gueltig && vorhanden) return "bild";
+  if (gueltig && seiteDaten.fehler !== seite_schluessel(p)) return "wartet";
+  if (p.status === "wartet") return "wartet";
+  return "fehler";
+}
+
+function seite_rendern() {
+  try {
+    const p = seiteDaten.paket;
+    const modus = seite_modus();
+    const vorher = seiteDaten.modus;
+    seiteDaten.modus = modus;
+    const mit_seite = modus === "bild";
+    const block = document.getElementById("standby_block");
+    document.getElementById("standby_seite").classList.toggle("d-none", !mit_seite);
+    document.getElementById("clock_day").classList.toggle("d-none", mit_seite);
+    block.classList.toggle("mit-seite", mit_seite);
+    if (!mit_seite) {
+      seiteDaten.geladen = null;
+      document.querySelectorAll("#standby_seite .standby-seite-bild").forEach(function (b) {
+        b.classList.remove("sichtbar");
+        b.removeAttribute("src");
+      });
+    }
+    // Gefahrenhinweise: mit Webseite oben in der rechten Spalte, sonst unter der Uhr
+    const gefahren = document.getElementById("standby_gefahren");
+    const ziel = document.getElementById(mit_seite ? "standby_widgets" : "standby_links");
+    if (gefahren.parentElement !== ziel) {
+      if (mit_seite) ziel.prepend(gefahren);
+      else ziel.appendChild(gefahren);
+    }
+    // unten rechts: Name und Stand bzw. Hinweis bei Störung
+    const hinweis = document.getElementById("standby_seite_hinweis");
+    const text_vorher = hinweis.textContent;
+    hinweis.replaceChildren();
+    if (modus === "bild" || modus === "fehler") {
+      hinweis.appendChild(element("i", "bi " + (modus === "bild" ? "bi-window" : "bi-exclamation-triangle"))).setAttribute("aria-hidden", "true");
+      hinweis.appendChild(
+        document.createTextNode(modus === "bild" ? " " + p.name + " · Stand " + uhrzeit(new Date(p.stand)) : " Webseite „" + p.name + "“ zurzeit nicht verfügbar")
+      );
+    }
+    hinweis.classList.toggle("d-none", !hinweis.textContent);
+    hinweis.classList.toggle("warn", modus === "fehler");
+    if (vorher !== modus || text_vorher !== hinweis.textContent) {
+      widgets_rendern();
+      if ($("#waipclock").is(":visible")) {
+        updateWachennameAnimation();
+        setTimeout(function () {
+          resize_text(true);
+          updateRandomPosition();
+        }, 50);
+      }
+    }
+  } catch (e) {
+    console.error("Webseite im Standby:", e);
+  }
+}
+
+socket.on("io.standby_seite", function (data) {
+  seiteDaten.paket = data && typeof data === "object" ? data : { aktiv: false };
+  seite_laden();
+  seite_rendern();
+});
+
+// einmal pro Minute: abgelaufene Bilder erkennen (z.B. Server liefert keine neuen mehr)
+takt_add("seite", function () {
+  if (new Date().getSeconds() === 30 && seiteDaten.paket.aktiv) seite_rendern();
 });
 
 // Einsatzdaten laden, Wachalarm anzeigen
@@ -2231,7 +2361,10 @@ function updateWachennameAnimation() {
   // Begrenzungen neu berechnen (Fensterbreite als Container)
   const containerWidth = window.innerWidth;
   const elementWidth = wachenname.offsetWidth;
-  const maxTranslate = Math.max(0, containerWidth - elementWidth - 40); // etwas Rand
+  // rechts Platz für Name/Stand der Webseite bzw. deren Hinweis lassen
+  const hinweis = document.getElementById("standby_seite_hinweis");
+  const reserve = hinweis && !hinweis.classList.contains("d-none") ? hinweis.offsetWidth + 24 : 0;
+  const maxTranslate = Math.max(0, containerWidth - elementWidth - 40 - reserve); // etwas Rand
 
   // Falls aktuelle Position außerhalb nach Resize
   let currentX = parseInt(wachenname.dataset.posX, 10) || 0;

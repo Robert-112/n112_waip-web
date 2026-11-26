@@ -1,4 +1,4 @@
-module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts, widgets, oidc) {
+module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts, widgets, oidc, standby_seiten) {
   // HTTP-Antworten mit Fehlerstatus (401/403/404/5xx) strukturiert protokollieren
   app.use(logger.http_error_middleware);
 
@@ -621,6 +621,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         widgets_wetter_aktiv: widgets.wetter_aktiv || widgets.waldbrand_aktiv,
         widgets_kalender_aktiv: widgets.kalender_aktiv,
         widgets_kalender_erlaubt: await widgets.erlaubte_kalender(),
+        // Webseiten im Standby: nur die für den Benutzer bereitgestellten
+        seiten_auswahl: standby_seiten.auswahl_fuer(req.user),
         session_max_age: app_cfg.global.session_cookie_max_age,
         error: req.query.error || null,
         success: req.query.success || null,
@@ -664,8 +666,20 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   // Standby-Einstellungen eines Benutzers prüfen und speichern (eigene Einstellungen und Benutzerverwaltung).
   // Adressen prüft (und lädt probeweise) der Kalender-Dienst; unveränderte Adressen werden nicht erneut geprüft.
   // Liefert { fehler } bei ungültiger Eingabe, sonst die gespeicherten Werte inkl. Domains fürs Log.
-  const standby_speichern = async (user_id, body) => {
+  const standby_speichern = async (user, body) => {
+    const user_id = user.id;
     const wetter = body.standby_wetter === "on";
+    // Webseite statt Uhr: nur ändern, wenn die Funktion eingerichtet ist (sonst fehlt sie im Formular)
+    let seite = undefined;
+    if (standby_seiten.aktiv) {
+      try {
+        seite = body.standby_seite_an === "on" ? standby_seiten.auswahl_pruefen(user, body.standby_seite) : null;
+      } catch (error) {
+        if (error instanceof standby_seiten.EingabeFehler) return { fehler: error.message };
+        throw error;
+      }
+      if (body.standby_seite_an === "on" && !seite) return { fehler: "Bitte eine Webseite auswählen oder „Webseite statt Uhr anzeigen“ ausschalten." };
+    }
     const kalender = body.standby_kalender === "on";
     const bisher = sql.db_user_get_config_standby(user_id);
     const adresse_pruefen = async (feld, bezeichnung) => {
@@ -691,14 +705,23 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     if (kalender && !termine.url) {
       return { fehler: "Bitte eine öffentliche Kalender-Adresse angeben oder die Termine ausschalten." };
     }
-    await sql.db_user_set_config_standby(user_id, { wetter, kalender, ical_url: termine.url, ticker_url: ticker.url });
+    await sql.db_user_set_config_standby(user_id, { wetter, kalender, ical_url: termine.url, ticker_url: ticker.url, seite });
     // verbundene Monitore des Benutzers sofort umstellen
     widgets.benutzer_aktualisiert(user_id);
+    standby_seiten.benutzer_aktualisiert(user_id);
     return {
       wetter,
       kalender,
       ticker: Boolean(ticker.url),
-      log: { wetter: wetter, kalender: kalender, kalender_domain: termine.domain || undefined, ticker: Boolean(ticker.url), ticker_domain: ticker.domain || undefined },
+      seite: seite || null,
+      log: {
+        wetter: wetter,
+        kalender: kalender,
+        kalender_domain: termine.domain || undefined,
+        ticker: Boolean(ticker.url),
+        ticker_domain: ticker.domain || undefined,
+        seite: seite === undefined ? undefined : seite,
+      },
     };
   };
 
@@ -706,9 +729,9 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
   app.post("/einstellungen_standby", auth.ensureAuthenticated, async (req, res) => {
     const zurueck = (art, text) => res.redirect("/einstellungen?" + art + "=" + encodeURIComponent(text));
     try {
-      const r = await standby_speichern(req.user.id, req.body);
+      const r = await standby_speichern(req.user, req.body);
       if (r.fehler) return zurueck("error", r.fehler);
-      logger.event(`Standby-Einstellungen von ${req.user.user} geändert (Wetter: ${r.wetter ? "an" : "aus"}, Kalender: ${r.kalender ? "an" : "aus"}, Ticker: ${r.ticker ? "an" : "aus"}).`, {
+      logger.event(`Standby-Einstellungen von ${req.user.user} geändert (Wetter: ${r.wetter ? "an" : "aus"}, Kalender: ${r.kalender ? "an" : "aus"}, Ticker: ${r.ticker ? "an" : "aus"}, Webseite: ${r.seite || "aus"}).`, {
         ...logger.from_req(req),
         action: "standby-einstellungen",
         category: "configuration",
@@ -940,6 +963,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
           resetcounter: (await sql.db_user_get_config(u.id)).resetcounter_eigen,
           karte_breite: sql.db_user_get_config_karte(u.id),
           standby: sql.db_user_get_config_standby(u.id),
+          // Webseiten, die dieser Benutzer wählen darf
+          seiten: standby_seiten.auswahl_fuer(u).map((x) => x.id),
         };
       }
       res.render("admin/adm_edit_users", {
@@ -953,6 +978,8 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
         widgets_wetter_aktiv: widgets.wetter_aktiv || widgets.waldbrand_aktiv,
         widgets_kalender_aktiv: widgets.kalender_aktiv,
         widgets_kalender_erlaubt: await widgets.erlaubte_kalender(),
+        seiten_aktiv: standby_seiten.aktiv,
+        seiten_alle: standby_seiten.aktiv ? standby_seiten.liste_admin().map((x) => ({ id: x.id, name: x.name })) : [],
         // Keycloaks zur Auswahl im Dialog; nicht mehr konfigurierte, aber noch verknüpfte erscheinen zusätzlich
         anmeldungen: [
           ...app_cfg.public.oidc_anmeldung,
@@ -998,11 +1025,11 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
       if (req.body.set_reset_counter && !(Number.isInteger(minuten) && minuten >= 1 && minuten <= app_cfg.global.time_to_delete_waip)) {
         return zurueck("error", `Einstellungen von ${ziel.user}: Die Anzeigezeit muss zwischen 1 und ${app_cfg.global.time_to_delete_waip} Minuten liegen.`);
       }
-      const r = await standby_speichern(ziel.id, req.body);
+      const r = await standby_speichern(ziel, req.body);
       if (r.fehler) return zurueck("error", `Einstellungen von ${ziel.user}: ${r.fehler}`);
       await sql.db_user_set_config_time(ziel.id, req.body.set_reset_counter);
       const breite = sql.db_user_set_config_karte(ziel.id, req.body.karte_breite);
-      logger.event(`Einstellungen von ${ziel.user} durch ${req.user.user} geändert (Kartenbreite: ${breite === null ? "Standard" : breite + " %"}, Wetter: ${r.wetter ? "an" : "aus"}, Kalender: ${r.kalender ? "an" : "aus"}, Ticker: ${r.ticker ? "an" : "aus"}).`, {
+      logger.event(`Einstellungen von ${ziel.user} durch ${req.user.user} geändert (Kartenbreite: ${breite === null ? "Standard" : breite + " %"}, Wetter: ${r.wetter ? "an" : "aus"}, Kalender: ${r.kalender ? "an" : "aus"}, Ticker: ${r.ticker ? "an" : "aus"}, Webseite: ${r.seite || "aus"}).`, {
         ...logger.from_req(req),
         action: "benutzer-einstellungen",
         category: "configuration",
@@ -1330,6 +1357,100 @@ module.exports = function (app, sql, app_cfg, passport, auth, saver, logger, tts
     } catch (error) {
       res.status(error instanceof widgets.KalenderFehler ? 502 : 500).json({ error: error.message });
     }
+  });
+
+  /* ##### Webseiten im Standby (nur Admin) ##### */
+
+  app.get("/adm_edit_seiten", auth.ensureAdmin, async (req, res, next) => {
+    try {
+      const seiten = standby_seiten.aktiv ? standby_seiten.liste_admin() : [];
+      // Namen zu den Nummern bei „Bereitgestellt für“ (Leitstelle, Kreis, Träger, Wache)
+      const namen = {};
+      for (const nr of new Set(seiten.flatMap((x) => (x.bereitgestellt ? x.bereitgestellt.split(",") : [])))) {
+        try {
+          const zeile = await sql.db_wache_vorhanden(nr);
+          if (zeile && zeile.name) namen[nr] = zeile.name;
+        } catch (error) {
+          namen[nr] = "(unbekannt)";
+        }
+      }
+      res.render("admin/adm_edit_seiten", {
+        namen,
+        public: app_cfg.public,
+        title: "Webseiten im Standby",
+        user: req.user,
+        session_max_age: app_cfg.global.session_cookie_max_age,
+        aktiv: standby_seiten.aktiv,
+        fehlt: standby_seiten.fehlt,
+        dienst_url: app_cfg.standby_seiten.url,
+        seiten,
+        zoom_stufen: standby_seiten.ZOOM_STUFEN,
+        intervalle: standby_seiten.INTERVALLE,
+        warten_stufen: standby_seiten.WARTEN_STUFEN,
+        error: req.query.error || null,
+        success: req.query.success || null,
+      });
+    } catch (error) {
+      const err = new Error(`Fehler beim Laden der Seite /adm_edit_seiten. ` + error);
+      logger.log("error", err);
+      err.status = 500;
+      next(err);
+    }
+  });
+
+  app.post("/adm_edit_seiten/speichern", auth.ensureAdmin, async (req, res) => {
+    const zurueck = (art, text) => res.redirect("/adm_edit_seiten?" + art + "=" + encodeURIComponent(text));
+    try {
+      const r = await standby_seiten.speichern(req.body, req.user.user);
+      zurueck("success", `Seite „${String(req.body.name).trim()}“ wurde gespeichert und wird aufgenommen.${r.hinweis ? " " + r.hinweis : ""}`);
+    } catch (error) {
+      if (error instanceof standby_seiten.EingabeFehler) return zurueck("error", error.message);
+      logger.log("error", error);
+      zurueck("error", "Fehler beim Speichern der Seite.");
+    }
+  });
+
+  app.post("/adm_edit_seiten/loeschen", auth.ensureAdmin, (req, res) => {
+    const zurueck = (art, text) => res.redirect("/adm_edit_seiten?" + art + "=" + encodeURIComponent(text));
+    try {
+      const name = standby_seiten.loeschen(req.body.id, req.user.user);
+      zurueck("success", `Seite „${name}“ wurde gelöscht.`);
+    } catch (error) {
+      if (error instanceof standby_seiten.EingabeFehler) return zurueck("error", error.message);
+      logger.log("error", error);
+      zurueck("error", "Fehler beim Löschen der Seite.");
+    }
+  });
+
+  // Status des Render-Dienstes und aller Seiten (Admin-Seite fragt nach dem Laden ab)
+  app.post("/adm_edit_seiten/status", auth.ensureAdmin, checkContentType, async (req, res) => {
+    try {
+      res.json({ dienst: await standby_seiten.dienst_status(true), seiten: standby_seiten.liste_admin().map((x) => standby_seiten.status_admin(x.id)) });
+    } catch (error) {
+      logger.log("error", error);
+      res.status(500).json({ error: "Status konnte nicht ermittelt werden." });
+    }
+  });
+
+  // „Jetzt aufnehmen“: wartet auf die Aufnahme und liefert den neuen Status
+  app.post("/adm_edit_seiten/aufnehmen", auth.ensureAdmin, checkContentType, async (req, res) => {
+    try {
+      res.json(await standby_seiten.jetzt_aufnehmen(req.body.id));
+    } catch (error) {
+      if (error instanceof standby_seiten.EingabeFehler) return res.status(404).json({ error: error.message });
+      logger.log("error", error);
+      res.status(500).json({ error: "Aufnahme fehlgeschlagen." });
+    }
+  });
+
+  // Bild einer Webseite: nur angemeldete Benutzer, die die Seite gewählt haben und dürfen (Admins: alle)
+  app.get("/standby_seite/:datei", (req, res) => {
+    const m = /^(\d+)\.png$/.exec(String(req.params.datei));
+    const datei = m ? standby_seiten.bild_fuer(req.user, Number(m[1])) : null;
+    if (!datei) return res.status(404).end();
+    res.sendFile(datei, { headers: { "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } }, (error) => {
+      if (error && !res.headersSent) res.status(404).end();
+    });
   });
 
   app.get("/adm_edit_replace", auth.ensureDatenpflege, async (req, res, next) => {

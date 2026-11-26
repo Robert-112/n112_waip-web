@@ -7,7 +7,7 @@ mixin navlink(href, text, icon, aktiv)
 
 - const seite = title || ''
 - const istInfo = ['Impressum', 'Datenschutzerklärung', 'Über'].includes(seite)
-- const istAdmin = ['Benutzer und Rechte verwalten', 'Wachen verwalten', 'Wetter-Standorte verwalten', 'Ersetzungen verwalten', 'Ticker-Quellen verwalten', 'Verbundene PCs/Benutzer', 'Akutelle Einsätze', 'Log-Datei'].includes(seite)
+- const istAdmin = ['Benutzer und Rechte verwalten', 'Wachen verwalten', 'Wetter-Standorte verwalten', 'Ersetzungen verwalten', 'Ticker-Quellen verwalten', 'Webseiten im Standby', 'Verbundene PCs/Benutzer', 'Akutelle Einsätze', 'Log-Datei'].includes(seite)
 
 header
   // Fixed navbar
@@ -54,6 +54,10 @@ header
                   a.dropdown-item(href='/adm_edit_ticker')
                     i.bi.bi-megaphone.me-2(aria-hidden='true')
                     | Ticker-Quellen
+                  if istAdminNutzer
+                    a.dropdown-item(href='/adm_edit_seiten')
+                      i.bi.bi-window.me-2(aria-hidden='true')
+                      | Webseiten im Standby
                   a.dropdown-item(href='/adm_edit_replace')
                     i.bi.bi-arrow-left-right.me-2(aria-hidden='true')
                     | Ersetzungen und Aussprache
