@@ -19,8 +19,9 @@ block content
                 i.bi.bi-diagram-3(aria-hidden='true')
                 span So wird der Standort eines Monitors bestimmt
               p.card-text.text-body-secondary.mb-2
-                | Es gilt der genaueste Eintrag zur aufgerufenen Nummer: Wache (6-stellig) → Träger (4) → Kreis (2) → Leitstelle (1).
+                | Es gilt zuerst ein eigener Eintrag genau für die aufgerufene Nummer (Wache 6-stellig, Träger 4, Kreis 2, Leitstelle 1).
                 | Ohne eigenen Eintrag gilt der „Mittelpunkt der Wachen“: die Koordinate der Wache bzw. bei Träger, Kreis und Leitstelle der Mittelpunkt aller ihrer Wachen (grau in der Tabelle).
+                | Erst wenn es auch dafür keine Koordinate gibt, gilt der nächste übergeordnete Eintrag (Träger → Kreis → Leitstelle).
               p.card-text.text-body-secondary.mb-0
                 | Warnzelle „aus Koordinate“ = Bright Sky ermittelt das Warngebiet (Gemeinde) aus der Koordinate. Für Kreis- oder Leitstellen-Monitore lohnt sich eine feste Warnzelle.
                 | Massenimport per SQL in die Tabelle

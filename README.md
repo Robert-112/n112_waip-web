@@ -272,6 +272,11 @@ Die nachfolgend aufgeführten Funktionen stehen im **`Wachalarm IP-Web`** genere
 
 # Versionsverlauf
 
+## 2.2.3-b (November 2026)
+
+- Wetter im Standby: ein Wachen-Monitor nutzt wieder die Koordinate seiner Wache, auch wenn für den Kreis oder die Leitstelle ein Wetter-Standort eingetragen ist (bisher zeigte jede Wache das Wetter des Kreis-Eintrags). Reihenfolge: eigener Eintrag für die aufgerufene Nummer → Koordinate bzw. Mittelpunkt der Wachen → übergeordneter Eintrag (Träger → Kreis → Leitstelle)
+- Wetter-Standorte: ein Eintrag ohne Koordinate (nur feste Warnzelle) lässt sich jetzt auch anlegen, wenn es schon einen übergeordneten Eintrag gibt
+
 ## 2.2.3 (November 2026)
 
 - Einstellungen: Hinweis, dass nur öffentliche Kalender von freigegebenen Servern möglich sind und weitere Server auf Anfrage vom Betreiber freigegeben werden können
