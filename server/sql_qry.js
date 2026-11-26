@@ -2943,23 +2943,26 @@ module.exports = (db, app_cfg) => {
       }
       if (gruppe && gruppe.nr_leitstelle != null) leitstelle = String(gruppe.nr_leitstelle);
 
-      // Kandidaten vom genauesten zum gröbsten Eintrag
-      const kandidaten = [];
-      if (nr.length >= 6) kandidaten.push(nr.slice(0, 6));
-      if (nr.length >= 4) kandidaten.push(nr.slice(0, 4));
-      if (nr.length >= 2) kandidaten.push(nr.slice(0, 2));
-      if (nr.length === 1) kandidaten.push(nr);
-      if (leitstelle && leitstelle !== "0" && !kandidaten.includes(leitstelle)) kandidaten.push(leitstelle);
-
       const stmt_ort = db.prepare(`SELECT nr, name, lat, lon, warncell_id FROM waip_wetter_orte WHERE nr = ?;`);
+
+      // 1. eigener Eintrag genau für diese Nummer
+      const eigener = stmt_ort.get(nr);
+      if (eigener) return { ...eigener, quelle: "wetter_orte" };
+
+      // 2. eigene Koordinate aus den Wachen-Stammdaten (Wache bzw. Mittelpunkt ihrer Wachen); sie ist genauer
+      //    als ein übergeordneter Eintrag, sonst bekäme z.B. jede Wache das Wetter ihres Kreis-Eintrags
+      if (gruppe && Number(gruppe.lat) && Number(gruppe.lon)) {
+        return { nr: nr, name: gruppe.name, lat: Number(gruppe.lat), lon: Number(gruppe.lon), warncell_id: null, quelle: "wachen" };
+      }
+
+      // 3. ohne eigene Koordinate: übergeordnete Einträge vom genauesten zum gröbsten (Träger, Kreis, Leitstelle)
+      const kandidaten = [];
+      if (nr.length > 4) kandidaten.push(nr.slice(0, 4));
+      if (nr.length > 2) kandidaten.push(nr.slice(0, 2));
+      if (leitstelle && leitstelle !== "0" && leitstelle !== nr && !kandidaten.includes(leitstelle)) kandidaten.push(leitstelle);
       for (const kandidat of kandidaten) {
         const ort = stmt_ort.get(kandidat);
         if (ort) return { ...ort, quelle: "wetter_orte" };
-      }
-
-      // Fallback: Koordinaten aus den Wachen-Stammdaten
-      if (gruppe && Number(gruppe.lat) && Number(gruppe.lon)) {
-        return { nr: nr, name: gruppe.name, lat: Number(gruppe.lat), lon: Number(gruppe.lon), warncell_id: null, quelle: "wachen" };
       }
       return null;
     } catch (error) {
